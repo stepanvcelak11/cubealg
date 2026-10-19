@@ -426,3 +426,34 @@ table.breakdown i { display: inline-block; width: 10px; height: 10px; border-rad
   .tile b { font-size: 1.1rem; }
   .tile small, .tile-label { font-size: 0.68rem; }
 }
+
+/* --- Plošný pohled (SVG) --------------------------------------------------------------- */
+.netview { display: block; width: 100%; height: auto; max-height: 100%; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.netview.fill { position: absolute; inset: 0; width: 100%; height: 100%; }
+.netview .nv-sticker { stroke: var(--plastic); stroke-width: 0.06; stroke-linejoin: round; }
+.netview .nv-sticker.faded { opacity: 0.4; }
+.netview .nv-sticker.selected { stroke: var(--accent); stroke-width: 0.1; }
+.netview .nv-over { pointer-events: none; }
+.netview.editable .nv-sticker { cursor: pointer; }
+.netview.editable .nv-sticker:hover { filter: brightness(1.15); }
+.netview .nv-label { font-size: 0.32px; fill: var(--muted); font-weight: 600; text-anchor: middle; }
+
+/* Výběr hlavolamu v Labu */
+.lab-head { display: flex; gap: 8px; align-items: stretch; flex: none; }
+.lab-head select { flex: 0 1 140px; min-width: 0; }
+.lab-head .segmented { flex: 1; min-width: 0; }
+@media (max-width: 480px) {
+  .lab-head { gap: 6px; }
+  .lab-head select { flex-basis: 92px; font-size: 0.85rem; padding-left: 6px; padding-right: 4px; }
+  .lab-head .segmented button .ico { display: none; }
+}
+.tool-row input { min-width: 0; flex: 1; }
+.chips-label { font-size: 0.8rem; color: var(--muted); align-self: center; min-width: 3.5em; }
+.ergo-move.two { grid-template-columns: 3em repeat(2, 1fr); }
+.ergo-move.one { grid-template-columns: 3em 1fr; }
+.cube-panel .tool-row { flex-wrap: nowrap; gap: 4px; }
+.cube-panel .tool-row .icon-btn { flex: none; width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0; }
+@media (max-width: 480px) { .cube-panel .tool-row .icon-btn { width: 30px; height: 30px; } }
+
+.short-label { display: none; }
+@media (max-width: 480px) { .long-label { display: none; } .short-label { display: inline; } }

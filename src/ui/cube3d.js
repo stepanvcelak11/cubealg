@@ -19,9 +19,13 @@ const defaultMatrix = () => new DOMMatrix().rotateSelf(DEFAULT_VIEW.rx, 0, 0).ro
 export class Cube3D {
   /**
    * @param {HTMLElement} container
-   * @param {{onSticker?: (pos:number) => void, label?: string}} [opts]
+   * @param {{onSticker?: (pos:number) => void, label?: string, fill?: boolean,
+   *   facelets?: {pos:number[], normal:number[], face:string}[], scale?: number}} [opts]
+   *   facelets – nálepky v souřadnicích 3×3 (výchozí 3×3), scale – velikost nálepky vůči 3×3 (2×2 = 1.5)
    */
-  constructor(container, { onSticker, label = 'Kostka', fill = false } = {}) {
+  constructor(container, { onSticker, label = 'Kostka', fill = false, facelets = FACELETS, scale = 1 } = {}) {
+    this.facelets = facelets;
+    this.scale = scale;
     this.onSticker = onSticker;
     // fill: kostka se přizpůsobí výšce i šířce kontejneru (stránka bez posouvání)
     this.fill = fill;
@@ -37,10 +41,10 @@ export class Cube3D {
     this.cube = document.createElement('div');
     this.cube.className = 'cube3d';
     this.scene.append(this.cube);
-    this.stickers = FACELETS.map((f) => {
+    this.stickers = facelets.map((f, i) => {
       const s = document.createElement('div');
       s.className = 'sticker3d';
-      s.dataset.pos = String(f.index);
+      s.dataset.pos = String(i);
       const face = document.createElement('div');
       face.className = 'face';
       s.append(face);
@@ -60,17 +64,19 @@ export class Cube3D {
     if (this.fill && !h) return;
     this.size = Math.max(16, Math.min(64, Math.floor(Math.min(w / 4.3, h / 5))));
     this.scene.style.height = this.fill ? '100%' : `${Math.round(this.size * 4.6)}px`;
-    this.cube.style.setProperty('--s', `${this.size}px`);
+    this.cube.style.setProperty('--s', `${this.size * this.scale}px`);
     this.stickers.forEach((s, i) => { s.style.transform = this.baseTransform(i); });
     this.applyView();
   }
 
   baseTransform(i, prefix = '') {
-    const { pos, normal, face } = FACELETS[i];
-    const S = this.size;
-    const x = (pos[0] + normal[0] / 2) * S;
-    const y = -(pos[1] + normal[1] / 2) * S;
-    const z = (pos[2] + normal[2] / 2) * S;
+    const { pos, normal, face } = this.facelets[i];
+    // Kostka má vždy poloviční velikost 1,5 S; nálepka (velikost scale·S) leží
+    // na stěně, její střed je od středu stěny posunutý o (1,5 − scale/2)·S.
+    const S = this.size, step = (1.5 - this.scale / 2) * S, half = (this.scale / 2) * S;
+    const x = pos[0] * step + normal[0] * half;
+    const y = -(pos[1] * step + normal[1] * half);
+    const z = pos[2] * step + normal[2] * half;
     return `${prefix} translate3d(${x}px, ${y}px, ${z}px) ${FACE_ROT[face]}`.trim();
   }
 
@@ -126,12 +132,12 @@ export class Cube3D {
    *   pro každou pozici 0–53; color je U R F D L B nebo X (nevybarveno)
    */
   render(stickers) {
-    stickers.forEach(({ color, style, selected }, i) => {
+    stickers.forEach(({ color, css, style, selected }, i) => {
       const el = this.stickers[i];
       const blank = color === 'X' || style === 'none';
       el.dataset.style = blank ? 'none' : style;
       el.classList.toggle('selected', !!selected);
-      el.style.setProperty('--c', blank ? 'var(--c-gray)' : `var(--c-${color})`);
+      el.style.setProperty('--c', blank ? 'var(--c-gray)' : (css ?? `var(--c-${color})`));
     });
     this.scene.classList.toggle('editable', !!this.onSticker);
   }
@@ -140,7 +146,7 @@ export class Cube3D {
   animate(move, ms = 260) {
     const def = MOVE_DEFS[move.base];
     const q = def.dir * move.amount;
-    const layer = this.stickers.filter((_, i) => def.layers.includes(FACELETS[i].pos[def.axis]));
+    const layer = this.stickers.filter((_, i) => def.layers.includes(this.facelets[i].pos[def.axis]));
     const rot = AXIS_ROT[def.axis];
     for (const el of layer) {
       el.style.transition = 'none';

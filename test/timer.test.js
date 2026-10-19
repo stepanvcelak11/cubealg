@@ -5,7 +5,8 @@ import { compileGoal, makeConstraints } from '../src/core/constraints.js';
 import { SLOTS } from '../src/core/geometry.js';
 import { parseAlg } from '../src/core/notation.js';
 import { EVENTS } from '../src/timer/events.js';
-import { scramble, nxnScramble, sq1Scramble, sq1Apply } from '../src/timer/scramble.js';
+import { scramble, nxnScramble, sq1Scramble } from '../src/timer/scramble.js';
+import { solvedState, applySq1 } from '../src/puzzles/sq1.js';
 import { scramble222 } from '../src/timer/random-state.js';
 import { DNF, averageOf, currentAverage, bestAverage, summary, formatTime, formatSolve, trimCount } from '../src/timer/stats.js';
 
@@ -53,11 +54,7 @@ test('2×2 z náhodného stavu: 4–11 tahů R U F a nechá rohy zamíchané', (
 test('Square-1: každý řez je platný', () => {
   const s = sq1Scramble();
   assert.equal(s.split('/').length - 1, 12);
-  let state = { top: [0, 0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7], bottom: [8, 9, 9, 10, 11, 11, 12, 13, 13, 14, 15, 15] };
-  for (const [, x, y] of s.matchAll(/\((-?\d+),(-?\d+)\)/g)) {
-    state = sq1Apply(state, Number(x), Number(y));
-    assert.ok(state, s);
-  }
+  assert.doesNotThrow(() => applySq1(solvedState(), s), s); // applySq1 vyhodí chybu u neplatného řezu
 });
 
 test('průměry podle WCA', () => {

@@ -1,10 +1,14 @@
 // Web Worker: hledání běží mimo hlavní vlákno, takže UI nezamrzá.
 //
-// Vstup:  { type: 'search', start, target, constraints, moves, options, ergonomics }
+// Vstup:  { type: 'search', puzzle, start, target, constraints, moves, options, ergonomics, sq1 }
+//         puzzle = id hlavolamu ('333', '222', 'pyram', 'skewb', 'sq1');
+//         sq1 = { shape, top, bottom } jen pro Square-1
 // Výstup: { type: 'progress' | 'solutions' | 'done' | 'error', ... }
 
 import { prepare, search } from './engine.js';
-import { scoreAlg } from '../ergonomics/score.js';
+import { prepareSq1, searchSq1 } from './sq1engine.js';
+import { getPuzzle } from '../puzzles/index.js';
+import { scoreFor } from '../ergonomics/puzzles.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 
 self.onmessage = ({ data }) => {
@@ -16,16 +20,13 @@ self.onmessage = ({ data }) => {
   }
 };
 
-function run({ start, target, constraints, moves, options, ergonomics }) {
+function run({ puzzle: id = '333', start, target, constraints, moves, options, ergonomics, sq1 }) {
+  const P = getPuzzle(id);
   const t0 = Date.now();
+  const onTable = (info) => self.postMessage({ type: 'progress', phase: 'tables', ...info });
   self.postMessage({ type: 'progress', phase: 'tables', table: 0, tables: 0 });
-  const problem = prepare({
-    constraints, moves, target: Uint8Array.from(target),
-    onTable: (info) => self.postMessage({ type: 'progress', phase: 'tables', ...info }),
-  });
-  const tablesMs = Date.now() - t0;
+  const config = P.ergonomics === 'cube' ? { ...ergonomics, triggers: buildTriggers() } : ergonomics;
 
-  const config = { ...ergonomics, triggers: buildTriggers() };
   let batch = [];
   let lastFlush = Date.now();
   const flush = () => {
@@ -33,21 +34,31 @@ function run({ start, target, constraints, moves, options, ergonomics }) {
     batch = [];
     lastFlush = Date.now();
   };
-
-  const res = search(problem, Uint8Array.from(start), {
-    ...options,
+  const handlers = {
     onSolution: (alg) => {
-      batch.push({ alg, score: scoreAlg(alg, config) });
+      batch.push({ alg, score: scoreFor(P, alg, config) });
       if (batch.length >= 50 || Date.now() - lastFlush > 200) flush();
     },
     onProgress: (info) => {
       flush();
       self.postMessage({ type: 'progress', phase: 'search', ...info, elapsed: Date.now() - t0 });
     },
-  });
+  };
+
+  let res;
+  if (P.kind === 'sq1') {
+    const problem = prepareSq1({ constraints, target: Int8Array.from(target), ...sq1, onTable });
+    res = searchSq1(problem, Int8Array.from(start), {
+      ...options, ...handlers,
+      turnCost: (a, c) => scoreFor(P, `(${a},${c})`, config).total,
+    });
+  } else {
+    const problem = prepare({ puzzle: P, constraints, moves, target: Uint8Array.from(target), onTable });
+    res = search(problem, Uint8Array.from(start), { ...options, ...handlers });
+  }
   flush();
   self.postMessage({
     type: 'done', reason: res.reason, optimal: res.optimal, nodes: res.nodes,
-    found: res.solutions.length, tablesMs, elapsed: Date.now() - t0,
+    found: res.solutions.length, elapsed: Date.now() - t0,
   });
 }

@@ -5,6 +5,7 @@
 // (stejná vrstva po sobě, opakování na stejné ose).
 
 import { randomStateScramble } from './twophase.js';
+import { solvedState, turn, slash, canSlash } from '../puzzles/sq1.js';
 import { simplifyAlg, algToString } from '../core/notation.js';
 
 /** Náhodné celé číslo 0 … n-1 (kryptograficky, je-li k dispozici). */
@@ -110,36 +111,19 @@ export function clockScramble() {
 
 // --- Square-1 -----------------------------------------------------------------------
 
-// Vrstva = 12 jednotek po 30°; roh zabírá 2 jednotky (stejné id), hrana 1.
-const SQ1_TOP = [0, 0, 1, 2, 2, 3, 4, 4, 5, 6, 6, 7];
-const SQ1_BOTTOM = [8, 9, 9, 10, 11, 11, 12, 13, 13, 14, 15, 15];
-
-const rot = (layer, k) => layer.map((_, i) => layer[(((i - k) % 12) + 12) % 12]);
-const canSlice = (l) => l[11] !== l[0] && l[5] !== l[6];
-
-/** Provede (x, y) a řez; vrací null, pokud řez nejde. */
-export function sq1Apply(state, x, y) {
-  const top = rot(state.top, x);
-  const bottom = rot(state.bottom, y);
-  if (!canSlice(top) || !canSlice(bottom)) return null;
-  return {
-    top: [...top.slice(0, 6), ...bottom.slice(6)],
-    bottom: [...bottom.slice(0, 6), ...top.slice(6)],
-  };
-}
-
+/** Náhodné tahy: každé (x, y) je zvolené tak, aby po něm šel řez (model viz puzzles/sq1.js). */
 export function sq1Scramble(slashes = 12) {
-  let state = { top: SQ1_TOP, bottom: SQ1_BOTTOM };
+  let state = solvedState();
   const parts = [];
   for (let i = 0; i < slashes; i++) {
     const options = [];
     for (let x = -5; x <= 6; x++) for (let y = -5; y <= 6; y++) {
       if (x === 0 && y === 0) continue;
-      const next = sq1Apply(state, x, y);
-      if (next) options.push([x, y, next]);
+      const turned = turn(state, x, y);
+      if (canSlash(turned)) options.push([x, y, turned]);
     }
-    const [x, y, next] = pick(options);
-    state = next;
+    const [x, y, turned] = pick(options);
+    state = slash(turned);
     parts.push(`(${x},${y})`);
   }
   return parts.join(' / ') + ' /';

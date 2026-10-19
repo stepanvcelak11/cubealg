@@ -33,29 +33,33 @@ export function makeConstraints(spec) {
  * Zkompiluje cíl do rychlé testovací funkce pro hledání.
  * @param {Record<string, string>} constraints název dílku → typ omezení
  * @param {Uint8Array} [target] cílový stav B (výchozí: složená kostka)
+ * @param {object} [puzzle] hlavolam (src/puzzles), výchozí 3×3
  */
-export function compileGoal(constraints, target = solved()) {
+export function compileGoal(constraints, target, puzzle) {
+  const P = puzzle ?? { slotByName, SLOT_OF, ORI_AT, solved };
+  target ??= P.solved();
+  const { SLOT_OF: slotOf, ORI_AT: oriAt } = P;
   const stickerEq = []; // dvojice [nálepka, pozice]
   const slotEq = [];    // dvojice [referenční nálepka, slot]
   const oriEq = [];     // dvojice [referenční nálepka, orientace]
   for (const [name, type] of Object.entries(constraints)) {
     if (type === 'ignore') continue;
     if (!CONSTRAINT_TYPES.includes(type)) throw new Error(`Neznámé omezení „${type}“`);
-    const piece = slotByName(name);
+    const piece = P.slotByName(name);
     const ref = piece.facelets[0];
-    const effective = piece.type === 'center' && type !== 'ignore'
+    const effective = piece.facelets.length === 1 && type !== 'ignore'
       ? (type === 'orientation' ? 'ignore' : 'permutation') : type;
     if (effective === 'solved') for (const k of piece.facelets) stickerEq.push(k, target[k]);
-    else if (effective === 'permutation') slotEq.push(ref, SLOT_OF[target[ref]]);
-    else if (effective === 'orientation') oriEq.push(ref, ORI_AT[target[ref]]);
+    else if (effective === 'permutation') slotEq.push(ref, slotOf[target[ref]]);
+    else if (effective === 'orientation') oriEq.push(ref, oriAt[target[ref]]);
   }
   const se = Uint8Array.from(stickerEq), pe = Uint8Array.from(slotEq), oe = Uint8Array.from(oriEq);
 
   /** @param {Uint8Array} loc */
   function test(loc) {
     for (let i = 0; i < se.length; i += 2) if (loc[se[i]] !== se[i + 1]) return false;
-    for (let i = 0; i < pe.length; i += 2) if (SLOT_OF[loc[pe[i]]] !== pe[i + 1]) return false;
-    for (let i = 0; i < oe.length; i += 2) if (ORI_AT[loc[oe[i]]] !== oe[i + 1]) return false;
+    for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) return false;
+    for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) return false;
     return true;
   }
 
@@ -63,8 +67,8 @@ export function compileGoal(constraints, target = solved()) {
   function violations(loc) {
     let n = 0;
     for (let i = 0; i < se.length; i += 2) if (loc[se[i]] !== se[i + 1]) n++;
-    for (let i = 0; i < pe.length; i += 2) if (SLOT_OF[loc[pe[i]]] !== pe[i + 1]) n++;
-    for (let i = 0; i < oe.length; i += 2) if (ORI_AT[loc[oe[i]]] !== oe[i + 1]) n++;
+    for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) n++;
+    for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) n++;
     return n;
   }
 

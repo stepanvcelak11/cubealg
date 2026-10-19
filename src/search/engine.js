@@ -11,16 +11,24 @@
 // Hledání nevrací jen optimum: projde délky optimum … optimum + extraDepth
 // a vrátí všechny nalezené sekvence, které se pak řadí podle ergonomie.
 
-import { SLOTS, SLOT_OF, ORI_AT } from '../core/geometry.js';
-import { movePermutation, solved } from '../core/cube.js';
-import { MOVE_DEFS, moveToString } from '../core/notation.js';
 import { MoveSet } from '../core/moveset.js';
+import { CUBE3 } from '../puzzles/cube3.js';
 
-const TYPE_POSITIONS = {};   // typ dílku → seznam pozic (nálepek) daného typu
-const LOCAL = new Uint8Array(54); // pozice → index v seznamu svého typu
-for (const type of ['center', 'edge', 'corner']) {
-  TYPE_POSITIONS[type] = SLOTS.filter((s) => s.type === type).flatMap((s) => s.facelets).sort((a, b) => a - b);
-  TYPE_POSITIONS[type].forEach((pos, i) => { LOCAL[pos] = i; });
+// Pro každý hlavolam: typ dílku → seznam pozic (nálepek) daného typu
+// a pozice → index v seznamu svého typu.
+const TYPE_INFO = new WeakMap();
+function typeInfo(puzzle) {
+  let info = TYPE_INFO.get(puzzle);
+  if (info) return info;
+  const positions = {};
+  const local = new Uint8Array(puzzle.size);
+  for (const type of new Set(puzzle.slots.map((s) => s.type))) {
+    positions[type] = puzzle.slots.filter((s) => s.type === type).flatMap((s) => s.facelets).sort((a, b) => a - b);
+    positions[type].forEach((pos, i) => { local[pos] = i; });
+  }
+  info = { positions, local };
+  TYPE_INFO.set(puzzle, info);
+  return info;
 }
 
 const DEFAULT_TABLE_LIMIT = 24 ** 4;
@@ -29,22 +37,28 @@ const UNREACHABLE = 255;
 /**
  * Připraví úlohu: sledované dílky, přechodové tabulky a pattern databáze.
  * @param {object} p
+ * @param {object} [p.puzzle] hlavolam (viz src/puzzles), výchozí 3×3
  * @param {Record<string,string>} p.constraints omezení dílků (viz core/constraints.js)
  * @param {Uint8Array} [p.target] cílový stav B
  * @param {{base:string, amount:number}[]} p.moves povolené tahy
  * @param {number} [p.tableLimit] max. velikost jedné pattern databáze
  * @param {(info:{table:number, tables:number}) => void} [p.onTable]
  */
-export function prepare({ constraints, target = solved(), moves, tableLimit = DEFAULT_TABLE_LIMIT, onTable }) {
+export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), moves, tableLimit = DEFAULT_TABLE_LIMIT, onTable }) {
+  const { SLOT_OF, ORI_AT } = puzzle;
+  const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
   const moveCount = moves.length;
-  const perms = moves.map(movePermutation);
-  const centersMove = moves.some((m) => MOVE_DEFS[m.base].kind !== 'face');
+  const perms = moves.map((m) => puzzle.perm(m));
+  // Typy dílků, se kterými povolené tahy vůbec nehýbou (např. středy 3×3 při tazích stěn).
+  const movingTypes = new Set(Object.keys(TYPE_POSITIONS).filter((type) =>
+    perms.some((to) => TYPE_POSITIONS[type].some((pos) => to[pos] !== pos))));
 
   // Sledované dílky a pro každý množina hodnot, které cíl splňují.
   const pieces = [];
-  for (const slot of SLOTS) {
+  for (const slot of puzzle.slots) {
     let type = constraints[slot.name] ?? 'ignore';
-    if (slot.type === 'center') type = type === 'ignore' || type === 'orientation' ? 'ignore' : 'solved';
+    // dílek s jedinou nálepkou (střed) nemá natočení
+    if (slot.facelets.length === 1) type = type === 'ignore' || type === 'orientation' ? 'ignore' : 'solved';
     if (type === 'ignore') continue;
     const ref = slot.facelets[0];
     const goalPos = target[ref];
@@ -54,13 +68,14 @@ export function prepare({ constraints, target = solved(), moves, tableLimit = DE
       if (type === 'permutation') return SLOT_OF[pos] === SLOT_OF[goalPos];
       return ORI_AT[pos] === ORI_AT[goalPos];
     });
-    pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok, constraint: type });
+    const faces = new Set(slot.facelets.map((f) => puzzle.stickerFace[f]));
+    pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok, constraint: type, faces, stickers: slot.facelets.length });
   }
 
   // Přechody: trans[type][m * size + v] = hodnota po tahu m.
   const trans = {};
   const invTrans = {};
-  for (const type of ['center', 'edge', 'corner']) {
+  for (const type of Object.keys(TYPE_POSITIONS)) {
     const positions = TYPE_POSITIONS[type];
     const size = positions.length;
     const t = new Uint8Array(moveCount * size);
@@ -74,8 +89,8 @@ export function prepare({ constraints, target = solved(), moves, tableLimit = DE
     invTrans[type] = inv;
   }
 
-  // Středy, se kterými povolené tahy nehýbou, se do heuristiky nezahrnují.
-  const tracked = pieces.filter((p) => p.kind !== 'center' || centersMove);
+  // Dílky, se kterými povolené tahy nehýbou, se do heuristiky nezahrnují.
+  const tracked = pieces.filter((p) => movingTypes.has(p.kind));
   const groups = makeGroups(tracked, tableLimit);
   const tables = groups.map((g, i) => {
     onTable?.({ table: i + 1, tables: groups.length });
@@ -85,18 +100,19 @@ export function prepare({ constraints, target = solved(), moves, tableLimit = DE
   // Kanonické pořadí tahů a jejich zápis.
   const redundant = new Uint8Array(moveCount * moveCount);
   for (let a = 0; a < moveCount; a++) for (let b = 0; b < moveCount; b++) {
-    redundant[a * moveCount + b] = MoveSet.redundant(moves[a], moves[b]) ? 1 : 0;
+    redundant[a * moveCount + b] = puzzle.redundant(moves[a], moves[b]) ? 1 : 0;
   }
 
   return {
+    puzzle, local: LOCAL,
     pieces, tables, trans, moves, moveCount, redundant,
-    names: moves.map(moveToString),
+    names: moves.map((m) => puzzle.moveToString(m)),
     pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
   };
 }
 
 // Rozdělí dílky do skupin pro pattern databáze. Dvě různá rozdělení
-// (roh + sousední hrany / hrany a rohy zvlášť) – heuristika bere maximum.
+// (velký dílek + sousední menší / každý typ zvlášť) – heuristika bere maximum.
 function makeGroups(pieces, limit) {
   const chunk = (list) => {
     const out = [];
@@ -108,20 +124,23 @@ function makeGroups(pieces, limit) {
     if (cur.length) out.push(cur);
     return out;
   };
-  const corners = pieces.filter((p) => p.kind === 'corner');
-  const edges = pieces.filter((p) => p.kind === 'edge');
-  const centers = pieces.filter((p) => p.kind === 'center');
-
+  // Sousedé: menší dílek, jehož barvy jsou podmnožinou barev většího (hrana u rohu).
+  const bySize = [...pieces].sort((a, b) => b.stickers - a.stickers);
   const paired = [];
   const used = new Set();
-  for (const c of corners) {
-    paired.push(c);
-    for (const e of edges) {
-      if (!used.has(e) && [...e.name].every((f) => c.name.includes(f))) { paired.push(e); used.add(e); }
+  for (const big of bySize) {
+    if (used.has(big)) continue;
+    used.add(big);
+    paired.push(big);
+    for (const small of bySize) {
+      if (!used.has(small) && small.stickers < big.stickers && [...small.faces].every((f) => big.faces.has(f))) {
+        paired.push(small);
+        used.add(small);
+      }
     }
   }
-  paired.push(...edges.filter((e) => !used.has(e)), ...centers);
-  const separate = [...edges, ...corners, ...centers];
+  const kinds = [...new Set(bySize.map((p) => p.kind))];
+  const separate = kinds.flatMap((k) => pieces.filter((p) => p.kind === k));
 
   const a = chunk(paired);
   const b = chunk(separate);
@@ -167,7 +186,7 @@ function buildTable(group, moveCount, invTrans) {
 
 /** Převede stav kostky na vektor hodnot sledovaných dílků. */
 export function encode(problem, loc) {
-  return Uint8Array.from(problem.pieces, (p) => LOCAL[loc[p.ref]]);
+  return Uint8Array.from(problem.pieces, (p) => problem.local[loc[p.ref]]);
 }
 
 /**
@@ -267,7 +286,7 @@ export function search(problem, start, {
 }
 
 /** Pohodlná varianta: vše v jednom volání. */
-export function findAlgs({ start, constraints, target, moveSet, ...opts }) {
-  const problem = prepare({ constraints, target, moves: (moveSet ?? new MoveSet()).moves() });
+export function findAlgs({ puzzle, start, constraints, target, moveSet, ...opts }) {
+  const problem = prepare({ puzzle, constraints, target, moves: (moveSet ?? new MoveSet()).moves() });
   return search(problem, start, opts);
 }

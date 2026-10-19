@@ -97,3 +97,26 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: Pyraminx, Skewb, 2×2 a Square-1 – zadání stylem, zamíchání a hledání', async () => {
+  const { p, ctx, errors } = await open('lab');
+  const scrambles = { 222: "R U R' F", pyram: "R U' L", skewb: "R U' L", sq1: '(1,0)/ (-1,-1)/' };
+  for (const [id, scr] of Object.entries(scrambles)) {
+    await p.selectOption('#lab-puzzle', id);
+    // nástroj styl (Plná) a klepnutí na několik míst cíle = dílky na svých místech
+    await p.locator('#styles .style-btn', { hasText: 'Plná' }).tap();
+    const positions = await p.locator('#cube-b [data-pos]').evaluateAll((els) => els.map((e) => Number(e.dataset.pos)));
+    for (const pos of positions.filter((_, i) => i % 7 === 0).slice(0, 5)) {
+      await p.locator(`#cube-b [data-pos="${pos}"]`).first().click({ force: true });
+    }
+    await p.fill('#a-moves', scr);
+    await p.locator('#a-apply').tap();
+    assert.match(await p.locator('#task-status').innerText(), /✓/, id);
+    await p.locator('#go-search').tap();
+    await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 60000 });
+    assert.match(await p.locator('#detail').innerText(), /řeší zadání/, `${id}: ${await p.locator('#status').innerText()}`);
+    await p.locator('.segmented button[data-sub="task"]').tap();
+  }
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

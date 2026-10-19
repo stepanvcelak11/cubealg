@@ -1,18 +1,18 @@
 // Trenažér vlastních algoritmů: náhodný případ ze sady, stopky, odhalení
 // algoritmu a statistiky pro každý algoritmus.
 
-import { buildStart } from '../core/task.js';
-import { invertAlg, algToString } from '../core/notation.js';
 import { averageOf, formatTime } from '../timer/stats.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { algs } from './store.js';
 import { Stopwatch } from './stopwatch.js';
 import { Cube3D } from './cube3d.js';
-import { stickersOf } from './cubeview.js';
+import { NetView } from './netview.js';
+import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
 
 let cube;
+let cubePuzzle = null; // hlavolam, pro který je vytvořený pohled
 let currentId = null;
 let revealed = false;
 let isActiveFn = () => false;
@@ -58,8 +58,21 @@ function showCase() {
   const enabled = algs.list().filter((x) => x.enabled).length;
   $('tr-count').textContent = `Moje algoritmy (${enabled}/${algs.list().length})`;
   if (!a) { $('tr-reveal').replaceChildren(); $('tr-name').textContent = ''; return; }
-  const { loc } = buildStart(a.task.colorsA, a.task.constraints);
-  if (loc) cube.render(stickersOf(loc, a.task.constraints));
+  const model = labModel(a.task.puzzle ?? '333');
+  if (cubePuzzle !== model.id) {
+    // pohled podle hlavolamu (3D kostka nebo plošná síť)
+    const v = model.view;
+    cube = v.type === 'cube3d'
+      ? new Cube3D($('tr-cube'), { label: 'Případ', fill: true, facelets: v.facelets, scale: v.scale })
+      : new NetView($('tr-cube'), { label: 'Případ', fill: true, viewBox: v.viewBox, polys: v.polys });
+    cubePuzzle = model.id;
+  }
+  const side = model.deserialize(a.task.colorsA);
+  const { loc } = side ? model.build(side, a.task.constraints) : { loc: null };
+  if (loc) {
+    cube.render(model.stateStickers(loc, a.task.constraints));
+    if (model.overlay) cube.setOverlay(model.overlay(loc));
+  }
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';
   renderReveal(a);
 }
@@ -96,7 +109,7 @@ function renderReveal(a) {
 }
 
 function setupOf(a) {
-  try { return algToString(invertAlg(a.alg)); } catch { return '–'; }
+  try { return labModel(a.task.puzzle ?? '333').invertAlg(a.alg); } catch { return '–'; }
 }
 
 function next() {
@@ -125,7 +138,7 @@ function renderList() {
     return el('li', { className: 'alg-item' },
       cb,
       el('div', { className: 'alg-main' }, name,
-        el('code', { textContent: a.alg }),
+        el('code', { textContent: `${a.task.puzzle && a.task.puzzle !== '333' ? `[${labModel(a.task.puzzle).P.name}] ` : ''}${a.alg}` }),
         el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' })),
       el('div', { className: 'alg-actions' }, train, del));
   }));
@@ -139,6 +152,7 @@ let stopwatch;
 export function initTrainer({ isActive }) {
   isActiveFn = isActive;
   cube = new Cube3D($('tr-cube'), { label: 'Případ', fill: true });
+  cubePuzzle = '333';
   stopwatch = new Stopwatch({
     pad: $('tr-pad'),
     display: $('tr-display'),

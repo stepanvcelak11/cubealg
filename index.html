@@ -125,11 +125,14 @@
 
     <!-- ===================== Lab ===================== -->
     <section class="page" data-page="lab" hidden>
-      <nav class="segmented" aria-label="Lab">
-        <button type="button" data-sub="task" class="active" data-icon="task" data-icon-size="18"><span>Zadání</span></button>
-        <button type="button" data-sub="moves" data-icon="sliders" data-icon-size="18"><span>Tahy a váhy</span></button>
-        <button type="button" data-sub="results" data-icon="list" data-icon-size="18"><span>Řešení <b id="results-count" class="count" hidden></b></span></button>
-      </nav>
+      <div class="lab-head">
+        <select id="lab-puzzle" aria-label="Hlavolam"></select>
+        <nav class="segmented" aria-label="Lab">
+          <button type="button" data-sub="task" class="active" data-icon="task" data-icon-size="18"><span>Zadání</span></button>
+          <button type="button" data-sub="moves" data-icon="sliders" data-icon-size="18"><span class="long-label">Tahy a váhy</span><span class="short-label">Tahy</span></button>
+          <button type="button" data-sub="results" data-icon="list" data-icon-size="18"><span>Řešení <b id="results-count" class="count" hidden></b></span></button>
+        </nav>
+      </div>
 
       <!-- Zadání -->
       <div class="sub fixed-sub" data-sub="task">
@@ -144,10 +147,8 @@
             <div class="tool-row">
               <input id="a-moves" placeholder="Zamíchat tahy…" autocomplete="off" spellcheck="false" aria-label="Tahy pro výchozí stav">
               <button type="button" id="a-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy" aria-label="Provést tahy"></button>
-            </div>
-            <div class="tool-row">
-              <button type="button" id="a-home" class="secondary small" data-icon="home" data-icon-size="16" title="Všechny dílky na svá místa"><span>Na místa</span></button>
-              <button type="button" id="a-clear" class="secondary small" data-icon="eraser" data-icon-size="16" title="Odebrat všechny dílky"><span>Vyčistit</span></button>
+              <button type="button" id="a-home" class="icon-btn" data-icon="home" data-icon-size="18" title="Řešené dílky na svá místa" aria-label="Řešené dílky na svá místa"></button>
+              <button type="button" id="a-clear" class="icon-btn" data-icon="eraser" data-icon-size="18" title="Vyčistit výchozí stav" aria-label="Vyčistit výchozí stav"></button>
             </div>
           </article>
 
@@ -160,8 +161,10 @@
             <div class="palette" id="palette-b" role="radiogroup" aria-label="Barva nálepky cíle"></div>
             <div class="styles" id="styles" role="radiogroup" aria-label="Styl dílku"></div>
             <div class="tool-row">
-              <button type="button" id="b-home" class="secondary small" data-icon="home" data-icon-size="16" title="Označené dílky na svá místa"><span>Na místa</span></button>
-              <button type="button" id="b-clear" class="secondary small" data-icon="eraser" data-icon-size="16" title="Zrušit všechny dílky"><span>Zrušit</span></button>
+              <input id="b-moves" placeholder="Tahy cíle…" autocomplete="off" spellcheck="false" aria-label="Tahy pro cíl">
+              <button type="button" id="b-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy na cíli" aria-label="Provést tahy na cíli"></button>
+              <button type="button" id="b-home" class="icon-btn" data-icon="home" data-icon-size="18" title="Řešené dílky v cíli na svá místa" aria-label="Řešené dílky v cíli na svá místa"></button>
+              <button type="button" id="b-clear" class="icon-btn" data-icon="trash" data-icon-size="18" title="Zrušit celé zadání" aria-label="Zrušit celé zadání"></button>
             </div>
           </article>
         </div>
@@ -174,8 +177,10 @@
         <dialog id="help-dialog" class="help-dialog">
           <h2>Jak zadat případ</h2>
           <ol>
-            <li><b>Obě kostky</b> vybarvuješ po nálepkách: vyber barvu z palety a klepej. Stejnou barvou
-              nebo gumou nálepku smažeš. U rohu stačí dvě nálepky, třetí se doplní sama.</li>
+            <li>Nahoře vyber hlavolam (3×3, 2×2, Pyraminx, Skewb, Square-1) – každý má své zadání.</li>
+            <li><b>Obě strany</b> vybarvuješ po nálepkách: vyber barvu z palety a klepej. Stejnou barvou
+              nebo gumou nálepku smažeš. Když dílku chybí jediná nálepka a je jasné, jaká, doplní se sama
+              (např. třetí barva rohu).</li>
             <li><b>Výchozí stav</b> = jak dílky leží teď, <b>cíl</b> = kde a jak mají skončit.</li>
             <li>Styl dílku v cíli:
               <span class="legend"><i class="sw solid"></i>plná = místo i natočení</span>
@@ -184,7 +189,8 @@
               Nově vybarvený dílek dostane zvolený styl. Když klepneš na už zvolený styl, přepneš na
               nástroj styl: klepnutí na dílek mu styl změní, prázdné místo vyplní dílkem, který tam patří,
               a stejný styl podruhé dílek odebere.</li>
-            <li>Výchozí stav jde i zamíchat tahy. Kostky otáčíš tažením.</li>
+            <li>Obě strany jdou nastavit i tahy (pole pod kostkou). U Square-1 se tahy (např. (1,0)/ (-1,-1)/)
+              používají i k nastavení tvaru. Kostky 3×3 a 2×2 otáčíš tažením.</li>
           </ol>
           <form method="dialog"><button class="primary">Rozumím</button></form>
         </dialog>
@@ -199,12 +205,13 @@
           </label>
           <div id="bases" class="chips"></div>
           <div id="amounts" class="chips"></div>
+          <label id="sq1-shape-row" class="check-row" hidden><input type="checkbox" id="sq1-shape"> Cíl: tvar i prostřední vrstva musí být jako v cíli</label>
         </article>
         <article class="panel">
           <h2>Ergonomie – váhy</h2>
           <p class="hint">Nižší číslo = pohodlnější. Změny se hned promítnou do hodnocení řešení.</p>
           <div class="grid-fields" id="ergo-main"></div>
-          <h3>Váhy tahů <small>po směru / proti / dvojitě</small></h3>
+          <h3 id="ergo-moves-head">Váhy tahů <small>po směru / proti / dvojitě</small></h3>
           <div id="ergo-moves" class="ergo-moves"></div>
           <div class="actions"><button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button></div>
         </article>
@@ -239,8 +246,8 @@
             <details class="settings">
               <summary>Nastavení hledání</summary>
               <div class="grid-fields">
-                <label class="field">Max. tahů <input id="opt-max" type="number" min="1" max="20" value="11"></label>
-                <label class="field">Tahů nad optimum <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
+                <label class="field"><span id="opt-max-label">Max. tahů</span> <input id="opt-max" type="number" min="1" max="20" value="11"></label>
+                <label class="field"><span id="opt-extra-label">Tahů nad optimum</span> <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
                 <label class="field" title="Hledá se víc řešení, ukáže se jen tolik nejpohodlnějších">Zobrazit nejlepších <input id="opt-results" type="number" min="1" max="500" value="15"></label>
                 <label class="field">Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
               </div>

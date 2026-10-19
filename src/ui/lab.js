@@ -1,32 +1,28 @@
-// Lab: zadání vlastního případu dvěma kostkami, povolené tahy a váhy,
-// hledání ergonomických řešení a jejich přehrávání.
+// Lab: zadání vlastního případu dvěma hlavolamy (výchozí stav a cíl), povolené
+// tahy a váhy, hledání ergonomických řešení a jejich přehrávání.
+// Hlavolamy: 3×3, 2×2, Pyraminx, Skewb, Square-1 (každý má své uložené zadání).
 //
-// Zadání po dílcích:
-//   Obě kostky se vybarvují po nálepkách barvou z palety (u rohu stačí dvě
-//   nálepky, třetí se doplní sama). Cíl navíc určuje styl každého dílku:
-//   plná = místo i natočení, čárkovaná = jen místo, tečkovaná = jen natočení.
-//   Se zvoleným stylem (bez barvy) klepnutí na dílek změní jeho styl, prázdné
-//   místo vyplní dílkem, který tam patří.
+// Zadání:
+//   Obě strany se vybarvují po nálepkách barvou z palety (dílek s jednou
+//   chybějící nálepkou se doplní, je-li to jednoznačné). Cíl navíc určuje styl
+//   každého dílku: plná = místo i natočení, čárkovaná = jen místo, tečkovaná =
+//   jen natočení. Se zvoleným stylem (bez barvy) klepnutí na dílek změní jeho
+//   styl, prázdné místo vyplní dílkem, který tam patří.
 
-import { SLOTS, SLOT_OF, FACELETS } from '../core/geometry.js';
-import { BASES, MOVE_DEFS, parseAlg, moveToString, algToString } from '../core/notation.js';
-import { applyAlg } from '../core/cube.js';
-import { ROTATIONS } from '../core/rotations.js';
-import { compileGoal } from '../core/constraints.js';
-import { MoveSet, MOVESET_PRESETS, AMOUNTS } from '../core/moveset.js';
-import {
-  EMPTY, blankColors, homeColors, moveColors, identifyPieces, buildStart, trackedPieces,
-  placePiece, removePiece, findPiece, pieceAt, paintSticker,
-} from '../core/task.js';
-import { scoreAlg } from '../ergonomics/score.js';
-import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS, moveWeight } from '../ergonomics/weights.js';
+import { AMOUNTS } from '../core/moveset.js';
+import { trackedPieces } from '../core/task.js';
+import { PUZZLES } from '../puzzles/index.js';
+import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomics/puzzles.js';
+import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { algs } from './store.js';
 import { Cube3D } from './cube3d.js';
-import { STYLE_OF, stickersOf } from './cubeview.js';
+import { NetView } from './netview.js';
+import { STYLE_OF } from './cubeview.js';
+import { labModel } from './models.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -34,59 +30,115 @@ const STYLES = [
   { type: 'orientation', label: 'Tečkovaná', title: 'Jen natočení (orientace)' },
 ];
 const AMOUNT_LABELS = { 1: 'po směru', [-1]: "proti (')", 2: 'dvojitě (2)' };
-const CENTERS = SLOTS.filter((s) => s.type === 'center').map((s) => s.name);
+const SQ1_AMOUNTS = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6];
+const SQ1_PRESETS = {
+  all: { label: 'Všechna otočení', top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS },
+  small: { label: 'Do ±3', top: [-3, -2, -1, 1, 2, 3], bottom: [-3, -2, -1, 1, 2, 3] },
+  cs: { label: '±1, ±3, 6', top: [-3, -1, 1, 3, 6], bottom: [-3, -1, 1, 3, 6] },
+};
 
-const saved = storage.get('ergocube.v3') ?? {};
+const storageKey = (id) => (id === '333' ? 'ergocube.v3' : `ergocube.lab.${id}`);
+const ergoKey = (id) => (id === '333' ? 'ergocube.ergo' : `ergocube.ergo.${id}`);
+
+let model = labModel(PUZZLES.some((p) => p.id === storage.get('ergocube.lab.puzzle')) ? storage.get('ergocube.lab.puzzle') : '333');
 const ui = {
-  constraints: saved.constraints ?? Object.fromEntries(SLOTS.map((s) => [s.name, s.type === 'center' ? 'solved' : 'ignore'])),
-  colorsA: saved.colorsA ?? homeColors(CENTERS),
-  colorsB: null,
-  bases: saved.bases ?? MOVESET_PRESETS.RUF.bases,
-  amounts: saved.amounts ?? AMOUNTS,
-  style: 'solved',  // styl nových dílků v cíli: solved / permutation / orientation
+  constraints: {},
+  A: null,          // výchozí strana (vybarvení)
+  B: null,          // cíl
+  bases: [],
+  amounts: AMOUNTS,
+  sq1: { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true },
+  style: 'solved',  // styl nových dílků v cíli
   paint: { A: 'U', B: null }, // barva štětce (EMPTY = guma); u cíle null = nástroj styl
-  lastPaint: -1,    // naposledy vybarvená nálepka (pos + 54 u cíle)
+  lastPaint: -1,    // naposledy vybarvená nálepka (pos + 1000 u cíle)
   memory: {},       // pamatovaný styl dílků, které z cíle zmizely
-  autoA: new Set(), // dílky, které do výchozí kostky dala aplikace
+  autoA: new Set(), // dílky, které do výchozí strany dala aplikace
   undo: [],
   results: new Map(),
   chosen: null,     // algoritmus v přehrávači
   step: 0,
   playing: false,
-  ergo: loadErgo(),
+  ergo: null,
   sub: 'task',
 };
-// Starší uložené zadání nemělo vybarvený cíl: cíl = označené dílky na svých místech.
-ui.colorsB = saved.colorsB ?? homeColors(trackedPieces(ui.constraints));
 const triggers = buildTriggers();
 const client = new SearchClient();
 let cubeA, cubeB, cubeP;
 let onSubChange = () => {};
 
+const isMarked = (name) => (ui.constraints[name] ?? 'ignore') !== 'ignore';
+const P = () => model.P;
+const unit = () => (model.kind === 'sq1' ? 'řezů' : 'tahů');
+
+// --- Uložení a načtení zadání ----------------------------------------------------------
+
 function save() {
-  const { constraints, colorsA, colorsB, bases, amounts } = ui;
-  storage.set('ergocube.v3', { constraints, colorsA, colorsB, bases, amounts });
+  const { constraints, bases, amounts, sq1 } = ui;
+  storage.set(storageKey(model.id), {
+    constraints, bases, amounts, sq1, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
+  });
 }
 
-function loadErgo() {
-  const s = storage.get('ergocube.ergo') ?? {};
-  return { ...DEFAULT_CONFIG, ...s, moveWeights: { ...DEFAULT_MOVE_WEIGHTS, ...(s.moveWeights ?? {}) } };
+function load() {
+  const saved = storage.get(storageKey(model.id)) ?? {};
+  const names = model.pieceNames;
+  ui.constraints = Object.fromEntries(names.map((n) => [n, saved.constraints?.[n] ?? (model.centers.includes(n) ? 'solved' : 'ignore')]));
+  const tracked = trackedPieces(ui.constraints);
+  ui.A = model.deserialize(saved.colorsA) ?? model.home(tracked);
+  ui.B = model.deserialize(saved.colorsB) ?? model.home(tracked);
+  if (model.kind === 'perm') {
+    ui.bases = (saved.bases ?? P().defaultBases).filter((b) => P().bases.includes(b));
+    ui.amounts = saved.amounts ?? AMOUNTS;
+  }
+  ui.sq1 = { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true, ...(saved.sq1 ?? {}) };
+  ui.memory = {};
+  ui.autoA = new Set();
+  ui.undo = [];
+  ui.lastPaint = -1;
+  ui.paint = { A: P().colors[0].face, B: null };
+  const e = storage.get(ergoKey(model.id));
+  const def = defaultErgo(P());
+  ui.ergo = P().ergonomics === 'cube'
+    ? { ...DEFAULT_CONFIG, ...e, moveWeights: { ...DEFAULT_MOVE_WEIGHTS, ...(e?.moveWeights ?? {}) } }
+    : P().ergonomics === 'sq1' ? { ...def, ...e } : { weights: { ...def.weights, ...(e?.weights ?? {}) } };
 }
-const score = (alg) => scoreAlg(alg, { ...ui.ergo, triggers });
+
+const score = (alg) => scoreFor(P(), alg, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
 
 function snapshot() {
-  ui.undo.push({ constraints: { ...ui.constraints }, colorsA: [...ui.colorsA], colorsB: [...ui.colorsB] });
+  ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B) });
   if (ui.undo.length > 60) ui.undo.shift();
 }
 
-const isMarked = (name) => (ui.constraints[name] ?? 'ignore') !== 'ignore';
+// --- Pohledy -------------------------------------------------------------------------
 
-// --- Pod-záložky -------------------------------------------------------------------
+function makeView(container, opts) {
+  const v = model.view;
+  return v.type === 'cube3d'
+    ? new Cube3D(container, { ...opts, facelets: v.facelets, scale: v.scale })
+    : new NetView(container, { ...opts, viewBox: v.viewBox, polys: v.polys });
+}
+
+function buildViews() {
+  cubeA = makeView($('cube-a'), { label: 'Výchozí stav', onSticker: tapA, fill: true });
+  cubeB = makeView($('cube-b'), { label: 'Cíl', onSticker: tapB, fill: true });
+  cubeP = makeView($('cube-p'), { label: 'Přehrávač' });
+  const is3d = model.view.type === 'cube3d';
+  $('a-view').hidden = !is3d;
+  $('b-view').hidden = !is3d;
+}
+
+function renderView(view, stickers, state) {
+  view.render(stickers);
+  if (model.overlay && view.setOverlay) view.setOverlay(model.overlay(state));
+}
+
+// --- Pod-záložky -----------------------------------------------------------------------
 
 export function showSub(name) {
   ui.sub = name;
   for (const s of document.querySelectorAll('.sub')) s.hidden = s.dataset.sub !== name;
-  for (const b of document.querySelectorAll('.segmented button')) b.classList.toggle('active', b.dataset.sub === name);
+  for (const b of document.querySelectorAll('.segmented button[data-sub]')) b.classList.toggle('active', b.dataset.sub === name);
   if (name === 'task') { cubeA.layout(); cubeB.layout(); }
   if (name === 'results') { cubeP.layout(); renderPlayer(); }
   onSubChange(name);
@@ -96,58 +148,45 @@ export function labSub() {
   return ui.sub;
 }
 
-// --- Zadání -------------------------------------------------------------------------
-
-const PALETTE = [
-  { c: 'U', label: 'Bílá' }, { c: 'D', label: 'Žlutá' }, { c: 'F', label: 'Zelená' },
-  { c: 'B', label: 'Modrá' }, { c: 'R', label: 'Červená' }, { c: 'L', label: 'Oranžová' },
-  { c: EMPTY, label: 'Guma' },
-];
-const colorsOf = (side) => (side === 'A' ? ui.colorsA : ui.colorsB);
-const homeEmpty = (colors, name) => SLOTS.find((s) => s.name === name).facelets.every((f) => colors[f] === EMPTY);
-
-const homeIs = (colors, name) => SLOTS.find((s) => s.name === name).facelets.every((f) => colors[f] === FACELETS[f].face);
+// --- Zadání -----------------------------------------------------------------------------
 
 /**
  * Řeší se právě ty dílky, které jsou (celé) vybarvené v cíli; styl dílku,
  * který z cíle zmizí, se pamatuje pro případ, že se vrátí. Nový dílek v cíli
- * se objeví i ve výchozí kostce na svém místě (je-li volné) a zase zmizí,
+ * se objeví i ve výchozí straně na svém místě (je-li volné) a zase zmizí,
  * pokud ho tam dala aplikace a nikdo s ním nehnul.
  */
 function syncTarget() {
-  const inB = identifyPieces(ui.colorsB).pieces;
-  for (const { name } of SLOTS) {
+  const inB = model.identify(ui.B).pieces;
+  for (const name of model.pieceNames) {
     if (inB.has(name)) {
       if (!isMarked(name)) ui.constraints[name] = ui.memory[name] ?? ui.style;
-      if (!findPiece(ui.colorsA, name) && homeEmpty(ui.colorsA, name)) {
-        ui.colorsA = placePiece(ui.colorsA, name, name);
+      if (!model.findPiece(ui.A, name) && model.homeEmpty(ui.A, name)) {
+        ui.A = model.placeHome(ui.A, name);
         ui.autoA.add(name);
       }
     } else if (isMarked(name)) {
       ui.memory[name] = ui.constraints[name];
       ui.constraints[name] = 'ignore';
-      if (ui.autoA.has(name) && homeIs(ui.colorsA, name)) ui.colorsA = removePiece(ui.colorsA, name);
+      if (ui.autoA.has(name) && model.homeIs(ui.A, name)) ui.A = model.removePiece(ui.A, name);
       ui.autoA.delete(name);
     }
   }
 }
 
 function paint(side, pos) {
-  const slot = SLOTS[SLOT_OF[pos]];
-  const colors = colorsOf(side);
-  const before = pieceAt(colors, slot.name);
-  const key = side === 'B' ? pos + 54 : pos;
-  const last = ui.lastPaint >= 54 === (side === 'B') ? ui.lastPaint % 54 : -1;
-  const next = paintSticker(colors, pos, ui.paint[side], last);
+  const key = side === 'B' ? pos + 1000 : pos;
+  const last = (ui.lastPaint >= 1000) === (side === 'B') ? ui.lastPaint % 1000 : -1;
   ui.lastPaint = key;
-  if (side === 'B') { ui.colorsB = next; return; }
-  ui.colorsA = next;
+  if (side === 'B') { ui.B = model.paint(ui.B, pos, ui.paint.B, last); return; }
+  const before = model.pieceAtSticker(ui.A, pos);
+  ui.A = model.paint(ui.A, pos, ui.paint.A, last);
   ui.autoA.delete(before);
-  // Dokončený dílek ve výchozí kostce, který v cíli není, se v cíli objeví na svém místě.
-  const after = pieceAt(next, slot.name);
+  // Dokončený dílek ve výchozí straně, který v cíli není, se v cíli objeví na svém místě.
+  const after = model.pieceAtSticker(ui.A, pos);
   ui.autoA.delete(after);
-  if (after && after !== before && !findPiece(ui.colorsB, after) && homeEmpty(ui.colorsB, after)) {
-    ui.colorsB = placePiece(ui.colorsB, after, after);
+  if (after && after !== before && !model.findPiece(ui.B, after) && model.homeEmpty(ui.B, after)) {
+    ui.B = model.placeHome(ui.B, after);
   }
 }
 
@@ -162,17 +201,17 @@ function tapB(pos) {
   if (ui.paint.B !== null) {
     paint('B', pos);
   } else {
-    // nástroj styl: dílek ve slotu dostane styl (stejný styl podruhé = odebrat),
+    // nástroj styl: dílek dostane styl (stejný styl podruhé = odebrat),
     // prázdné místo se vyplní dílkem, který tam patří
-    const slot = SLOTS[SLOT_OF[pos]];
-    const piece = pieceAt(ui.colorsB, slot.name);
+    const piece = model.pieceAtSticker(ui.B, pos);
+    const home = homePieceAt(pos);
     if (piece && ui.constraints[piece] === ui.style) {
-      ui.colorsB = removePiece(ui.colorsB, piece);
+      ui.B = model.removePiece(ui.B, piece);
     } else if (piece) {
       ui.constraints[piece] = ui.style;
-    } else if (!findPiece(ui.colorsB, slot.name) && homeEmpty(ui.colorsB, slot.name)) {
-      ui.colorsB = placePiece(ui.colorsB, slot.name, slot.name);
-      ui.memory[slot.name] = ui.style;
+    } else if (home && !model.findPiece(ui.B, home) && model.homeEmpty(ui.B, home)) {
+      ui.B = model.placeHome(ui.B, home);
+      ui.memory[home] = ui.style;
     } else {
       ui.undo.pop();
       return;
@@ -181,15 +220,22 @@ function tapB(pos) {
   taskChanged();
 }
 
+// Dílek, který na místo s nálepkou pos patří ve složeném stavu.
+function homePieceAt(pos) {
+  if (model.kind === 'perm') return P().slots[P().SLOT_OF[pos]].name;
+  return model.pieceAtSticker(model.home(model.pieceNames), pos);
+}
+
 function renderPalette(side) {
-  $(`palette-${side.toLowerCase()}`).replaceChildren(...PALETTE.map(({ c, label }) => {
-    const b = el('button', { type: 'button', className: `paint${c === EMPTY ? ' eraser' : ''}`, title: label, ariaLabel: label });
-    if (c === EMPTY) b.innerHTML = icon('eraser', { size: 16 });
-    else b.style.setProperty('--c', `var(--c-${c})`);
+  const colors = [...P().colors, { face: model.EMPTY, label: 'Guma' }];
+  $(`palette-${side.toLowerCase()}`).replaceChildren(...colors.map(({ face, label, css }) => {
+    const b = el('button', { type: 'button', className: `paint${face === model.EMPTY ? ' eraser' : ''}`, title: label, ariaLabel: label });
+    if (face === model.EMPTY) b.innerHTML = icon('eraser', { size: 16 });
+    else b.style.setProperty('--c', css);
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(ui.paint[side] === c));
+    b.setAttribute('aria-checked', String(ui.paint[side] === face));
     b.onclick = () => {
-      ui.paint[side] = c;
+      ui.paint[side] = face;
       renderPalette(side);
       if (side === 'B') renderStyles();
     };
@@ -217,25 +263,14 @@ function renderStyles() {
   }));
 }
 
-function stickersFromColors(colors) {
-  const { pieces } = identifyPieces(colors);
-  const pieceAtSlot = new Map([...pieces].map(([name, p]) => [p.slot, name]));
-  return colors.map((color, pos) => {
-    if (color === EMPTY) return { color, style: 'none' };
-    const name = pieceAtSlot.get(SLOT_OF[pos]);
-    // neúplný dílek se ukazuje plně, aby bylo vidět, co je už vybarvené
-    return { color, style: name ? STYLE_OF[ui.constraints[name]] ?? 'faded' : 'solid' };
-  });
-}
-
 function renderCubes() {
-  cubeA.render(stickersFromColors(ui.colorsA));
-  cubeB.render(stickersFromColors(ui.colorsB));
+  renderView(cubeA, model.stickers(ui.A, ui.constraints), ui.A.state);
+  renderView(cubeB, model.stickers(ui.B, ui.constraints), ui.B.state);
 }
 
 function taskInfo() {
-  const start = buildStart(ui.colorsA, ui.constraints);
-  const target = buildStart(ui.colorsB, ui.constraints, 'cílové kostce');
+  const start = model.build(ui.A, ui.constraints, 'výchozí straně');
+  const target = model.build(ui.B, ui.constraints, 'cílové straně');
   return {
     tracked: trackedPieces(ui.constraints),
     loc: start.loc && target.loc ? start.loc : null,
@@ -246,10 +281,10 @@ function taskInfo() {
 
 function renderTaskStatus() {
   const { tracked, errors } = taskInfo();
-  const pieces = tracked.filter((n) => !CENTERS.includes(n));
+  const pieces = tracked.filter((n) => !model.centers.includes(n));
   let node;
   if (!pieces.length) {
-    node = el('span', { className: 'warn', textContent: 'Vybarvi na obou kostkách dílky, které se mají vyřešit (nebo v cíli klepni stylem na dílek).' });
+    node = el('span', { className: 'warn', textContent: 'Vybarvi na obou stranách dílky, které se mají vyřešit (nebo v cíli klepni stylem na dílek).' });
   } else if (errors.length) {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
   } else {
@@ -267,86 +302,161 @@ function taskChanged() {
   clearResults();
 }
 
+function applyMovesTo(side) {
+  const input = $(side === 'A' ? 'a-moves' : 'b-moves');
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const next = model.applyMoves(side === 'A' ? ui.A : ui.B, text);
+    snapshot();
+    if (side === 'A') ui.A = next; else ui.B = next;
+    input.value = '';
+    input.blur();
+    taskChanged();
+  } catch (e) {
+    $('task-status').replaceChildren(el('span', { className: 'bad', textContent: e.message }));
+  }
+}
+
 // --- Tahy a váhy -----------------------------------------------------------------------
+
+const same = (a, b) => [...a].map(String).sort().join() === [...b].map(String).sort().join();
 
 function renderMoveSet() {
   const sel = $('moveset-preset');
-  sel.replaceChildren(...Object.entries(MOVESET_PRESETS).map(([id, p]) => el('option', { value: id, textContent: p.label })),
+  const chip = (value, label, checked, onchange, title) => {
+    const cb = el('input', { type: 'checkbox', value: String(value), checked });
+    cb.onchange = onchange;
+    return el('label', { title: title ?? '' }, cb, label);
+  };
+  $('sq1-shape-row').hidden = model.kind !== 'sq1';
+  if (model.kind === 'sq1') {
+    sel.replaceChildren(...Object.entries(SQ1_PRESETS).map(([id, p]) => el('option', { value: id, textContent: p.label })),
+      el('option', { value: 'custom', textContent: 'Vlastní' }));
+    const match = Object.entries(SQ1_PRESETS).find(([, p]) => same(p.top, ui.sq1.top) && same(p.bottom, ui.sq1.bottom));
+    sel.value = match ? match[0] : 'custom';
+    const changed = () => { sel.value = 'custom'; moveSetChanged(); };
+    $('bases').replaceChildren(el('b', { className: 'chips-label', textContent: 'Nahoře' }),
+      ...SQ1_AMOUNTS.map((a) => chip(a, String(a), ui.sq1.top.includes(a), changed)));
+    $('amounts').replaceChildren(el('b', { className: 'chips-label', textContent: 'Dole' }),
+      ...SQ1_AMOUNTS.map((a) => chip(a, String(a), ui.sq1.bottom.includes(a), changed)));
+    $('sq1-shape').checked = ui.sq1.shape;
+    sel.onchange = () => {
+      if (sel.value === 'custom') return;
+      const p = SQ1_PRESETS[sel.value];
+      ui.sq1 = { ...ui.sq1, top: p.top, bottom: p.bottom };
+      renderMoveSet();
+      moveSetChanged(false);
+    };
+    return;
+  }
+  const presets = P().presets;
+  sel.replaceChildren(...Object.entries(presets).map(([id, p]) => el('option', { value: id, textContent: p.label })),
     el('option', { value: 'custom', textContent: 'Vlastní' }));
-  const match = Object.entries(MOVESET_PRESETS).find(([, p]) => [...p.bases].sort().join() === [...ui.bases].sort().join());
+  const match = Object.entries(presets).find(([, p]) => same(p.bases, ui.bases));
   sel.value = match ? match[0] : 'custom';
   const bases = $('bases');
-  bases.replaceChildren(...BASES.map((b) => {
-    const cb = el('input', { type: 'checkbox', value: b, checked: ui.bases.includes(b) });
-    cb.onchange = () => { sel.value = 'custom'; moveSetChanged(); };
-    return el('label', { title: MOVE_DEFS[b].kind }, cb, b);
-  }));
-  $('amounts').replaceChildren(...AMOUNTS.map((a) => {
-    const cb = el('input', { type: 'checkbox', value: String(a), checked: ui.amounts.includes(a) });
-    cb.onchange = moveSetChanged;
-    return el('label', {}, cb, AMOUNT_LABELS[a]);
-  }));
+  bases.replaceChildren(...P().bases.map((b) => chip(b, b, ui.bases.includes(b), () => { sel.value = 'custom'; moveSetChanged(); })));
+  const amounts = [...new Set(P().bases.flatMap((b) => P().amountsOf(b)))];
+  $('amounts').replaceChildren(...AMOUNTS.filter((a) => amounts.includes(a))
+    .map((a) => chip(a, AMOUNT_LABELS[a], ui.amounts.includes(a), () => moveSetChanged())));
   sel.onchange = () => {
     if (sel.value === 'custom') return;
-    const chosen = MOVESET_PRESETS[sel.value].bases;
+    const chosen = presets[sel.value].bases;
     for (const cb of bases.querySelectorAll('input')) cb.checked = chosen.includes(cb.value);
     moveSetChanged();
   };
 }
 
-const currentMoveSet = () => new MoveSet({ bases: ui.bases, amounts: ui.amounts });
+/** Povolené tahy pro hledání a kontrolu algoritmů. */
+function currentMoveSet() {
+  if (model.kind === 'sq1') return { top: ui.sq1.top, bottom: ui.sq1.bottom, moves: [] };
+  const moves = ui.bases.flatMap((base) => P().amountsOf(base).filter((a) => ui.amounts.includes(a)).map((amount) => ({ base, amount })));
+  return { moves, allowedNames: new Set(moves.map((m) => P().moveToString(m))) };
+}
 
-function moveSetChanged() {
+function moveSetChanged(read = true) {
   const checked = (id) => [...$(id).querySelectorAll('input:checked')].map((c) => c.value);
-  ui.bases = checked('bases');
-  ui.amounts = checked('amounts').map(Number);
+  if (model.kind === 'sq1') {
+    if (read) ui.sq1 = { ...ui.sq1, top: checked('bases').map(Number), bottom: checked('amounts').map(Number) };
+  } else {
+    ui.bases = checked('bases');
+    ui.amounts = checked('amounts').map(Number);
+  }
   save();
   clearResults();
 }
 
-const ERGO_FIELDS = [
-  ['rotationPenalty', 'Rotace x/y/z (za ¼)', 0.5],
-  ['regripPenalty', 'Přehmat zápěstí', 0.1],
-  ['gripChangePenalty', 'Změna úchopu', 0.1],
-  ['triggerBonusScale', 'Násobič bonusů triggerů', 0.1],
-  ['maxWristTurn', 'Max. ¼ zápěstím bez přehmatu', 1],
-];
+const ERGO_FIELDS = {
+  cube: [
+    ['rotationPenalty', 'Rotace x/y/z (za ¼)', 0.5],
+    ['regripPenalty', 'Přehmat zápěstí', 0.1],
+    ['gripChangePenalty', 'Změna úchopu', 0.1],
+    ['triggerBonusScale', 'Násobič bonusů triggerů', 0.1],
+    ['maxWristTurn', 'Max. ¼ zápěstím bez přehmatu', 1],
+  ],
+  sq1: [
+    ['slash', 'Řez „/“', 0.1],
+    ['simultaneous', 'Současné otočení druhé vrstvy (násobek)', 0.1],
+  ],
+  simple: [],
+};
+
+function numberInput(value, step, onValue, ariaLabel) {
+  const input = el('input', { type: 'number', step: String(step), min: '0', value: String(value) });
+  if (ariaLabel) input.ariaLabel = ariaLabel;
+  input.onchange = () => {
+    const v = Number(input.value);
+    if (Number.isFinite(v) && v >= 0) onValue(v);
+  };
+  return input;
+}
 
 function renderErgo() {
-  $('ergo-main').replaceChildren(...ERGO_FIELDS.map(([key, label, step]) => {
-    const input = el('input', { type: 'number', step: String(step), min: '0', value: String(ui.ergo[key]) });
-    input.onchange = () => {
-      const v = Number(input.value);
-      if (Number.isFinite(v) && v >= 0) { ui.ergo[key] = v; ergoChanged(); }
-    };
-    return el('label', { className: 'field' }, label, input);
-  }));
-  $('ergo-moves').replaceChildren(...BASES.filter((b) => MOVE_DEFS[b].kind !== 'rotation').map((b) => {
-    const inputs = [0, 1, 2].map((i) => {
-      const input = el('input', { type: 'number', step: '0.1', min: '0', value: String(ui.ergo.moveWeights[b][i]) });
-      input.ariaLabel = `${b} ${['po směru', 'proti', 'dvojitě'][i]}`;
-      input.onchange = () => {
-        const v = Number(input.value);
-        if (!Number.isFinite(v) || v < 0) return;
+  const kind = P().ergonomics;
+  $('ergo-main').replaceChildren(...ERGO_FIELDS[kind].map(([key, label, step]) =>
+    el('label', { className: 'field' }, label, numberInput(ui.ergo[key], step, (v) => { ui.ergo[key] = v; ergoChanged(); }))));
+  const head = $('ergo-moves-head');
+  if (kind === 'cube') {
+    head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti / dvojitě' }));
+    const bases = P().bases.filter((b) => !P().rotations.includes(b));
+    $('ergo-moves').replaceChildren(...bases.map((b) => el('div', { className: 'ergo-move' }, el('b', { textContent: b }),
+      ...[0, 1, 2].map((i) => numberInput(ui.ergo.moveWeights[b][i], 0.1, (v) => {
         const w = [...ui.ergo.moveWeights[b]];
         w[i] = v;
         ui.ergo.moveWeights = { ...ui.ergo.moveWeights, [b]: w };
         ergoChanged();
-      };
-      return input;
-    });
-    return el('div', { className: 'ergo-move' }, el('b', { textContent: b }), ...inputs);
-  }));
+      }, `${b} ${['po směru', 'proti', 'dvojitě'][i]}`)))));
+  } else if (kind === 'simple') {
+    head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti' }));
+    $('ergo-moves').replaceChildren(...P().bases.map((b) => el('div', { className: 'ergo-move two' }, el('b', { textContent: b }),
+      ...[0, 1].map((i) => numberInput(ui.ergo.weights[b][i], 0.1, (v) => {
+        const w = [...ui.ergo.weights[b]];
+        w[i] = v;
+        ui.ergo.weights = { ...ui.ergo.weights, [b]: w };
+        ergoChanged();
+      }, `${b} ${['po směru', 'proti'][i]}`)))));
+  } else {
+    head.replaceChildren('Otočení vrstvy ', el('small', { textContent: 'o 1–6 dvanáctin' }));
+    $('ergo-moves').replaceChildren(...[1, 2, 3, 4, 5, 6].map((n) => el('div', { className: 'ergo-move one' }, el('b', { textContent: `±${n}` }),
+      numberInput(ui.ergo.turn[n], 0.1, (v) => {
+        const t = [...ui.ergo.turn];
+        t[n] = v;
+        ui.ergo.turn = t;
+        ergoChanged();
+      }, `Otočení o ${n}`))));
+  }
 }
 
 function ergoChanged() {
-  storage.set('ergocube.ergo', ui.ergo);
+  storage.set(ergoKey(model.id), ui.ergo);
   for (const alg of ui.results.keys()) ui.results.set(alg, score(alg));
+  difficultyCache.clear();
   renderResults();
   renderPlayer();
 }
 
-// --- Hledání --------------------------------------------------------------------------
+// --- Hledání ----------------------------------------------------------------------------
 
 function clearResults() {
   if (client.running) client.cancel();
@@ -368,15 +478,16 @@ const num = (id, min, max) => Math.min(max, Math.max(min, Math.round(Number($(id
 function startSearch() {
   const { tracked, loc, target, errors } = taskInfo();
   if (errors.length || !loc) { $('status').textContent = `Zadání není v pořádku: ${errors[0]}`; return; }
-  if (!tracked.some((n) => !CENTERS.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
+  if (!tracked.some((n) => !model.centers.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
   const moveSet = currentMoveSet();
-  if (!moveSet.moves().length) { $('status').textContent = 'Nejsou povolené žádné tahy (Tahy a váhy).'; return; }
+  if (model.kind === 'perm' && !moveSet.moves.length) { $('status').textContent = 'Nejsou povolené žádné tahy (Tahy a váhy).'; return; }
   clearResults();
+  const shown = num('opt-results', 1, 500);
   const opts = {
     maxLength: num('opt-max', 1, 20),
     extraDepth: num('opt-extra', 0, 6),
     // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejpohodlnější
-    maxResults: Math.min(5000, Math.max(500, num('opt-results', 1, 500) * 40)),
+    maxResults: Math.min(5000, Math.max(500, shown * 40)),
     timeLimit: num('opt-time', 1, 300) * 1000,
   };
   searchUi(true);
@@ -387,7 +498,10 @@ function startSearch() {
     pending = true;
     requestAnimationFrame(() => { pending = false; renderResults(); });
   };
-  client.start({ start: loc, target, constraints: ui.constraints, moves: moveSet.moves(), options: opts, ergonomics: ui.ergo }, {
+  client.start({
+    puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.moves, options: opts, ergonomics: ui.ergo,
+    sq1: { shape: ui.sq1.shape, top: ui.sq1.top, bottom: ui.sq1.bottom },
+  }, {
     onProgress: (p) => {
       $('status').textContent = p.phase === 'tables'
         ? `Připravuji heuristiku ${p.table}/${p.tables}…`
@@ -400,12 +514,12 @@ function startSearch() {
     onDone: (d) => {
       searchUi(false);
       const why = {
-        done: 'Hotovo', time: 'Vypršel časový limit', results: 'Dosažen max. počet výsledků',
-        'not-found': `Do ${opts.maxLength} tahů nic nenalezeno`,
+        done: 'Hotovo', time: 'Vypršel časový limit', results: 'Dosažen max. počet kandidátů',
+        'not-found': `Do ${opts.maxLength} ${unit()} nic nenalezeno`,
         unsolvable: 'S povolenými tahy to vyřešit nejde',
         'already-solved': 'Výchozí stav už cíl splňuje',
       }[d.reason] ?? d.reason;
-      $('status').textContent = `${why} · ${d.found} řešení${d.optimal ? ` · nejkratší ${d.optimal} tahů` : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
+      $('status').textContent = `${why} · ${d.found} řešení${d.optimal ? ` · nejkratší ${d.optimal} ${unit()}` : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
       renderResults();
       if (!ui.chosen && ui.results.size) choose(sortedResults()[0].alg, false);
     },
@@ -421,21 +535,25 @@ function sortedResults() {
     : a.score.total - b.score.total || a.score.metrics.htm - b.score.metrics.htm));
 }
 
-function moveClass(m) {
-  if (MOVE_DEFS[m.base].kind === 'rotation') return 'rot';
-  const w = moveWeight(m, ui.ergo);
-  return w <= 1.25 ? 'easy' : w <= 2 ? 'mid' : 'hard';
+const difficultyCache = new Map();
+function moveClass(token) {
+  if (!difficultyCache.has(token)) {
+    difficultyCache.set(token, moveDifficulty(P(), token, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo));
+  }
+  return difficultyCache.get(token);
 }
 
 function movesView(alg, s, { current = -1, onStep, moveSet } = {}) {
-  const moves = parseAlg(alg);
+  let steps;
+  try { steps = model.steps(alg); } catch { steps = []; }
   const trig = new Set();
   for (const t of s.triggers) for (let i = t.start; i < t.start + t.length; i++) trig.add(i);
-  return el('div', { className: 'moves' }, ...moves.map((m, i) => {
-    const cls = ['mv', moveClass(m), trig.has(i) && 'trig', i === current && 'current', moveSet && !moveSet.allows(m) && 'bad']
-      .filter(Boolean).join(' ');
-    if (!onStep) return el('span', { className: cls, textContent: moveToString(m) });
-    const b = el('button', { type: 'button', className: cls, textContent: moveToString(m) });
+  return el('div', { className: 'moves' }, ...steps.map((m, i) => {
+    const text = model.stepToString(m);
+    const bad = moveSet && !model.allows(moveSet, m);
+    const cls = ['mv', moveClass(text), trig.has(i) && 'trig', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
+    if (!onStep) return el('span', { className: cls, textContent: text });
+    const b = el('button', { type: 'button', className: cls, textContent: text });
     b.onclick = () => onStep(i + 1);
     return b;
   }));
@@ -452,7 +570,11 @@ function bar(b) {
     }));
 }
 
-const taskSnapshot = () => ({ colorsA: [...ui.colorsA], colorsB: [...ui.colorsB], constraints: { ...ui.constraints } });
+const taskSnapshot = () => ({
+  ...(model.id !== '333' ? { puzzle: model.id } : {}),
+  colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
+  ...(model.kind === 'sq1' ? { shape: ui.sq1.shape } : {}),
+});
 const savedFor = (alg) => algs.find(alg, taskSnapshot());
 
 function toggleSave(alg) {
@@ -471,16 +593,16 @@ function renderResults() {
       movesView(alg, s),
       el('span', { className: 'total', textContent: s.total.toFixed(1) }),
       el('span', { className: 'meta' },
-        `${s.metrics.htm} tahů`,
+        `${s.metrics.htm} ${unit()}`,
         bar(s.breakdown),
         s.triggers.length ? `✦ ${s.triggers.map((t) => t.name).join(', ')}` : null,
         s.breakdown.rotations ? 'rotace' : null));
-    const save = iconButton(icon(isSaved ? 'bookmarked' : 'bookmark', { size: 18 }), {
+    const saveBtn = iconButton(icon(isSaved ? 'bookmarked' : 'bookmark', { size: 18 }), {
       label: isSaved ? 'Odebrat z trenažéru' : 'Uložit do trenažéru',
       className: `icon-btn save${isSaved ? ' on' : ''}`,
       onClick: (e) => { e.stopPropagation(); toggleSave(alg); },
     });
-    row.append(save);
+    row.append(saveBtn);
     row.onclick = () => choose(alg, true);
     row.onkeydown = (e) => { if (e.key === 'Enter') choose(alg, true); };
     return el('li', {}, row);
@@ -491,7 +613,7 @@ function renderResults() {
   count.textContent = String(Math.min(list.length, shown));
 }
 
-// --- Přehrávač ------------------------------------------------------------------------
+// --- Přehrávač --------------------------------------------------------------------------
 
 function choose(alg, scroll) {
   ui.chosen = alg;
@@ -503,74 +625,86 @@ function choose(alg, scroll) {
   if (scroll && window.matchMedia('(max-width: 760px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function playerMoves() {
-  try { return ui.chosen ? parseAlg(ui.chosen) : []; } catch { return null; }
+function playerSteps() {
+  try { return ui.chosen ? model.steps(ui.chosen) : []; } catch { return null; }
 }
 
 function renderPlayer() {
   const { loc, target, errors } = taskInfo();
   const detail = $('detail');
   const saveBtn = $('p-save');
-  const moves = playerMoves();
-  saveBtn.hidden = !loc || !moves?.length;
+  const steps = playerSteps();
+  saveBtn.hidden = !loc || !steps?.length;
   if (!loc) {
-    cubeP.render(new Array(54).fill({ color: EMPTY, style: 'none' }));
+    renderView(cubeP, model.stickers(model.blank(ui.A), {}), ui.A.state);
     detail.replaceChildren(el('p', { className: 'hint', textContent: errors[0] ?? 'Zadání není kompletní.' }));
     return;
   }
-  if (moves === null) {
-    cubeP.render(stickersOf(loc, ui.constraints));
+  if (steps === null) {
+    renderView(cubeP, model.stateStickers(loc, ui.constraints), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: 'Algoritmus nejde přečíst.' }));
     return;
   }
-  ui.step = Math.min(Math.max(0, ui.step), moves.length);
-  cubeP.render(stickersOf(applyAlg(loc, moves.slice(0, ui.step)), ui.constraints));
-  if (!moves.length) {
+  ui.step = Math.min(Math.max(0, ui.step), steps.length);
+  let current, end;
+  try {
+    current = model.applySteps(loc, steps.slice(0, ui.step));
+    end = model.applySteps(loc, steps);
+  } catch (e) {
+    renderView(cubeP, model.stateStickers(loc, ui.constraints), loc);
+    detail.replaceChildren(el('p', { className: 'ko', textContent: `Algoritmus nejde provést: ${e.message}` }));
+    return;
+  }
+  renderView(cubeP, model.stateStickers(current, ui.constraints), current);
+  if (!steps.length) {
     detail.replaceChildren(el('p', { className: 'hint', textContent: 'Vyber řešení ze seznamu nebo napiš vlastní algoritmus.' }));
     return;
   }
-  const isSaved = !!savedFor(algToString(moves));
+  const algText = model.algToString(steps);
+  const isSaved = !!savedFor(algText);
   saveBtn.innerHTML = icon(isSaved ? 'bookmarked' : 'bookmark', { size: 20 });
   saveBtn.classList.toggle('on', isSaved);
 
   const moveSet = currentMoveSet();
-  const goal = compileGoal(ui.constraints, target);
-  const end = applyAlg(loc, moves);
+  const goal = model.goal(ui.constraints, target, { shape: ui.sq1.shape });
   const exact = goal.test(end);
-  const rotated = !exact && ROTATIONS.some((r) => goal.test(applyAlg(end, r)));
-  const illegal = moveSet.check(moves);
-  const s = score(moves);
+  const rotated = !exact && goal.rotated(end);
+  const illegal = steps.filter((m) => !model.allows(moveSet, m)).map((m) => model.stepToString(m));
+  const s = score(algText);
   const b = s.breakdown;
   const row = (color, label, value) => el('tr', {},
     el('td', {}, color ? Object.assign(el('i'), { style: `background:${color}` }) : null, label),
     el('td', { textContent: value }));
+  const cube = P().ergonomics === 'cube';
 
   detail.replaceChildren(
-    movesView(algToString(moves), s, { current: ui.step - 1, onStep: (i) => { ui.step = i; stopPlaying(); renderPlayer(); }, moveSet }),
+    movesView(algText, s, { current: ui.step - 1, onStep: (i) => { ui.step = i; stopPlaying(); renderPlayer(); }, moveSet }),
     el('div', { className: 'verdict' },
       el('span', { className: exact || rotated ? 'ok' : 'ko', textContent: exact ? '✓ řeší zadání' : rotated ? '✓ řeší zadání (po otočení kostky)' : `✗ neřeší zadání (${goal.violations(end)} porušení)` }),
       illegal.length ? el('span', { className: 'ko', textContent: ` · nepovolené tahy: ${illegal.join(' ')}` }) : null),
     el('div', {}, el('span', { className: 'score-big', textContent: s.total.toFixed(1) }), el('span', { className: 'hint', textContent: '  nepohodlnost (nižší = lepší)' })),
     el('table', { className: 'breakdown' },
-      row('#7d8fb3', 'Váha tahů', b.moves.toFixed(2)),
-      row('var(--bad)', 'Rotace', b.rotations.toFixed(2)),
-      row('var(--warn)', 'Přehmaty zápěstí', b.regrips.toFixed(2)),
-      row('#b07cc6', 'Změny úchopu', b.gripChanges.toFixed(2)),
-      row('var(--good)', `Triggery${s.triggers.length ? ` (${s.triggers.map((t) => t.name).join(', ')})` : ''}`, b.triggerBonus.toFixed(2)),
-      row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`)),
+      row('#7d8fb3', model.kind === 'sq1' ? 'Řezy a otočení' : 'Váha tahů', b.moves.toFixed(2)),
+      cube ? row('var(--bad)', 'Rotace', b.rotations.toFixed(2)) : null,
+      cube ? row('var(--warn)', 'Přehmaty zápěstí', b.regrips.toFixed(2)) : null,
+      cube ? row('#b07cc6', 'Změny úchopu', b.gripChanges.toFixed(2)) : null,
+      cube ? row('var(--good)', `Triggery${s.triggers.length ? ` (${s.triggers.map((t) => t.name).join(', ')})` : ''}`, b.triggerBonus.toFixed(2)) : null,
+      model.kind === 'sq1'
+        ? row(null, 'Řezů / tahů celkem', `${s.metrics.htm} / ${s.metrics.qtm}`)
+        : row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`)),
   );
 }
 
 async function step(delta) {
-  const moves = playerMoves();
-  if (!moves || !moves.length) return false;
+  const steps = playerSteps();
+  if (!steps || !steps.length) return false;
   const target = ui.step + delta;
-  if (target < 0 || target > moves.length) return false;
-  if (delta > 0) {
-    await cubeP.animate(moves[ui.step]);
+  if (target < 0 || target > steps.length) return false;
+  if (model.view.type === 'cube3d') {
+    const m = delta > 0 ? steps[ui.step] : model.invertStep(steps[ui.step - 1]);
+    await cubeP.animate(m);
   } else {
-    const prev = moves[ui.step - 1];
-    await cubeP.animate({ base: prev.base, amount: prev.amount === 2 ? 2 : -prev.amount });
+    await cubeP.animate();
   }
   ui.step = target;
   renderPlayer();
@@ -582,53 +716,70 @@ function stopPlaying() {
   $('p-play').innerHTML = icon('play', { size: 20 });
 }
 
-// --- Inicializace ----------------------------------------------------------------------
+// --- Výběr hlavolamu --------------------------------------------------------------------
+
+function selectPuzzle(id) {
+  if (client.running) client.cancel();
+  model = labModel(id);
+  storage.set('ergocube.lab.puzzle', id);
+  $('lab-puzzle').value = id;
+  load();
+  buildViews();
+  // výchozí hloubka hledání podle hlavolamu (Square-1 se měří v řezech)
+  $('opt-max-label').textContent = model.kind === 'sq1' ? 'Max. řezů' : 'Max. tahů';
+  $('opt-extra-label').textContent = model.kind === 'sq1' ? 'Řezů nad optimum' : 'Tahů nad optimum';
+  if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '11'; $('opt-extra').value = '3'; }
+  $('a-moves').placeholder = model.kind === 'sq1' ? 'Tahy, např. (1,0)/ (-1,-1)/' : 'Zamíchat tahy…';
+  $('b-moves').placeholder = model.kind === 'sq1' ? 'Tahy cíle (tvar)…' : 'Tahy cíle…';
+  syncTarget();
+  stopPlaying();
+  renderPalette('A');
+  renderPalette('B');
+  renderStyles();
+  renderMoveSet();
+  renderErgo();
+  renderCubes();
+  renderTaskStatus();
+  clearResults();
+  showSub(ui.sub);
+}
+
+// --- Inicializace -----------------------------------------------------------------------
 
 export function initLab({ onSub } = {}) {
   onSubChange = onSub ?? onSubChange;
-  cubeA = new Cube3D($('cube-a'), { label: 'Výchozí stav', onSticker: tapA, fill: true });
-  cubeB = new Cube3D($('cube-b'), { label: 'Cíl', onSticker: tapB, fill: true });
-  cubeP = new Cube3D($('cube-p'), { label: 'Přehrávač' });
+  $('lab-puzzle').replaceChildren(...PUZZLES.map((p) => el('option', { value: p.id, textContent: p.name })));
+  $('lab-puzzle').onchange = () => { selectPuzzle($('lab-puzzle').value); $('lab-puzzle').blur(); };
 
-  for (const b of document.querySelectorAll('.segmented button')) b.onclick = () => showSub(b.dataset.sub);
+  for (const b of document.querySelectorAll('.segmented button[data-sub]')) b.onclick = () => showSub(b.dataset.sub);
   $('a-view').onclick = () => cubeA.resetView();
   $('b-view').onclick = () => cubeB.resetView();
 
-  $('a-apply').onclick = () => {
-    const text = $('a-moves').value.trim();
-    if (!text) return;
-    try {
-      const moves = parseAlg(text);
-      snapshot();
-      ui.colorsA = moveColors(ui.colorsA, moves);
-      $('a-moves').value = '';
-      $('a-moves').blur();
-      taskChanged();
-    } catch (e) {
-      $('task-status').replaceChildren(el('span', { className: 'bad', textContent: e.message }));
-    }
-  };
-  $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') $('a-apply').click(); };
-  $('a-home').onclick = () => { snapshot(); ui.colorsA = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
-  $('a-clear').onclick = () => { snapshot(); ui.colorsA = blankColors(); taskChanged(); };
-  $('b-home').onclick = () => { snapshot(); ui.colorsB = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
+  $('a-apply').onclick = () => applyMovesTo('A');
+  $('b-apply').onclick = () => applyMovesTo('B');
+  $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') applyMovesTo('A'); };
+  $('b-moves').onkeydown = (e) => { if (e.key === 'Enter') applyMovesTo('B'); };
+  $('a-home').onclick = () => { snapshot(); ui.A = model.home(trackedPieces(ui.constraints)); ui.autoA.clear(); taskChanged(); };
+  $('a-clear').onclick = () => { snapshot(); ui.A = model.blank(ui.A); ui.autoA.clear(); taskChanged(); };
+  $('b-home').onclick = () => { snapshot(); ui.B = model.home(trackedPieces(ui.constraints)); taskChanged(); };
   $('b-clear').onclick = () => {
     snapshot();
     for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'ignore';
-    ui.colorsA = blankColors();
-    ui.colorsB = blankColors();
+    ui.A = model.blank(ui.A);
+    ui.B = model.blank(ui.B);
     taskChanged();
   };
   $('undo').onclick = () => {
     const last = ui.undo.pop();
     if (!last) return;
     ui.constraints = last.constraints;
-    ui.colorsA = last.colorsA;
-    ui.colorsB = last.colorsB;
+    ui.A = model.deserialize(last.A);
+    ui.B = model.deserialize(last.B);
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
   $('go-search').onclick = () => { showSub('results'); startSearch(); };
+  $('sq1-shape').onchange = () => { ui.sq1 = { ...ui.sq1, shape: $('sq1-shape').checked }; save(); clearResults(); };
 
   $('search').onclick = startSearch;
   $('stop').onclick = () => {
@@ -640,7 +791,8 @@ export function initLab({ onSub } = {}) {
   $('sort').onchange = () => renderResults();
   $('opt-results').onchange = () => renderResults();
   $('ergo-reset').onclick = () => {
-    ui.ergo = { ...DEFAULT_CONFIG, moveWeights: { ...DEFAULT_MOVE_WEIGHTS } };
+    ui.ergo = defaultErgo(P());
+    if (P().ergonomics === 'sq1') ui.ergo = { ...SQ1_DEFAULTS, turn: [...SQ1_DEFAULTS.turn] };
     renderErgo();
     ergoChanged();
   };
@@ -657,14 +809,14 @@ export function initLab({ onSub } = {}) {
   $('p-back').onclick = () => { stopPlaying(); step(-1); };
   $('p-fwd').onclick = () => { stopPlaying(); step(1); };
   $('p-save').onclick = () => {
-    const moves = playerMoves();
-    if (moves?.length) toggleSave(algToString(moves));
+    const steps = playerSteps();
+    if (steps?.length) toggleSave(model.algToString(steps));
   };
   $('p-play').onclick = async () => {
     if (ui.playing) { stopPlaying(); return; }
-    const moves = playerMoves();
-    if (!moves?.length) return;
-    if (ui.step >= moves.length) { ui.step = 0; renderPlayer(); await new Promise((r) => setTimeout(r, 250)); }
+    const steps = playerSteps();
+    if (!steps?.length) return;
+    if (ui.step >= steps.length) { ui.step = 0; renderPlayer(); await new Promise((r) => setTimeout(r, 250)); }
     ui.playing = true;
     $('p-play').innerHTML = icon('pause', { size: 20 });
     while (ui.playing && await step(1)) { /* další tah */ }
@@ -672,17 +824,7 @@ export function initLab({ onSub } = {}) {
   };
   algs.subscribe(() => { renderResults(); renderPlayer(); });
 
-  stopPlaying();
-  syncTarget();
-  renderStyles();
-  renderPalette('A');
-  renderPalette('B');
-  renderMoveSet();
-  renderErgo();
-  renderCubes();
-  renderTaskStatus();
-  renderResults();
-  renderPlayer();
+  selectPuzzle(model.id);
 }
 
 export function showLab() {
