@@ -4,6 +4,7 @@ import { SLOTS } from '../src/core/geometry.js';
 import { BASES, parseAlg, algToString, invertAlg, simplifyAlg, mirrorAlg } from '../src/core/notation.js';
 import { solved, applyAlg, toFacelets, fromFacelets, equals, caseOf } from '../src/core/cube.js';
 import { metrics } from '../src/core/metrics.js';
+import { ROTATIONS } from '../src/core/rotations.js';
 
 const SOLVED = 'UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB';
 const after = (alg) => toFacelets(applyAlg(solved(), alg));
@@ -79,6 +80,10 @@ test('fromFacelets je inverzní k toFacelets', () => {
   const put = (str, changes) => [...str].map((c, i) => changes[i] ?? c).join('');
   assert.throws(() => fromFacelets(put(SOLVED, { 8: 'R', 9: 'F', 20: 'U' })), /rohů/);
   assert.throws(() => fromFacelets(put(SOLVED, { 5: 'R', 10: 'U' })), /hran/);
+  // prohozené dvě hrany UF (7, 19) a UR (5, 10)
+  assert.throws(() => fromFacelets(put(SOLVED, { 7: 'U', 19: 'R', 5: 'U', 10: 'F' })), /permutace/);
+  // se slice tahy je parita v pořádku
+  for (const alg of ['M', 'E S', "M2 U M' x"]) assert.ok(fromFacelets(toFacelets(applyAlg(solved(), alg))));
 });
 
 test('caseOf vrací stav, který algoritmus vyřeší', () => {
@@ -88,4 +93,10 @@ test('caseOf vrací stav, který algoritmus vyřeší', () => {
 
 test('metriky HTM/QTM/STM/ETM', () => {
   assert.deepEqual(metrics("R U2 M' x r"), { htm: 5, qtm: 6, stm: 4, etm: 5 });
+});
+
+test('24 různých natočení kostky', () => {
+  assert.equal(ROTATIONS.length, 24);
+  assert.equal(ROTATIONS[0], '');
+  assert.equal(new Set(ROTATIONS.map((r) => applyAlg(solved(), r).join())).size, 24);
 });

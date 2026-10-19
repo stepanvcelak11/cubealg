@@ -4,7 +4,7 @@
 // nálepka k (k = index nálepky ve složené kostce). Díky tomu víme u každého
 // dílku, kde je a jak je natočený – barvy se z toho jen odvozují.
 
-import { FACELETS, SLOTS, ORI_AT, rotate, faceletAt } from './geometry.js';
+import { FACELETS, SLOTS, SLOT_OF, ORI_AT, rotate, faceletAt } from './geometry.js';
 import { MOVE_DEFS, parseAlg, invertAlg, moveToString } from './notation.js';
 
 const PERM_CACHE = new Map();
@@ -67,8 +67,8 @@ export function toFacelets(loc) {
  * Rozpozná dílky z barevného řetězce (např. z kamery) a vrátí stav.
  * Barva = písmeno stěny, jejíž střed tu barvu ve složené kostce má.
  * Vyžaduje úplný popis; kontroluje, že každý dílek je tam právě jednou
- * a že součet natočení rohů (mod 3) a hran (mod 2) je fyzicky možný.
- * Paritu permutace zatím nekontroluje.
+ * a že je stav fyzicky možný: součet natočení rohů (mod 3), hran (mod 2)
+ * a parita permutací (rohy ⊕ hrany ⊕ středy = sudá – platí i se slice tahy).
  */
 export function fromFacelets(str) {
   const s = String(str).replace(/\s+/g, '').toUpperCase();
@@ -96,5 +96,25 @@ export function fromFacelets(str) {
   }
   if (twist.corner % 3) throw new Error('Nemožné natočení rohů (jeden roh je překroucený)');
   if (twist.edge % 2) throw new Error('Nemožné natočení hran (jedna hrana je překlopená)');
+  if (permutationParity(loc)) throw new Error('Nemožná permutace (prohozené dva dílky)');
   return loc;
+}
+
+/** Součet parit permutací rohů, hran a středů (0 = fyzicky možné). */
+export function permutationParity(loc) {
+  let parity = 0;
+  for (const type of ['corner', 'edge', 'center']) {
+    const slots = SLOTS.filter((s) => s.type === type);
+    const index = new Map(slots.map((s, i) => [s.id, i]));
+    // perm[i] = slot, ve kterém je dílek domovem ve slotu i
+    const perm = slots.map((s) => index.get(SLOT_OF[loc[s.facelets[0]]]));
+    const seen = new Array(perm.length).fill(false);
+    for (let i = 0; i < perm.length; i++) {
+      if (seen[i]) continue;
+      let len = 0;
+      for (let j = i; !seen[j]; j = perm[j]) { seen[j] = true; len++; }
+      parity ^= (len - 1) & 1;
+    }
+  }
+  return parity;
 }
