@@ -11,10 +11,16 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
+import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
 
 // Trénovaná sada ('all' = všechny).
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
 const inTraining = () => (trainSet === 'all' ? algs.list() : algs.inSet(trainSet));
+
+let trials = storage.get('ergocube.trainer.n') ?? 0; // počet pokusů celkem (čas plánu)
+let sortKey = storage.get('ergocube.trainer.sort') ?? 'order';
+let verdict = null; // hodnocení posledního pokusu {id, good, interval}
+const MASTERY = { new: 'nový', weak: 'k procvičení', learning: 'učím se', good: 'zvládnuto' };
 
 let cube;
 let cubePuzzle = null; // hlavolam, pro který je vytvořený pohled
@@ -32,25 +38,10 @@ function algStats(a) {
   };
 }
 
-// Častěji vybírá algoritmy s méně pokusy a pomalejším průměrem.
+// Opakování podle zvládnutí (viz srs.js): na řadě jsou nové případy a ty, které se
+// povedly špatně nebo jejichž termín nastal.
 function pickNext() {
-  const pool = inTraining().filter((a) => a.enabled);
-  if (!pool.length) return null;
-  const candidates = pool.length > 1 ? pool.filter((a) => a.id !== currentId) : pool;
-  const means = candidates.map((a) => algStats(a).mean).filter(Number.isFinite);
-  const avgMean = means.length ? means.reduce((s, m) => s + m, 0) / means.length : 1;
-  const weights = candidates.map((a) => {
-    const st = algStats(a);
-    const slow = Number.isFinite(st.mean) ? st.mean / avgMean : 1.5;
-    return Math.max(0.2, slow) * (1 + 3 / (1 + st.count));
-  });
-  const total = weights.reduce((s, w) => s + w, 0);
-  let r = (randomInt(1e6) / 1e6) * total;
-  for (let i = 0; i < candidates.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return candidates[i].id;
-  }
-  return candidates.at(-1).id;
+  return srsPick(inTraining().filter((a) => a.enabled), trials, randomInt, currentId);
 }
 
 function showCase() {
@@ -106,11 +97,14 @@ function renderReveal(a) {
   }
   box.replaceChildren(
     el('div', { className: 'reveal-alg', textContent: a.alg }),
+    ...(verdict?.id === a.id ? [el('div', { className: `reveal-verdict ${verdict.good ? 'ok' : 'slow'}`, textContent: verdict.good
+      ? `Dobře – znovu za ${verdict.interval} případů.` : 'Pomalejší než obvykle – vrátí se hned za pár případů.' })] : []),
     el('div', { className: 'reveal-stats' },
       el('span', { textContent: `pokusů ${st.count}` }),
       el('span', { textContent: `nejlepší ${formatTime(st.best)}` }),
       el('span', { textContent: `ao5 ${formatTime(st.ao5)}` }),
-      el('span', { textContent: `průměr ${formatTime(st.mean)}` })),
+      el('span', { textContent: `průměr ${formatTime(st.mean)}` }),
+      el('span', { textContent: MASTERY[mastery(a)] })),
     ...(setup ? [setup] : []));
 }
 
@@ -121,12 +115,13 @@ function setupOf(a) {
 function next() {
   currentId = pickNext();
   revealed = false;
+  verdict = null;
   stopwatch.show(0);
   showCase();
 }
 
 function renderList() {
-  const list = inTraining();
+  const list = [...inTraining()].sort(SORTS[sortKey].cmp);
   $('tr-sheet-title').textContent = trainSet === 'all' ? 'Všechny algoritmy' : algSets.get(trainSet).name;
   $('tr-count').textContent = `v tréninku ${list.filter((x) => x.enabled).length} z ${list.length}`;
   $('tr-list').replaceChildren(...list.map((a) => {
@@ -152,7 +147,8 @@ function renderList() {
       cb,
       el('div', { className: 'alg-main' }, name,
         el('code', { textContent: `${a.task.puzzle && a.task.puzzle !== '333' ? `[${labModel(a.task.puzzle).P.name}] ` : ''}${a.alg}` }),
-        el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' }),
+        el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' },
+          el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
         move),
       el('div', { className: 'alg-actions' }, train, del));
   }));
@@ -174,7 +170,12 @@ export function initTrainer({ isActive }) {
     onStop: (ms) => {
       const a = algs.get(currentId);
       if (!a) return;
-      algs.update(a.id, { times: [...a.times, { t: ms, d: Date.now() }] });
+      const good = isGood(ms, reference(a, inTraining()));
+      trials += 1;
+      storage.set('ergocube.trainer.n', trials);
+      const sr = schedule(a.sr, good, trials);
+      verdict = { id: a.id, good, interval: sr.interval };
+      algs.update(a.id, { times: [...a.times, { t: ms, d: Date.now() }], sr });
       revealed = true;
       showCase();
     },
@@ -185,6 +186,10 @@ export function initTrainer({ isActive }) {
   $('tr-next').onclick = () => { next(); $('tr-next').blur(); };
   $('tr-open').onclick = () => { renderList(); $('tr-sheet').hidden = false; };
   $('tr-close').onclick = closeSheet;
+  const sortSel = $('tr-sort');
+  sortSel.replaceChildren(...Object.entries(SORTS).map(([k, v]) => el('option', { value: k, textContent: v.label })));
+  sortSel.value = sortKey;
+  sortSel.onchange = () => { sortKey = sortSel.value; storage.set('ergocube.trainer.sort', sortKey); renderList(); };
   $('tr-all').onclick = () => {
     const all = inTraining().every((a) => a.enabled);
     for (const a of inTraining()) a.enabled = !all;

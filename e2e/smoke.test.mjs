@@ -161,3 +161,92 @@ test('sady algoritmů: uložení do nové sady a trénink jen této sady', async
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('trenažér: hodnocení pokusu, plán opakování a řazení nejslabších', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { algs } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const names = ['URF', 'U', 'F', 'R'];
+    const home = m.home(names);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+    const task = { puzzle: '333', constraints, colorsA: m.applyMoves(home, "R U R'"), colorsB: home };
+    algs.add({ alg: "R U' R'", task, name: 'Nový' });
+    const w = algs.add({ alg: "R U' R'", task, name: 'Slabý' });
+    algs.update(w, { times: [{ t: 3000 }, { t: 3200 }], sr: { streak: 0, interval: 2, due: 0 } });
+    const g = algs.add({ alg: "R U' R'", task, name: 'Dobrý' });
+    algs.update(g, { times: [{ t: 900 }, { t: 1000 }, { t: 1100 }], sr: { streak: 4, interval: 40, due: 9999 } });
+  });
+  await p.reload();
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  await p.locator('#tr-open').tap();
+  await p.selectOption('#tr-sort', 'weakest');
+  const names = await p.locator('#tr-list .alg-name').evaluateAll((els) => els.map((e) => e.value));
+  assert.deepEqual(names, ['Slabý', 'Nový', 'Dobrý']);
+  assert.match(await p.locator('#tr-list .mastery').first().innerText(), /k procvičení/);
+  await p.locator('#tr-close').tap();
+  // jeden pokus: po zastavení se objeví hodnocení a plán se uloží
+  await p.evaluate(() => document.querySelector('#tr-pad').focus());
+  await p.keyboard.down(' '); await p.waitForTimeout(700); await p.keyboard.up(' ');
+  await p.waitForTimeout(400);
+  await p.keyboard.down(' '); await p.keyboard.up(' ');
+  await p.waitForSelector('.reveal-verdict');
+  const trained = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).filter((a) => a.sr?.due > 0 && a.times.length > 0).length);
+  assert.ok(trained >= 1);
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.trainer.n'))), 1);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('focení: Pyraminx a Skewb – obrys stěny a rozpoznání nahrané fotky', async () => {
+  const { p, ctx, errors } = await open('lab');
+  // tlačítko focení je u všech hlavolamů kromě Square-1
+  for (const [id, cells] of [['pyram', 9], ['skewb', 5], ['222', 4]]) {
+    await p.selectOption('#lab-puzzle', id);
+    assert.equal(await p.locator('#a-scan').isVisible(), true, id);
+    await p.locator('#a-scan').tap();
+    await p.waitForSelector('.scan-dialog[open]');
+    assert.equal(await p.locator('.scan-outline polygon').count(), cells, id);
+    await p.locator('.scan-dialog .scan-head .icon-btn').tap();
+  }
+  await p.selectOption('#lab-puzzle', 'sq1');
+  assert.equal(await p.locator('#a-scan').isVisible(), false);
+
+  // fotka stěny F Pyraminxu: obrys 80 % obrazu, nálepky vybarvené podle indexu
+  await p.selectOption('#lab-puzzle', 'pyram');
+  await p.locator('#a-scan').tap();
+  await p.waitForSelector('.scan-dialog[open]');
+  const png = await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const rgb = { F: '#1ea050', L: '#c82828', R: '#1e5ad2', D: '#f0d214' };
+    const letters = ['F', 'L', 'R', 'D', 'F', 'L', 'R', 'D', 'F'];
+    const { polys } = labModel('pyram').scan.cells('F');
+    const c = document.createElement('canvas');
+    c.width = c.height = 500;
+    const g = c.getContext('2d');
+    g.fillStyle = '#222'; g.fillRect(0, 0, 500, 500);
+    polys.forEach((poly, i) => {
+      g.fillStyle = rgb[letters[i]];
+      g.beginPath();
+      poly.forEach(([x, y], k) => (k ? g.lineTo(50 + x * 400, 50 + y * 400) : g.moveTo(50 + x * 400, 50 + y * 400)));
+      g.fill();
+    });
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  await p.locator('.scan-dialog input[type=file]').setInputFiles({ name: 'face.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await p.waitForSelector('.scan-result:not([hidden]) polygon');
+  const got = await p.locator('.scan-result polygon').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label').slice(-1)));
+  assert.deepEqual(got, ['F', 'L', 'R', 'D', 'F', 'L', 'R', 'D', 'F']);
+  // uložení stěny F: nálepky F-stěny ve výchozí straně mají tyto barvy
+  await p.locator('.scan-actions .primary').tap();
+  const colors = await p.evaluate(async () => {
+    const m = (await import('./src/ui/models.js')).labModel('pyram');
+    const spec = m.scan;
+    const st = JSON.parse(localStorage.getItem('ergocube.lab.pyram'));
+    return spec.cells('F').indices.map((i) => st.colorsA[i]);
+  });
+  assert.deepEqual(colors, ['F', 'L', 'R', 'D', 'F', 'L', 'R', 'D', 'F']);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

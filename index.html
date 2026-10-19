@@ -118,9 +118,12 @@
       <div id="tr-sheet" class="sheet" hidden>
         <div class="sheet-head">
           <h2 id="tr-sheet-title">Moje algoritmy</h2>
-          <span id="tr-count" class="hint"></span>
-          <button type="button" id="tr-all" class="secondary small">Vybrat vše</button>
           <button type="button" id="tr-close" class="icon-btn" data-icon="close" aria-label="Zavřít"></button>
+          <div class="sheet-tools">
+            <span id="tr-count" class="hint"></span>
+            <select id="tr-sort" class="small-select" aria-label="Řazení"></select>
+            <button type="button" id="tr-all" class="secondary small">Vybrat vše</button>
+          </div>
         </div>
         <ul id="tr-list" class="alg-list"></ul>
       </div>

@@ -10,6 +10,7 @@ import {
   sq1Ops, applySq1, parseSq1, invertSq1, sq1AlgToString, sq1MoveToString, sq1Polygons,
   solvedState, PIECE_NAMES, PIECE_COLORS, SQ1_VIEWBOX,
 } from '../puzzles/sq1.js';
+import { SCAN as PYRAMINX_SCAN } from '../puzzles/pyraminx.js';
 import { STYLE_OF } from './cubeview.js';
 
 const CACHE = new Map();
@@ -87,19 +88,93 @@ function permModel(P) {
       ? { type: 'cube3d', facelets: P.view3d.facelets, scale: P.view3d.scale }
       : { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys },
     flatView: P.net ? { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys } : null,
-    faceSticker: faceStickerOf(P),
+    scan: scanSpecOf(P),
   };
 }
 
-// Nálepka stěny (řádek, sloupec tak, jak se na stěnu díváme v síti) – pro focení.
-const FACE_ORDER = ['U', 'R', 'F', 'D', 'L', 'B'];
-function faceStickerOf(P) {
-  if (P.id === '333') return (face, r, c) => FACE_ORDER.indexOf(face) * 9 + r * 3 + c;
-  if (P.id === '222') {
-    const from3 = P.view3d.facelets.map((f) => f.index);
-    return (face, r, c) => from3.indexOf(FACE_ORDER.indexOf(face) * 9 + r * 6 + c * 2);
+// --- Focení: tvar stěny a držení hlavolamu ----------------------------------------------
+// Obrys každé stěny se odvodí z plošné sítě (mnohoúhelníky nálepek), případně
+// otočené tak, aby byl nahoře zvolený vrchol (Pyraminx). Souřadnice 0…1.
+
+const parsePoly = (s) => s.split(' ').map((p) => p.split(',').map(Number));
+const CUBE_FACES = ['U', 'F', 'R', 'B', 'L', 'D'];
+const FACE_NAME = { U: 'bílá', D: 'žlutá', F: 'zelená', B: 'modrá', R: 'červená', L: 'oranžová' };
+// Jak držet kostku, aby nálepky odpovídaly síti (U nad F, D pod F).
+const CUBE_HOLD = (face, center) => {
+  const up = face === 'U' ? 'zelená stěna (F) je dole u tebe' : face === 'D' ? 'zelená stěna (F) je nahoře' : 'bílá stěna (U) je nahoře';
+  return `Natoč ke kameře stěnu ${face} (${FACE_NAME[face]}${center ? ' střed' : ''}), ${up}.`;
+};
+
+function scanSpecOf(P) {
+  const info = {
+    333: { faces: CUBE_FACES, hold: (f) => CUBE_HOLD(f, true), detect: (grid) => grid[4] },
+    222: {
+      faces: CUBE_FACES, hold: (f) => CUBE_HOLD(f, false),
+      note: '2×2 nemá středy – drž kostku pořád stejně (bílá nahoře, zelená vpředu) a jen ji otáčej.',
+    },
+    skewb: {
+      faces: CUBE_FACES, hold: (f) => CUBE_HOLD(f, false),
+      note: 'Středy se přesouvají: roh bílá–červená–zelená dej vpravo nahoře vpředu a pak otáčej celým Skewbem.',
+    },
+    pyram: {
+      faces: ['F', 'L', 'R', 'D'], ...pyraminxInfo(),
+    },
+  }[P.id];
+  if (!info || !P.net) return null;
+  const polys = P.net.polys.map(parsePoly);
+  const cache = new Map();
+  function build(face) {
+    const indices = P.stickerFace.map((f, i) => (f === face ? i : -1)).filter((i) => i >= 0);
+    const all = indices.flatMap((i) => polys[i]);
+    const cx = all.reduce((t, p) => t + p[0], 0) / all.length;
+    const cy = all.reduce((t, p) => t + p[1], 0) / all.length;
+    let turn = 0;
+    const top = info.top?.[face];
+    if (top) {
+      const [vx, vy] = info.vertices[face][top];
+      turn = -Math.PI / 2 - Math.atan2(vy - cy, vx - cx);
+    }
+    const rot = ([x, y]) => {
+      const dx = x - cx, dy = y - cy;
+      return [dx * Math.cos(turn) - dy * Math.sin(turn), dx * Math.sin(turn) + dy * Math.cos(turn)];
+    };
+    const rotated = indices.map((i) => polys[i].map(rot));
+    const flat = rotated.flat();
+    const xs = flat.map((p) => p[0]), ys = flat.map((p) => p[1]);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    const size = Math.max(Math.max(...xs) - minX, Math.max(...ys) - minY);
+    const offX = (size - (Math.max(...xs) - minX)) / 2, offY = (size - (Math.max(...ys) - minY)) / 2;
+    const norm = ([x, y]) => [(x - minX + offX) / size, (y - minY + offY) / size];
+    const marks = top ? Object.entries(info.vertices[face]).map(([text, at]) => {
+      // popisek kousek dovnitř od vrcholu
+      const [x, y] = rot(at);
+      const k = 0.78;
+      return { text, at: norm([x * k, y * k]) };
+    }) : [];
+    return { indices, polys: rotated.map((poly) => poly.map(norm)), marks };
   }
-  return null;
+  return {
+    faces: info.faces,
+    hold: info.hold,
+    note: info.note,
+    detect: info.detect,
+    cells: (face) => { if (!cache.has(face)) cache.set(face, build(face)); return cache.get(face); },
+  };
+}
+
+// Vrcholy, jejichž střed nemá nálepku dané barvy: U nemá žlutou (D), L modrou (R), R červenou (L), B zelenou (F).
+const LACKS = { U: 'D', L: 'R', R: 'L', B: 'F' };
+const PYR_NAME = { F: 'zelená', L: 'červená', R: 'modrá', D: 'žlutá' };
+function pyraminxInfo() {
+  return {
+    top: PYRAMINX_SCAN.top,
+    vertices: PYRAMINX_SCAN.vertices,
+    hold: (face) => {
+      const v = PYRAMINX_SCAN.top[face];
+      return `Natoč ke kameře stěnu ${face} (${PYR_NAME[face]}), nahoře má být vrchol ${v} – jeho střed nemá ${PYR_NAME[LACKS[v]]} nálepku.`;
+    },
+    note: 'Písmena v obrysu ukazují vrcholy.',
+  };
 }
 
 function sq1Model(P) {

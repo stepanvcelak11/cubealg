@@ -337,19 +337,17 @@ function renderSq1Pads() {
   }
 }
 
-// Focení (3×3 a 2×2): stěna po stěně do vybarvení zvolené strany.
+// Focení: stěna po stěně do vybarvení zvolené strany.
 async function scan(side) {
   const { openScan } = await import('./scan.js');
+  const spec = model.scan;
   openScan({
-    size: model.id === '222' ? 2 : 3,
+    spec,
     colors: P().colors,
     onFace: (face, grid) => {
       snapshot();
-      let colors = [...(side === 'A' ? ui.A : ui.B)];
-      grid.forEach((c, i) => {
-        const pos = model.faceSticker(face, Math.floor(i / grid.size), i % grid.size);
-        if (pos >= 0) colors[pos] = c;
-      });
+      const colors = [...(side === 'A' ? ui.A : ui.B)];
+      spec.cells(face).indices.forEach((pos, i) => { colors[pos] = grid[i]; });
       if (side === 'A') ui.A = colors; else ui.B = colors;
       taskChanged();
     },
@@ -769,8 +767,8 @@ function selectPuzzle(id) {
   $('opt-max-label').textContent = model.kind === 'sq1' ? 'Max. řezů' : 'Max. tahů';
   $('opt-extra-label').textContent = model.kind === 'sq1' ? 'Řezů nad optimum' : 'Tahů nad optimum';
   if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '11'; $('opt-extra').value = '3'; }
-  $('a-scan').hidden = !model.faceSticker;
-  $('b-scan').hidden = !model.faceSticker;
+  $('a-scan').hidden = !model.scan;
+  $('b-scan').hidden = !model.scan;
   renderSq1Pads();
   syncTarget();
   stopPlaying();

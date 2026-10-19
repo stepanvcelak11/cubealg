@@ -257,6 +257,13 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .reveal-setup small { color: var(--muted); font-size: 0.75rem; }
 .reveal-setup code { font-size: 0.95rem; }
 .reveal-alg { font-family: ui-monospace, monospace; font-size: 1.15rem; text-align: center; }
+.reveal-verdict { font-size: 0.85rem; font-weight: 600; }
+.reveal-verdict.ok { color: var(--good); }
+.reveal-verdict.slow { color: var(--bad); }
+.mastery { white-space: nowrap; padding: 1px 8px; border-radius: 99px; font-size: 0.68rem; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
+.mastery.weak { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.mastery.good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.small-select { min-height: 32px; padding: 2px 28px 2px 10px; font-size: 0.8rem; max-width: 42vw; }
 .reveal-stats { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; font-size: 0.8rem; color: var(--muted); }
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
 .empty-art { color: var(--accent); }
@@ -266,14 +273,17 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
   background: var(--panel); border-top: 1px solid var(--border); border-radius: 22px 22px 0 0;
   display: flex; flex-direction: column; box-shadow: 0 -10px 30px rgb(0 0 0 / 0.2); max-width: 760px; margin: 0 auto;
 }
-.sheet-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.sheet-head h2 { margin: 0 auto 0 0; font-size: 1rem; }
+.sheet-head { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.sheet-head h2 { margin: 0; font-size: 1rem; }
+.sheet-tools { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.sheet-tools button { white-space: nowrap; }
+.sheet-tools .hint { flex: 1; white-space: nowrap; }
 .alg-list { list-style: none; margin: 0; padding: 6px 10px 16px; overflow-y: auto; }
 .alg-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--border); }
 .alg-item input[type="checkbox"] { width: 20px; height: 20px; }
 .alg-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .alg-main code { font-size: 0.85rem; overflow-wrap: anywhere; }
-.alg-main small { color: var(--muted); font-size: 0.75rem; }
+.alg-main small { color: var(--muted); font-size: 0.75rem; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
 .alg-name { padding: 3px 6px; font-family: inherit; font-weight: 600; background: transparent; border-color: transparent; }
 .alg-name:focus { border-color: var(--border); background: var(--panel-2); }
 .alg-actions { display: flex; }
@@ -513,14 +523,13 @@ table.breakdown i { display: inline-block; width: 10px; height: 10px; border-rad
 .scan-hint { min-height: 2.6em; }
 .scan-stage { position: relative; width: 100%; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #000; }
 .scan-stage video, .scan-stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.scan-grid { position: absolute; inset: 10%; display: grid; border: 2px solid rgb(255 255 255 / 0.9); border-radius: 8px; pointer-events: none; }
-.scan-grid.size-3 { grid-template-columns: repeat(3, 1fr); }
-.scan-grid.size-2 { grid-template-columns: repeat(2, 1fr); }
-.scan-grid i { border: 1px solid rgb(255 255 255 / 0.55); }
-.scan-result { display: grid; gap: 6px; width: min(80%, 300px); margin: 10px auto 0; aspect-ratio: 1; }
-.scan-result.size-3 { grid-template-columns: repeat(3, 1fr); }
-.scan-result.size-2 { grid-template-columns: repeat(2, 1fr); }
-.scan-cell { background: var(--c); border-radius: 10px; border: 3px solid var(--plastic); min-height: 0; padding: 0; }
+.scan-outline { position: absolute; inset: 10%; width: 80%; height: 80%; pointer-events: none; overflow: visible; }
+.scan-outline polygon { fill: none; stroke: rgb(255 255 255 / 0.85); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.scan-outline text { fill: #fff; font-size: 7px; font-weight: 700; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgb(0 0 0 / 0.6); stroke-width: 1.2px; }
+.scan-result { display: block; width: min(80%, 300px); margin: 10px auto 0; aspect-ratio: 1; overflow: visible; }
+.scan-result[hidden] { display: none; }
+.scan-cell { stroke: var(--plastic); stroke-width: 0.025; stroke-linejoin: round; cursor: pointer; outline: none; }
+.scan-cell:focus-visible { stroke: var(--accent); }
 .scan-actions { justify-content: flex-end; margin-top: 10px; }
 
 /* Uložení do sady (Lab) a výběr sady (trenažér) */

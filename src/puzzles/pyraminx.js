@@ -27,6 +27,9 @@ const NET = {
   D: { L: [0, h], R: [3, h], B: [1.5, 2 * h] },
 };
 
+// Focení: nahoře má být vrchol SCAN_TOP[stěna]; síť se otočí tak, aby tam byl.
+export const SCAN = { top: { F: 'U', L: 'U', R: 'U', D: 'B' }, vertices: NET };
+
 const TIP = 5 / 9, LAYER = 1 / 9; // řezy (průmět na osu vrcholu, vrchol = 1, protější stěna = −1/3)
 
 const mix = (pts, w) => [0, 1, 2].map((d) => pts.reduce((s, p, i) => s + p[d] * w[i], 0));
