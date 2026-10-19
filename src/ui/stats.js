@@ -26,7 +26,7 @@ function tiles(s, result) {
     el('div', { className: 'tile' },
       el('span', { className: 'tile-label', textContent: 'Průměr' }),
       el('b', { textContent: f(s.mean) }),
-      el('small', { textContent: `${s.count}×${s.dnf ? `, DNF ${s.dnf}` : ''}` })),
+      el('small', { textContent: `${s.count} složení${s.dnf ? ` · ${s.dnf} DNF` : ''}` })),
   ];
 }
 
