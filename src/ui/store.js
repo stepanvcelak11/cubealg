@@ -76,20 +76,57 @@ export const groups = {
 };
 
 // --- Vlastní algoritmy ---------------------------------------------------------------
+// Každý algoritmus patří do sady (např. podle situace nebo metody); trenažér
+// trénuje vybranou sadu. Výchozí sada má id 'default'.
 
 const algsData = storage.get('ergocube.algs') ?? [];
 const algsEvents = emitter();
+const setsData = storage.get('ergocube.algsets') ?? [];
+const DEFAULT_SET = { id: 'default', name: 'Moje algoritmy' };
+
+export const algSets = {
+  list() { return [DEFAULT_SET, ...setsData]; },
+  get(id) { return this.list().find((s) => s.id === id) ?? DEFAULT_SET; },
+  add(name) {
+    const id = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    setsData.push({ id, name });
+    this.save();
+    return id;
+  },
+  rename(id, name) {
+    const s = setsData.find((x) => x.id === id);
+    if (s) { s.name = name; this.save(); }
+  },
+  /** Smaže sadu; její algoritmy se přesunou do výchozí sady. */
+  remove(id) {
+    const i = setsData.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    setsData.splice(i, 1);
+    for (const a of algsData) if (a.set === id) a.set = 'default';
+    storage.set('ergocube.algs', algsData);
+    this.save();
+  },
+  save() {
+    storage.set('ergocube.algsets', setsData);
+    algsEvents.emit();
+  },
+};
 
 export const algs = {
   list() { return algsData; },
   get(id) { return algsData.find((a) => a.id === id); },
-  find(alg, task) {
-    return algsData.find((a) => a.alg === alg && JSON.stringify(a.task) === JSON.stringify(task));
+  /** Uložený algoritmus se stejným zadáním (volitelně jen v dané sadě). */
+  find(alg, task, set) {
+    return algsData.find((a) => a.alg === alg && JSON.stringify(a.task) === JSON.stringify(task)
+      && (set === undefined || (a.set ?? 'default') === set));
   },
-  /** @param {{alg:string, task:{colorsA:string[], constraints:Record<string,string>}}} entry */
-  add({ alg, task, name }) {
+  /** Algoritmy v sadě (bez sady = výchozí). */
+  inSet(set) { return algsData.filter((a) => (a.set ?? 'default') === set); },
+  /** @param {{alg:string, task:object, name?:string, set?:string}} entry */
+  add({ alg, task, name, set = 'default' }) {
     const id = `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    algsData.push({ id, name: name ?? `Algoritmus ${algsData.length + 1}`, alg, task, enabled: true, times: [], created: Date.now() });
+    const count = this.inSet(set).length;
+    algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now() });
     this.save();
     return id;
   },

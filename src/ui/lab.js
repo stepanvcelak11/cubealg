@@ -20,6 +20,7 @@ import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { algs } from './store.js';
+import { setOptions, pickSet } from './sets.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { STYLE_OF } from './cubeview.js';
@@ -310,20 +311,49 @@ function taskChanged() {
   clearResults();
 }
 
-function applyMovesTo(side) {
-  const input = $(side === 'A' ? 'a-moves' : 'b-moves');
-  const text = input.value.trim();
-  if (!text) return;
+// Tahy na jedné straně zadání (tlačítka tvaru u Square-1).
+function applyMoves(side, alg) {
   try {
-    const next = model.applyMoves(side === 'A' ? ui.A : ui.B, text);
+    const next = model.applyMoves(side === 'A' ? ui.A : ui.B, alg);
     snapshot();
     if (side === 'A') ui.A = next; else ui.B = next;
-    input.value = '';
-    input.blur();
     taskChanged();
   } catch (e) {
     $('task-status').replaceChildren(el('span', { className: 'bad', textContent: e.message }));
   }
+}
+
+// Square-1: tvar se nastavuje tlačítky (otočení vrstev o 30° a řez).
+const SQ1_PAD = [['(1,0)', 'U ↻'], ['(-1,0)', 'U ↺'], ['/', '/'], ['(0,1)', 'D ↻'], ['(0,-1)', 'D ↺']];
+function renderSq1Pads() {
+  for (const side of ['A', 'B']) {
+    const pad = $(`sq1-pad-${side.toLowerCase()}`);
+    pad.hidden = model.kind !== 'sq1';
+    pad.replaceChildren(...SQ1_PAD.map(([alg, label]) => {
+      const b = el('button', { type: 'button', className: 'chip', textContent: label, title: alg === '/' ? 'Řez' : `Otočit ${alg}` });
+      b.onclick = () => applyMoves(side, alg);
+      return b;
+    }));
+  }
+}
+
+// Focení (3×3 a 2×2): stěna po stěně do vybarvení zvolené strany.
+async function scan(side) {
+  const { openScan } = await import('./scan.js');
+  openScan({
+    size: model.id === '222' ? 2 : 3,
+    colors: P().colors,
+    onFace: (face, grid) => {
+      snapshot();
+      let colors = [...(side === 'A' ? ui.A : ui.B)];
+      grid.forEach((c, i) => {
+        const pos = model.faceSticker(face, Math.floor(i / grid.size), i % grid.size);
+        if (pos >= 0) colors[pos] = c;
+      });
+      if (side === 'A') ui.A = colors; else ui.B = colors;
+      taskChanged();
+    },
+  });
 }
 
 // --- Tahy a váhy -----------------------------------------------------------------------
@@ -583,12 +613,14 @@ const taskSnapshot = () => ({
   colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
   ...(model.kind === 'sq1' ? { shape: ui.sq1.shape } : {}),
 });
-const savedFor = (alg) => algs.find(alg, taskSnapshot());
+// Sada, do které se ukládají algoritmy (záložka u řešení).
+let saveSet = storage.get('ergocube.lab.saveSet') ?? 'default';
+const savedFor = (alg) => algs.find(alg, taskSnapshot(), saveSet);
 
 function toggleSave(alg) {
   const existing = savedFor(alg);
   if (existing) algs.remove(existing.id);
-  else algs.add({ alg, task: taskSnapshot() });
+  else algs.add({ alg, task: taskSnapshot(), set: saveSet });
 }
 
 function renderResults() {
@@ -737,8 +769,9 @@ function selectPuzzle(id) {
   $('opt-max-label').textContent = model.kind === 'sq1' ? 'Max. řezů' : 'Max. tahů';
   $('opt-extra-label').textContent = model.kind === 'sq1' ? 'Řezů nad optimum' : 'Tahů nad optimum';
   if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '11'; $('opt-extra').value = '3'; }
-  $('a-moves').placeholder = model.kind === 'sq1' ? 'Tahy, např. (1,0)/ (-1,-1)/' : 'Zamíchat tahy…';
-  $('b-moves').placeholder = model.kind === 'sq1' ? 'Tahy cíle (tvar)…' : 'Tahy cíle…';
+  $('a-scan').hidden = !model.faceSticker;
+  $('b-scan').hidden = !model.faceSticker;
+  renderSq1Pads();
   syncTarget();
   stopPlaying();
   renderPalette('A');
@@ -763,10 +796,8 @@ export function initLab({ onSub } = {}) {
   $('a-view').onclick = () => cubeA.resetView();
   $('b-view').onclick = () => cubeB.resetView();
 
-  $('a-apply').onclick = () => applyMovesTo('A');
-  $('b-apply').onclick = () => applyMovesTo('B');
-  $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') applyMovesTo('A'); };
-  $('b-moves').onkeydown = (e) => { if (e.key === 'Enter') applyMovesTo('B'); };
+  $('a-scan').onclick = () => scan('A');
+  $('b-scan').onclick = () => scan('B');
   $('a-home').onclick = () => { snapshot(); ui.A = model.home(trackedPieces(ui.constraints)); ui.autoA.clear(); taskChanged(); };
   $('a-clear').onclick = () => { snapshot(); ui.A = model.blank(ui.A); ui.autoA.clear(); taskChanged(); };
   $('b-home').onclick = () => { snapshot(); ui.B = model.home(trackedPieces(ui.constraints)); taskChanged(); };
@@ -850,7 +881,16 @@ export function initLab({ onSub } = {}) {
     while (ui.playing && await step(1)) { /* další tah */ }
     stopPlaying();
   };
-  algs.subscribe(() => { renderResults(); renderPlayer(); });
+  const renderSaveSet = () => setOptions($('save-set'), saveSet);
+  $('save-set').onchange = () => {
+    saveSet = pickSet($('save-set'), saveSet);
+    storage.set('ergocube.lab.saveSet', saveSet);
+    renderSaveSet();
+    renderResults();
+    renderPlayer();
+  };
+  renderSaveSet();
+  algs.subscribe(() => { renderSaveSet(); renderResults(); renderPlayer(); });
 
   selectPuzzle(model.id);
 }

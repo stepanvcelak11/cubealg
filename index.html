@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Speedcubing timer, statistiky, trenažér algoritmů a generátor ergonomických algoritmů">
-  <meta name="theme-color" content="#14171c">
+  <meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0f14" media="(prefers-color-scheme: dark)">
   <title>ErgoCube Lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' rx='.3' fill='%23222'/%3E%3Crect x='.1' y='.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='1.1' y='.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3Crect x='2.1' y='.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='.1' y='1.1' width='.8' height='.8' rx='.12' fill='%232563d9'/%3E%3Crect x='1.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23fff'/%3E%3Crect x='2.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23f08a1c'/%3E%3Crect x='.1' y='2.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='1.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='2.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
@@ -14,7 +15,7 @@
 </head>
 <body>
   <header class="topbar">
-    <h1><span class="logo" aria-hidden="true"></span>ErgoCube Lab</h1>
+    <h1><span class="logo" aria-hidden="true"></span><span>ErgoCube <span class="brand-lab">Lab</span></span></h1>
     <button type="button" id="settings-btn" class="icon-btn ghost" data-icon="settings" title="Nastavení a data" aria-label="Nastavení a data"></button>
   </header>
 
@@ -97,13 +98,14 @@
     <!-- ===================== Trenažér ===================== -->
     <section class="page fixed" data-page="trainer" hidden>
       <div class="trainer-head">
-        <button type="button" id="tr-open" class="secondary" data-icon="list" data-icon-size="18"><span id="tr-count">Moje algoritmy</span></button>
+        <select id="tr-set" aria-label="Trénovaná sada"></select>
+        <button type="button" id="tr-open" class="icon-btn" data-icon="list" data-icon-size="20" title="Algoritmy v sadě" aria-label="Algoritmy v sadě"></button>
         <button type="button" id="tr-next" class="primary" data-icon="next" data-icon-size="18"><span>Další případ</span></button>
       </div>
       <div id="tr-empty" class="empty" hidden>
         <div class="empty-art" data-icon="bookmark" data-icon-size="40"></div>
-        <p>Zatím nemáš uložené žádné algoritmy.</p>
-        <p class="hint">V Labu u nalezeného řešení klepni na ikonu záložky – algoritmus se uloží i se svým případem a tady ho můžeš trénovat.</p>
+        <p>V této sadě zatím nejsou žádné algoritmy.</p>
+        <p class="hint">V Labu (záložka Řešení) vyber sadu v „Ukládat do sady“ a u nalezeného řešení klepni na ikonu záložky – algoritmus se uloží i se svým případem a tady ho můžeš trénovat.</p>
       </div>
       <div id="tr-cube" class="cube-host fill"></div>
       <div id="tr-pad" class="trainer-pad" tabindex="0" aria-label="Stopky trenažéru">
@@ -115,7 +117,8 @@
 
       <div id="tr-sheet" class="sheet" hidden>
         <div class="sheet-head">
-          <h2>Moje algoritmy</h2>
+          <h2 id="tr-sheet-title">Moje algoritmy</h2>
+          <span id="tr-count" class="hint"></span>
           <button type="button" id="tr-all" class="secondary small">Vybrat vše</button>
           <button type="button" id="tr-close" class="icon-btn" data-icon="close" aria-label="Zavřít"></button>
         </div>
@@ -139,33 +142,33 @@
         <div class="cubes">
           <article class="panel cube-panel">
             <header class="panel-head">
-              <h2>Výchozí stav</h2>
-              <button type="button" class="icon-btn" id="a-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
+              <h2><span class="long-label">Výchozí stav</span><span class="short-label">Start</span></h2>
+              <div class="head-actions">
+                <button type="button" class="icon-btn" id="a-scan" data-icon="camera" data-icon-size="18" title="Nafotit kostku" aria-label="Nafotit výchozí stav"></button>
+                <button type="button" class="icon-btn" id="a-home" data-icon="home" data-icon-size="18" title="Řešené dílky na svá místa" aria-label="Řešené dílky na svá místa"></button>
+                <button type="button" class="icon-btn" id="a-clear" data-icon="eraser" data-icon-size="18" title="Vyčistit výchozí stav" aria-label="Vyčistit výchozí stav"></button>
+                <button type="button" class="icon-btn" id="a-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
+              </div>
             </header>
             <div id="cube-a" class="cube-host fill"></div>
+            <div class="sq1-pad" id="sq1-pad-a" hidden></div>
             <div class="palette" id="palette-a" role="radiogroup" aria-label="Barva nálepky výchozí kostky"></div>
-            <div class="tool-row">
-              <input id="a-moves" placeholder="Zamíchat tahy…" autocomplete="off" spellcheck="false" aria-label="Tahy pro výchozí stav">
-              <button type="button" id="a-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy" aria-label="Provést tahy"></button>
-              <button type="button" id="a-home" class="icon-btn" data-icon="home" data-icon-size="18" title="Řešené dílky na svá místa" aria-label="Řešené dílky na svá místa"></button>
-              <button type="button" id="a-clear" class="icon-btn" data-icon="eraser" data-icon-size="18" title="Vyčistit výchozí stav" aria-label="Vyčistit výchozí stav"></button>
-            </div>
           </article>
 
           <article class="panel cube-panel">
             <header class="panel-head">
               <h2>Cíl</h2>
-              <button type="button" class="icon-btn" id="b-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
+              <div class="head-actions">
+                <button type="button" class="icon-btn" id="b-scan" data-icon="camera" data-icon-size="18" title="Nafotit kostku" aria-label="Nafotit cíl"></button>
+                <button type="button" class="icon-btn" id="b-home" data-icon="home" data-icon-size="18" title="Řešené dílky v cíli na svá místa" aria-label="Řešené dílky v cíli na svá místa"></button>
+                <button type="button" class="icon-btn" id="b-clear" data-icon="trash" data-icon-size="18" title="Zrušit celé zadání" aria-label="Zrušit celé zadání"></button>
+                <button type="button" class="icon-btn" id="b-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
+              </div>
             </header>
             <div id="cube-b" class="cube-host fill"></div>
+            <div class="sq1-pad" id="sq1-pad-b" hidden></div>
             <div class="palette" id="palette-b" role="radiogroup" aria-label="Barva nálepky cíle"></div>
             <div class="styles" id="styles" role="radiogroup" aria-label="Styl dílku"></div>
-            <div class="tool-row">
-              <input id="b-moves" placeholder="Tahy cíle…" autocomplete="off" spellcheck="false" aria-label="Tahy pro cíl">
-              <button type="button" id="b-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy na cíli" aria-label="Provést tahy na cíli"></button>
-              <button type="button" id="b-home" class="icon-btn" data-icon="home" data-icon-size="18" title="Řešené dílky v cíli na svá místa" aria-label="Řešené dílky v cíli na svá místa"></button>
-              <button type="button" id="b-clear" class="icon-btn" data-icon="trash" data-icon-size="18" title="Zrušit celé zadání" aria-label="Zrušit celé zadání"></button>
-            </div>
           </article>
         </div>
         <div id="task-status" class="task-status"></div>
@@ -190,8 +193,9 @@
               Nově vybarvený dílek dostane zvolený styl. Když klepneš na už zvolený styl, přepneš na
               nástroj styl: klepnutí na dílek mu styl změní, prázdné místo vyplní dílkem, který tam patří,
               a stejný styl podruhé dílek odebere.</li>
-            <li>Obě strany jdou nastavit i tahy (pole pod kostkou). U Square-1 se tahy (např. (1,0)/ (-1,-1)/)
-              používají i k nastavení tvaru. Kostky 3×3 a 2×2 otáčíš tažením.</li>
+            <li>U 3×3 a 2×2 můžeš kostku i <b>nafotit</b> (ikona fotoaparátu) – stěnu po stěně, barvy
+              se rozpoznají a před uložením je opravíš klepnutím. U Square-1 nastavíš tvar tlačítky
+              pod kreslením (otočení vrstev a řez). Kostky 3×3 a 2×2 otáčíš tažením.</li>
           </ol>
           <form method="dialog"><button class="primary">Rozumím</button></form>
         </dialog>
@@ -248,6 +252,7 @@
                 <option value="length">Podle délky</option>
               </select>
             </div>
+            <label class="save-set">Ukládat do sady <select id="save-set" aria-label="Sada pro ukládání"></select></label>
             <details class="settings">
               <summary>Nastavení hledání</summary>
               <div class="grid-fields">

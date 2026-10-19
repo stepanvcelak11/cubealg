@@ -98,25 +98,66 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await ctx.close();
 });
 
-test('lab: Pyraminx, Skewb, 2×2 a Square-1 – zadání stylem, zamíchání a hledání', async () => {
+test('lab: Pyraminx, Skewb, 2×2 a Square-1 – zadání, hledání a ovládání tvaru', async () => {
   const { p, ctx, errors } = await open('lab');
   const scrambles = { 222: "R U R' F", pyram: "R U' L", skewb: "R U' L", sq1: '(1,0)/ (-1,-1)/' };
-  for (const [id, scr] of Object.entries(scrambles)) {
-    await p.selectOption('#lab-puzzle', id);
-    // nástroj styl (Plná) a klepnutí na několik míst cíle = dílky na svých místech
-    await p.locator('#styles .style-btn', { hasText: 'Plná' }).tap();
-    const positions = await p.locator('#cube-b [data-pos]').evaluateAll((els) => els.map((e) => Number(e.dataset.pos)));
-    for (const pos of positions.filter((_, i) => i % 7 === 0).slice(0, 5)) {
-      await p.locator(`#cube-b [data-pos="${pos}"]`).first().click({ force: true });
+  // zadání připravené přes modely: několik dílků, výchozí strana zamíchaná
+  await p.evaluate(async (scr) => {
+    const { labModel } = await import('./src/ui/models.js');
+    for (const [id, alg] of Object.entries(scr)) {
+      const m = labModel(id);
+      const names = m.pieceNames.slice(0, 4);
+      const home = m.home(names);
+      const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+      localStorage.setItem(`ergocube.lab.${id}`, JSON.stringify({
+        constraints, colorsA: m.serialize(m.applyMoves(home, alg)), colorsB: m.serialize(home),
+      }));
     }
-    await p.fill('#a-moves', scr);
-    await p.locator('#a-apply').tap();
+  }, scrambles);
+  await p.reload();
+  for (const id of Object.keys(scrambles)) {
+    await p.selectOption('#lab-puzzle', id);
     assert.match(await p.locator('#task-status').innerText(), /✓/, id);
     await p.locator('#go-search').tap();
     await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 60000 });
     assert.match(await p.locator('#detail').innerText(), /řeší zadání/, `${id}: ${await p.locator('#status').innerText()}`);
     await p.locator('.segmented button[data-sub="task"]').tap();
   }
+  // Square-1: tlačítka tvaru (U ↻ změní tvar výchozí strany)
+  await p.locator('#sq1-pad-a button', { hasText: 'U ↻' }).tap();
+  assert.equal(await p.locator('#sq1-pad-a button').count(), 5);
+  // 3×3: tlačítko focení otevře dialog (bez kamery nabídne nahrání fotky)
+  await p.selectOption('#lab-puzzle', '333');
+  await p.locator('#a-scan').tap();
+  await p.waitForSelector('.scan-dialog[open]');
+  await p.locator('.scan-dialog .scan-head .icon-btn').tap();
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('sady algoritmů: uložení do nové sady a trénink jen této sady', async () => {
+  const { p, ctx, errors } = await open('lab');
+  p.on('dialog', (d) => d.accept('OLL'));
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const names = ['URF', 'U', 'F', 'R'];
+    const home = m.home(names);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+    localStorage.setItem('ergocube.v3', JSON.stringify({ constraints, colorsA: m.applyMoves(home, "R U R'"), colorsB: home }));
+  });
+  await p.reload();
+  await p.locator('#go-search').tap();
+  await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
+  await p.selectOption('#save-set', '+new');
+  assert.match(await p.locator('#save-set option:checked').innerText(), /OLL/);
+  await p.locator('#results .result .save').first().tap();
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  const oll = await p.locator('#tr-set option', { hasText: 'OLL' }).getAttribute('value');
+  await p.selectOption('#tr-set', oll);
+  await p.waitForFunction(() => !document.querySelector('#tr-cube').hidden);
+  await p.selectOption('#tr-set', 'default');
+  assert.equal(await p.locator('#tr-empty').isVisible(), true);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

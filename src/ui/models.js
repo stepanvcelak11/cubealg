@@ -87,7 +87,19 @@ function permModel(P) {
       ? { type: 'cube3d', facelets: P.view3d.facelets, scale: P.view3d.scale }
       : { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys },
     flatView: P.net ? { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys } : null,
+    faceSticker: faceStickerOf(P),
   };
+}
+
+// Nálepka stěny (řádek, sloupec tak, jak se na stěnu díváme v síti) – pro focení.
+const FACE_ORDER = ['U', 'R', 'F', 'D', 'L', 'B'];
+function faceStickerOf(P) {
+  if (P.id === '333') return (face, r, c) => FACE_ORDER.indexOf(face) * 9 + r * 3 + c;
+  if (P.id === '222') {
+    const from3 = P.view3d.facelets.map((f) => f.index);
+    return (face, r, c) => from3.indexOf(FACE_ORDER.indexOf(face) * 9 + r * 6 + c * 2);
+  }
+  return null;
 }
 
 function sq1Model(P) {

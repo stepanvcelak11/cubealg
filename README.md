@@ -27,20 +27,21 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
   průměr, graf vývoje, rozložení časů, filtr období a seznam složení s úpravou
   trestů a poznámek – pro každou skupinu zvlášť.
-- **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy): náhodný
-  případ (častěji ty pomalejší a méně trénované), nastavovací tahy, stopky,
-  odhalení algoritmu a statistiky.
+- **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
+  (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
+  (častěji ty pomalejší a méně trénované), nastavovací tahy, stopky, odhalení
+  algoritmu a statistiky.
 - **Lab** – vlastní případy a hledání ergonomických algoritmů pro **3×3, 2×2,
   Pyraminx, Skewb a Square-1**:
   - **Zadání:** výchozí stav i cíl se vybarvují po nálepkách paletou barev (dílek
-    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné) nebo nastaví
-    tahy. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
+    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné); 3×3 a 2×2 jde
+    i nafotit stěnu po stěně. Tvar Square-1 se nastavuje tlačítky. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
     i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
     ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
-    přehrávač a ukládání do trenažéru.
+    přehrávač a ukládání do zvolené sady trenažéru.
 
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají
 v prohlížeči (localStorage); zálohu jde stáhnout a obnovit v nastavení.

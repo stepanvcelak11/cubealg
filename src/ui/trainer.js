@@ -2,14 +2,19 @@
 // algoritmu a statistiky pro každý algoritmus.
 
 import { averageOf, formatTime } from '../timer/stats.js';
-import { $, el, iconButton } from './dom.js';
+import { $, el, iconButton, storage } from './dom.js';
 import { icon } from './icons.js';
-import { algs } from './store.js';
+import { algs, algSets } from './store.js';
+import { setOptions, pickSet } from './sets.js';
 import { Stopwatch } from './stopwatch.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
+
+// Trénovaná sada ('all' = všechny).
+let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
+const inTraining = () => (trainSet === 'all' ? algs.list() : algs.inSet(trainSet));
 
 let cube;
 let cubePuzzle = null; // hlavolam, pro který je vytvořený pohled
@@ -29,7 +34,7 @@ function algStats(a) {
 
 // Častěji vybírá algoritmy s méně pokusy a pomalejším průměrem.
 function pickNext() {
-  const pool = algs.list().filter((a) => a.enabled);
+  const pool = inTraining().filter((a) => a.enabled);
   if (!pool.length) return null;
   const candidates = pool.length > 1 ? pool.filter((a) => a.id !== currentId) : pool;
   const means = candidates.map((a) => algStats(a).mean).filter(Number.isFinite);
@@ -50,13 +55,14 @@ function pickNext() {
 
 function showCase() {
   const a = currentId && algs.get(currentId);
-  const empty = !algs.list().length;
+  const empty = !inTraining().length;
   $('tr-empty').hidden = !empty;
   $('tr-cube').hidden = empty;
   $('tr-pad').hidden = empty;
-  $('tr-next').disabled = !algs.list().some((x) => x.enabled);
-  const enabled = algs.list().filter((x) => x.enabled).length;
-  $('tr-count').textContent = `Moje algoritmy (${enabled}/${algs.list().length})`;
+  $('tr-next').disabled = !inTraining().some((x) => x.enabled);
+  const enabled = inTraining().filter((x) => x.enabled).length;
+  $('tr-count').textContent = `v tréninku ${enabled} z ${inTraining().length}`;
+  setOptions($('tr-set'), trainSet, { all: true, manage: true });
   if (!a) { $('tr-reveal').replaceChildren(); $('tr-name').textContent = ''; return; }
   const model = labModel(a.task.puzzle ?? '333');
   if (cubePuzzle !== model.id) {
@@ -95,7 +101,7 @@ function renderReveal(a) {
     sb.innerHTML = icon('shuffle', { size: 16 });
     sb.append(el('span', { textContent: 'Nastavení' }));
     sb.onclick = () => { showSetup = !showSetup; renderReveal(a); };
-    box.replaceChildren(el('div', { className: 'row-btns' }, b, sb), setup);
+    box.replaceChildren(...[el('div', { className: 'row-btns' }, b, sb), setup].filter(Boolean));
     return;
   }
   box.replaceChildren(
@@ -105,7 +111,7 @@ function renderReveal(a) {
       el('span', { textContent: `nejlepší ${formatTime(st.best)}` }),
       el('span', { textContent: `ao5 ${formatTime(st.ao5)}` }),
       el('span', { textContent: `průměr ${formatTime(st.mean)}` })),
-    setup);
+    ...(setup ? [setup] : []));
 }
 
 function setupOf(a) {
@@ -120,7 +126,9 @@ function next() {
 }
 
 function renderList() {
-  const list = algs.list();
+  const list = inTraining();
+  $('tr-sheet-title').textContent = trainSet === 'all' ? 'Všechny algoritmy' : algSets.get(trainSet).name;
+  $('tr-count').textContent = `v tréninku ${list.filter((x) => x.enabled).length} z ${list.length}`;
   $('tr-list').replaceChildren(...list.map((a) => {
     const st = algStats(a);
     const cb = el('input', { type: 'checkbox', checked: a.enabled, title: 'Zařadit do tréninku' });
@@ -135,11 +143,17 @@ function renderList() {
       label: 'Smazat',
       onClick: () => { if (confirm(`Smazat „${a.name}“?`)) { algs.remove(a.id); if (currentId === a.id) next(); } },
     });
+    // přesun do jiné sady
+    const move = el('select', { className: 'alg-set', ariaLabel: 'Sada' },
+      ...algSets.list().map((st) => el('option', { value: st.id, textContent: st.name })));
+    move.value = a.set ?? 'default';
+    move.onchange = () => algs.update(a.id, { set: move.value });
     return el('li', { className: 'alg-item' },
       cb,
       el('div', { className: 'alg-main' }, name,
         el('code', { textContent: `${a.task.puzzle && a.task.puzzle !== '333' ? `[${labModel(a.task.puzzle).P.name}] ` : ''}${a.alg}` }),
-        el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' })),
+        el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' }),
+        move),
       el('div', { className: 'alg-actions' }, train, del));
   }));
   if (!list.length) $('tr-list').replaceChildren(el('li', { className: 'hint', textContent: 'Žádné uložené algoritmy.' }));
@@ -172,13 +186,23 @@ export function initTrainer({ isActive }) {
   $('tr-open').onclick = () => { renderList(); $('tr-sheet').hidden = false; };
   $('tr-close').onclick = closeSheet;
   $('tr-all').onclick = () => {
-    const all = algs.list().every((a) => a.enabled);
-    for (const a of algs.list()) a.enabled = !all;
+    const all = inTraining().every((a) => a.enabled);
+    for (const a of inTraining()) a.enabled = !all;
     algs.save();
+  };
+  $('tr-set').onchange = () => {
+    trainSet = pickSet($('tr-set'), trainSet);
+    if (trainSet !== 'all' && !algSets.list().some((x) => x.id === trainSet)) trainSet = 'all';
+    storage.set('ergocube.trainer.set', trainSet);
+    $('tr-set').blur();
+    currentId = pickNext();
+    revealed = false;
+    showCase();
+    if (!$('tr-sheet').hidden) renderList();
   };
   algs.subscribe(() => {
     if (!$('tr-sheet').hidden) renderList();
-    if (currentId && !algs.get(currentId)) currentId = null;
+    if (currentId && (!algs.get(currentId) || !inTraining().includes(algs.get(currentId)))) currentId = null;
     if (!currentId) currentId = pickNext();
     showCase();
   });
