@@ -8,7 +8,7 @@
 // Z vybarvení A se rozpoznají dílky a sestaví se úplný stav pro hledání;
 // nesledované dílky se doplní libovolně (na výsledek nemají vliv).
 
-import { FACELETS, SLOTS, ORI_AT, slotByName } from './geometry.js';
+import { FACELETS, SLOTS, SLOT_OF, ORI_AT, slotByName } from './geometry.js';
 import { movePermutation, permutationParity } from './cube.js';
 import { parseAlg } from './notation.js';
 
@@ -78,11 +78,11 @@ export function trackedPieces(constraints) {
  * Sestaví výchozí stav pro hledání.
  * @returns {{loc: Uint8Array | null, errors: string[], untracked: string[]}}
  */
-export function buildStart(colors, constraints) {
+export function buildStart(colors, constraints, where = 'výchozí kostce') {
   const { pieces, errors } = identifyPieces(colors);
   const tracked = trackedPieces(constraints);
   for (const name of tracked) {
-    if (!pieces.has(name)) errors.push(`Dílek ${name} je označený v cíli, ale na výchozí kostce chybí`);
+    if (!pieces.has(name)) errors.push(`Dílek ${name} na ${where} chybí`);
   }
   const untracked = [...pieces.keys()].filter((n) => !tracked.includes(n));
   if (errors.length) return { loc: null, errors, untracked };
@@ -204,4 +204,22 @@ export function completeCorner(colors, slotName) {
     }
   }
   return colors;
+}
+
+/**
+ * Vybarví jednu nálepku (stejná barva podruhé = smazat). Vznikne-li přebarvením
+ * nemožný dílek, zbylé nálepky slotu se smažou (kromě nálepky lastPos, vybarvené
+ * těsně předtím), aby šel dílek rovnou přebarvit; roh se dvěma nálepkami se doplní.
+ */
+export function paintSticker(colors, pos, color, lastPos = -1) {
+  const slot = SLOTS[SLOT_OF[pos]];
+  let out = [...colors];
+  out[pos] = out[pos] === color ? EMPTY : color;
+  if (out[pos] === EMPTY) return out;
+  const complete = slot.facelets.every((f) => out[f] !== EMPTY);
+  if (complete && slot.type !== 'center' && !pieceAt(out, slot.name)) {
+    for (const f of slot.facelets) if (f !== pos && f !== lastPos) out[f] = EMPTY;
+  }
+  out = completeCorner(out, slot.name);
+  return out;
 }

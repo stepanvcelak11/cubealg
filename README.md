@@ -27,11 +27,11 @@ Spodní lišta má čtyři sekce:
 - **Trenažér** – vlastní algoritmy uložené z Labu: náhodný případ (častěji ty
   pomalejší a méně trénované), stopky, odhalení algoritmu a statistiky.
 - **Lab** – vlastní případy a hledání ergonomických algoritmů:
-  - **Zadání:** v cíli vyber štětec (plná = místo i natočení, čárkovaná = jen
-    místo, tečkovaná = jen natočení, guma) a klepej na dílky. Ve výchozí kostce
-    vyber barvu z palety a vybarvuj jednotlivé nálepky (u rohu stačí dvě,
-    třetí se doplní sama) – nebo zamíchej tahy. Kostky jdou tažením volně
-    otáčet do libovolné polohy.
+  - **Zadání:** obě kostky (výchozí stav a cíl) se vybarvují po nálepkách
+    paletou barev (u rohu stačí dvě nálepky, třetí se doplní sama). Řeší se
+    dílky vybarvené v cíli, každý se stylem: plná = místo i natočení,
+    čárkovaná = jen místo, tečkovaná = jen natočení. Výchozí stav jde
+    i zamíchat tahy. Kostky jdou tažením volně otáčet.
   - **Tahy a váhy:** povolené tahy a ergonomické váhy.
   - **Řešení:** seznam řešení podle pohodlnosti, přehrávač a ukládání do trenažéru.
 

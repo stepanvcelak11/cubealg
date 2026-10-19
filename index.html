@@ -103,7 +103,7 @@
               <button type="button" class="icon-btn" id="a-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
             </header>
             <div id="cube-a" class="cube-host fill"></div>
-            <div class="palette" id="palette" role="radiogroup" aria-label="Barva nálepky"></div>
+            <div class="palette" id="palette-a" role="radiogroup" aria-label="Barva nálepky výchozí kostky"></div>
             <div class="tool-row">
               <input id="a-moves" placeholder="Zamíchat tahy…" autocomplete="off" spellcheck="false" aria-label="Tahy pro výchozí stav">
               <button type="button" id="a-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy" aria-label="Provést tahy"></button>
@@ -120,9 +120,11 @@
               <button type="button" class="icon-btn" id="b-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
             </header>
             <div id="cube-b" class="cube-host fill"></div>
+            <div class="palette" id="palette-b" role="radiogroup" aria-label="Barva nálepky cíle"></div>
             <div class="styles" id="styles" role="radiogroup" aria-label="Styl dílku"></div>
             <div class="tool-row">
-              <button type="button" id="b-clear" class="secondary small" data-icon="eraser" data-icon-size="16" title="Zrušit všechny dílky"><span>Zrušit vše</span></button>
+              <button type="button" id="b-home" class="secondary small" data-icon="home" data-icon-size="16" title="Označené dílky na svá místa"><span>Na místa</span></button>
+              <button type="button" id="b-clear" class="secondary small" data-icon="eraser" data-icon-size="16" title="Zrušit všechny dílky"><span>Zrušit</span></button>
             </div>
           </article>
         </div>
@@ -135,16 +137,17 @@
         <dialog id="help-dialog" class="help-dialog">
           <h2>Jak zadat případ</h2>
           <ol>
-            <li><b>Cíl:</b> vyber pod kostkou štětec a klepej na dílky, které se mají vyřešit:
+            <li><b>Obě kostky</b> vybarvuješ po nálepkách: vyber barvu z palety a klepej. Stejnou barvou
+              nebo gumou nálepku smažeš. U rohu stačí dvě nálepky, třetí se doplní sama.</li>
+            <li><b>Výchozí stav</b> = jak dílky leží teď, <b>cíl</b> = kde a jak mají skončit.</li>
+            <li>Styl dílku v cíli:
               <span class="legend"><i class="sw solid"></i>plná = místo i natočení</span>
               <span class="legend"><i class="sw dashed"></i>čárkovaná = jen místo</span>
               <span class="legend"><i class="sw dotted"></i>tečkovaná = jen natočení</span>
-              Klepnutím stejným štětcem nebo gumou dílek zrušíš.</li>
-            <li>Vybarvený dílek se sám objeví i ve <b>výchozí kostce</b> na svém místě.</li>
-            <li><b>Výchozí stav:</b> vyber barvu z palety a klepáním vybarvuj jednotlivé nálepky tak,
-              jak jsou na tvé kostce. Stejnou barvou nebo gumou nálepku smažeš. U rohu stačí dvě nálepky,
-              třetí se doplní sama. Nebo napiš tahy, kterými se má zamíchat.</li>
-            <li>Kostky otáčíš tažením.</li>
+              Nově vybarvený dílek dostane zvolený styl. Když klepneš na už zvolený styl, přepneš na
+              nástroj styl: klepnutí na dílek mu styl změní, prázdné místo vyplní dílkem, který tam patří,
+              a stejný styl podruhé dílek odebere.</li>
+            <li>Výchozí stav jde i zamíchat tahy. Kostky otáčíš tažením.</li>
           </ol>
           <form method="dialog"><button class="primary">Rozumím</button></form>
         </dialog>

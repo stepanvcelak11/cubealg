@@ -2,20 +2,21 @@
 // hledání ergonomických řešení a jejich přehrávání.
 //
 // Zadání po dílcích:
-//   Cíl     – vybereš štětec (plná / čárkovaná / tečkovaná / guma) a klepáním
-//             na dílky je vybarvuješ; nový dílek se objeví i ve výchozí kostce
-//   Výchozí – vybarvuje se po jednotlivých nálepkách barvou z palety;
-//             u rohu stačí dvě nálepky, třetí se doplní sama
+//   Obě kostky se vybarvují po nálepkách barvou z palety (u rohu stačí dvě
+//   nálepky, třetí se doplní sama). Cíl navíc určuje styl každého dílku:
+//   plná = místo i natočení, čárkovaná = jen místo, tečkovaná = jen natočení.
+//   Se zvoleným stylem (bez barvy) klepnutí na dílek změní jeho styl, prázdné
+//   místo vyplní dílkem, který tam patří.
 
 import { SLOTS, SLOT_OF, FACELETS } from '../core/geometry.js';
 import { BASES, MOVE_DEFS, parseAlg, moveToString, algToString } from '../core/notation.js';
-import { applyAlg, solved } from '../core/cube.js';
+import { applyAlg } from '../core/cube.js';
 import { ROTATIONS } from '../core/rotations.js';
 import { compileGoal } from '../core/constraints.js';
 import { MoveSet, MOVESET_PRESETS, AMOUNTS } from '../core/moveset.js';
 import {
   EMPTY, blankColors, homeColors, moveColors, identifyPieces, buildStart, trackedPieces,
-  placePiece, removePiece, findPiece, pieceAt, completeCorner,
+  placePiece, removePiece, findPiece, pieceAt, paintSticker,
 } from '../core/task.js';
 import { scoreAlg } from '../ergonomics/score.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS, moveWeight } from '../ergonomics/weights.js';
@@ -31,7 +32,6 @@ const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
   { type: 'permutation', label: 'Čárkovaná', title: 'Jen místo (permutace)' },
   { type: 'orientation', label: 'Tečkovaná', title: 'Jen natočení (orientace)' },
-  { type: 'erase', label: 'Guma', title: 'Odebrat dílek' },
 ];
 const AMOUNT_LABELS = { 1: 'po směru', [-1]: "proti (')", 2: 'dvojitě (2)' };
 const SHOWN_RESULTS = 150;
@@ -41,11 +41,14 @@ const saved = storage.get('ergocube.v3') ?? {};
 const ui = {
   constraints: saved.constraints ?? Object.fromEntries(SLOTS.map((s) => [s.name, s.type === 'center' ? 'solved' : 'ignore'])),
   colorsA: saved.colorsA ?? homeColors(CENTERS),
+  colorsB: null,
   bases: saved.bases ?? MOVESET_PRESETS.RUF.bases,
   amounts: saved.amounts ?? AMOUNTS,
-  style: 'solved',   // štětec: solved / permutation / orientation / erase
-  paint: 'U',       // barva štětce výchozí kostky (EMPTY = guma)
-  lastPaint: -1,    // naposledy vybarvená nálepka
+  style: 'solved',  // styl nových dílků v cíli: solved / permutation / orientation
+  paint: { A: 'U', B: null }, // barva štětce (EMPTY = guma); u cíle null = nástroj styl
+  lastPaint: -1,    // naposledy vybarvená nálepka (pos + 54 u cíle)
+  memory: {},       // pamatovaný styl dílků, které z cíle zmizely
+  autoA: new Set(), // dílky, které do výchozí kostky dala aplikace
   undo: [],
   results: new Map(),
   chosen: null,     // algoritmus v přehrávači
@@ -54,14 +57,16 @@ const ui = {
   ergo: loadErgo(),
   sub: 'task',
 };
+// Starší uložené zadání nemělo vybarvený cíl: cíl = označené dílky na svých místech.
+ui.colorsB = saved.colorsB ?? homeColors(trackedPieces(ui.constraints));
 const triggers = buildTriggers();
 const client = new SearchClient();
 let cubeA, cubeB, cubeP;
 let onSubChange = () => {};
 
 function save() {
-  const { constraints, colorsA, bases, amounts } = ui;
-  storage.set('ergocube.v3', { constraints, colorsA, bases, amounts });
+  const { constraints, colorsA, colorsB, bases, amounts } = ui;
+  storage.set('ergocube.v3', { constraints, colorsA, colorsB, bases, amounts });
 }
 
 function loadErgo() {
@@ -71,7 +76,7 @@ function loadErgo() {
 const score = (alg) => scoreAlg(alg, { ...ui.ergo, triggers });
 
 function snapshot() {
-  ui.undo.push({ constraints: { ...ui.constraints }, colorsA: [...ui.colorsA] });
+  ui.undo.push({ constraints: { ...ui.constraints }, colorsA: [...ui.colorsA], colorsB: [...ui.colorsB] });
   if (ui.undo.length > 60) ui.undo.shift();
 }
 
@@ -94,98 +99,150 @@ export function labSub() {
 
 // --- Zadání -------------------------------------------------------------------------
 
-function tapB(pos) {
-  const piece = SLOTS[SLOT_OF[pos]].name;
-  snapshot();
-  if (ui.style === 'erase' || ui.constraints[piece] === ui.style) {
-    ui.constraints[piece] = 'ignore';
-    ui.colorsA = removePiece(ui.colorsA, piece);
-  } else {
-    mark(piece, ui.style);
-  }
-  taskChanged();
-}
-
-// Označí dílek v cíli; není-li ještě ve výchozí kostce, objeví se na svém místě.
-function mark(piece, style) {
-  ui.constraints[piece] = style;
-  if (!findPiece(ui.colorsA, piece)) {
-    const home = SLOTS.find((s) => s.name === piece);
-    if (home.facelets.every((f) => ui.colorsA[f] === EMPTY)) ui.colorsA = placePiece(ui.colorsA, piece, piece);
-  }
-}
-
 const PALETTE = [
   { c: 'U', label: 'Bílá' }, { c: 'D', label: 'Žlutá' }, { c: 'F', label: 'Zelená' },
   { c: 'B', label: 'Modrá' }, { c: 'R', label: 'Červená' }, { c: 'L', label: 'Oranžová' },
   { c: EMPTY, label: 'Guma' },
 ];
+const colorsOf = (side) => (side === 'A' ? ui.colorsA : ui.colorsB);
+const homeEmpty = (colors, name) => SLOTS.find((s) => s.name === name).facelets.every((f) => colors[f] === EMPTY);
+
+const homeIs = (colors, name) => SLOTS.find((s) => s.name === name).facelets.every((f) => colors[f] === FACELETS[f].face);
+
+/**
+ * Řeší se právě ty dílky, které jsou (celé) vybarvené v cíli; styl dílku,
+ * který z cíle zmizí, se pamatuje pro případ, že se vrátí. Nový dílek v cíli
+ * se objeví i ve výchozí kostce na svém místě (je-li volné) a zase zmizí,
+ * pokud ho tam dala aplikace a nikdo s ním nehnul.
+ */
+function syncTarget() {
+  const inB = identifyPieces(ui.colorsB).pieces;
+  for (const { name } of SLOTS) {
+    if (inB.has(name)) {
+      if (!isMarked(name)) ui.constraints[name] = ui.memory[name] ?? ui.style;
+      if (!findPiece(ui.colorsA, name) && homeEmpty(ui.colorsA, name)) {
+        ui.colorsA = placePiece(ui.colorsA, name, name);
+        ui.autoA.add(name);
+      }
+    } else if (isMarked(name)) {
+      ui.memory[name] = ui.constraints[name];
+      ui.constraints[name] = 'ignore';
+      if (ui.autoA.has(name) && homeIs(ui.colorsA, name)) ui.colorsA = removePiece(ui.colorsA, name);
+      ui.autoA.delete(name);
+    }
+  }
+}
+
+function paint(side, pos) {
+  const slot = SLOTS[SLOT_OF[pos]];
+  const colors = colorsOf(side);
+  const before = pieceAt(colors, slot.name);
+  const key = side === 'B' ? pos + 54 : pos;
+  const last = ui.lastPaint >= 54 === (side === 'B') ? ui.lastPaint % 54 : -1;
+  const next = paintSticker(colors, pos, ui.paint[side], last);
+  ui.lastPaint = key;
+  if (side === 'B') { ui.colorsB = next; return; }
+  ui.colorsA = next;
+  ui.autoA.delete(before);
+  // Dokončený dílek ve výchozí kostce, který v cíli není, se v cíli objeví na svém místě.
+  const after = pieceAt(next, slot.name);
+  ui.autoA.delete(after);
+  if (after && after !== before && !findPiece(ui.colorsB, after) && homeEmpty(ui.colorsB, after)) {
+    ui.colorsB = placePiece(ui.colorsB, after, after);
+  }
+}
 
 function tapA(pos) {
-  const slot = SLOTS[SLOT_OF[pos]];
-  const before = pieceAt(ui.colorsA, slot.name);
   snapshot();
-  // stejná barva podruhé = smazat nálepku
-  let colors = [...ui.colorsA];
-  colors[pos] = colors[pos] === ui.paint ? EMPTY : ui.paint;
-  if (colors[pos] !== EMPTY) {
-    const complete = slot.facelets.every((f) => colors[f] !== EMPTY);
-    if (complete && slot.type !== 'center' && !pieceAt(colors, slot.name)) {
-      // Přebarvením vznikl nemožný dílek: zbylé nálepky se smažou (kromě té
-      // vybarvené těsně předtím), aby šel dílek rovnou přebarvit/natočit.
-      for (const f of slot.facelets) if (f !== pos && f !== ui.lastPaint) colors[f] = EMPTY;
-    }
-    colors = completeCorner(colors, slot.name);
-  }
-  ui.colorsA = colors;
-  ui.lastPaint = pos;
-  // Nově dokončený dílek, který v cíli ještě není, se v cíli označí.
-  const after = pieceAt(colors, slot.name);
-  if (after && after !== before && !isMarked(after)) ui.constraints[after] = ui.style === 'erase' ? 'solved' : ui.style;
+  paint('A', pos);
   taskChanged();
 }
 
-function renderPalette() {
-  $('palette').replaceChildren(...PALETTE.map(({ c, label }) => {
+function tapB(pos) {
+  snapshot();
+  if (ui.paint.B !== null) {
+    paint('B', pos);
+  } else {
+    // nástroj styl: dílek ve slotu dostane styl (stejný styl podruhé = odebrat),
+    // prázdné místo se vyplní dílkem, který tam patří
+    const slot = SLOTS[SLOT_OF[pos]];
+    const piece = pieceAt(ui.colorsB, slot.name);
+    if (piece && ui.constraints[piece] === ui.style) {
+      ui.colorsB = removePiece(ui.colorsB, piece);
+    } else if (piece) {
+      ui.constraints[piece] = ui.style;
+    } else if (!findPiece(ui.colorsB, slot.name) && homeEmpty(ui.colorsB, slot.name)) {
+      ui.colorsB = placePiece(ui.colorsB, slot.name, slot.name);
+      ui.memory[slot.name] = ui.style;
+    } else {
+      ui.undo.pop();
+      return;
+    }
+  }
+  taskChanged();
+}
+
+function renderPalette(side) {
+  $(`palette-${side.toLowerCase()}`).replaceChildren(...PALETTE.map(({ c, label }) => {
     const b = el('button', { type: 'button', className: `paint${c === EMPTY ? ' eraser' : ''}`, title: label, ariaLabel: label });
     if (c === EMPTY) b.innerHTML = icon('eraser', { size: 16 });
     else b.style.setProperty('--c', `var(--c-${c})`);
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', String(ui.paint === c));
-    b.onclick = () => { ui.paint = c; renderPalette(); };
+    b.setAttribute('aria-checked', String(ui.paint[side] === c));
+    b.onclick = () => {
+      ui.paint[side] = c;
+      renderPalette(side);
+      if (side === 'B') renderStyles();
+    };
     return b;
   }));
 }
 
 function renderStyles() {
+  const styleTool = ui.paint.B === null;
+  $('styles').classList.toggle('tool', styleTool);
   $('styles').replaceChildren(...STYLES.map(({ type, label, title }) => {
     const b = el('button', { type: 'button', className: 'style-btn', title },
-      type === 'erase' ? el('span', { className: 'sw-icon', innerHTML: icon('eraser', { size: 18 }) }) : el('i', { className: `sw ${STYLE_OF[type]}` }),
-      el('span', { textContent: label }));
+      el('i', { className: `sw ${STYLE_OF[type]}` }), el('span', { textContent: label }));
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(ui.style === type));
-    b.onclick = () => { ui.style = type; renderStyles(); renderTaskStatus(); };
+    b.onclick = () => {
+      // Opakované klepnutí na zvolený styl přepne na nástroj styl (klepání na dílky).
+      if (ui.style === type || styleTool) ui.paint.B = null;
+      ui.style = type;
+      renderStyles();
+      renderPalette('B');
+      renderTaskStatus();
+    };
     return b;
   }));
 }
 
-function renderCubes() {
-  const { pieces } = identifyPieces(ui.colorsA);
+function stickersFromColors(colors) {
+  const { pieces } = identifyPieces(colors);
   const pieceAtSlot = new Map([...pieces].map(([name, p]) => [p.slot, name]));
-  cubeA.render(ui.colorsA.map((color, pos) => {
+  return colors.map((color, pos) => {
     if (color === EMPTY) return { color, style: 'none' };
     const name = pieceAtSlot.get(SLOT_OF[pos]);
     // neúplný dílek se ukazuje plně, aby bylo vidět, co je už vybarvené
     return { color, style: name ? STYLE_OF[ui.constraints[name]] ?? 'faded' : 'solid' };
-  }));
-  cubeB.render(FACELETS.map((f) => {
-    const name = SLOTS[SLOT_OF[f.index]].name;
-    return { color: f.face, style: STYLE_OF[ui.constraints[name]] ?? 'none' };
-  }));
+  });
+}
+
+function renderCubes() {
+  cubeA.render(stickersFromColors(ui.colorsA));
+  cubeB.render(stickersFromColors(ui.colorsB));
 }
 
 function taskInfo() {
-  return { tracked: trackedPieces(ui.constraints), ...buildStart(ui.colorsA, ui.constraints) };
+  const start = buildStart(ui.colorsA, ui.constraints);
+  const target = buildStart(ui.colorsB, ui.constraints, 'cílové kostce');
+  return {
+    tracked: trackedPieces(ui.constraints),
+    loc: start.loc && target.loc ? start.loc : null,
+    target: target.loc,
+    errors: [...start.errors.map((e) => `Výchozí: ${e}`), ...target.errors.map((e) => `Cíl: ${e}`)],
+  };
 }
 
 function renderTaskStatus() {
@@ -193,7 +250,7 @@ function renderTaskStatus() {
   const pieces = tracked.filter((n) => !CENTERS.includes(n));
   let node;
   if (!pieces.length) {
-    node = el('span', { className: 'warn', textContent: 'V cíli klepej na dílky, které se mají vyřešit. Ve výchozí kostce vybarvi nálepky podle skutečné kostky.' });
+    node = el('span', { className: 'warn', textContent: 'Vybarvi na obou kostkách dílky, které se mají vyřešit (nebo v cíli klepni stylem na dílek).' });
   } else if (errors.length) {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
   } else {
@@ -203,6 +260,7 @@ function renderTaskStatus() {
 }
 
 function taskChanged() {
+  syncTarget();
   save();
   renderStyles();
   renderCubes();
@@ -309,7 +367,7 @@ function searchUi(running) {
 const num = (id, min, max) => Math.min(max, Math.max(min, Math.round(Number($(id).value) || min)));
 
 function startSearch() {
-  const { tracked, loc, errors } = taskInfo();
+  const { tracked, loc, target, errors } = taskInfo();
   if (errors.length || !loc) { $('status').textContent = `Zadání není v pořádku: ${errors[0]}`; return; }
   if (!tracked.some((n) => !CENTERS.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
   const moveSet = currentMoveSet();
@@ -329,7 +387,7 @@ function startSearch() {
     pending = true;
     requestAnimationFrame(() => { pending = false; renderResults(); });
   };
-  client.start({ start: loc, target: solved(), constraints: ui.constraints, moves: moveSet.moves(), options: opts, ergonomics: ui.ergo }, {
+  client.start({ start: loc, target, constraints: ui.constraints, moves: moveSet.moves(), options: opts, ergonomics: ui.ergo }, {
     onProgress: (p) => {
       $('status').textContent = p.phase === 'tables'
         ? `Připravuji heuristiku ${p.table}/${p.tables}…`
@@ -394,7 +452,7 @@ function bar(b) {
     }));
 }
 
-const taskSnapshot = () => ({ colorsA: [...ui.colorsA], constraints: { ...ui.constraints } });
+const taskSnapshot = () => ({ colorsA: [...ui.colorsA], colorsB: [...ui.colorsB], constraints: { ...ui.constraints } });
 const savedFor = (alg) => algs.find(alg, taskSnapshot());
 
 function toggleSave(alg) {
@@ -449,7 +507,7 @@ function playerMoves() {
 }
 
 function renderPlayer() {
-  const { loc, errors } = taskInfo();
+  const { loc, target, errors } = taskInfo();
   const detail = $('detail');
   const saveBtn = $('p-save');
   const moves = playerMoves();
@@ -475,7 +533,7 @@ function renderPlayer() {
   saveBtn.classList.toggle('on', isSaved);
 
   const moveSet = currentMoveSet();
-  const goal = compileGoal(ui.constraints);
+  const goal = compileGoal(ui.constraints, target);
   const end = applyAlg(loc, moves);
   const exact = goal.test(end);
   const rotated = !exact && ROTATIONS.some((r) => goal.test(applyAlg(end, r)));
@@ -552,10 +610,12 @@ export function initLab({ onSub } = {}) {
   $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') $('a-apply').click(); };
   $('a-home').onclick = () => { snapshot(); ui.colorsA = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
   $('a-clear').onclick = () => { snapshot(); ui.colorsA = blankColors(); taskChanged(); };
+  $('b-home').onclick = () => { snapshot(); ui.colorsB = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
   $('b-clear').onclick = () => {
     snapshot();
     for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'ignore';
     ui.colorsA = blankColors();
+    ui.colorsB = blankColors();
     taskChanged();
   };
   $('undo').onclick = () => {
@@ -563,6 +623,7 @@ export function initLab({ onSub } = {}) {
     if (!last) return;
     ui.constraints = last.constraints;
     ui.colorsA = last.colorsA;
+    ui.colorsB = last.colorsB;
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
@@ -610,8 +671,10 @@ export function initLab({ onSub } = {}) {
   algs.subscribe(() => { renderResults(); renderPlayer(); });
 
   stopPlaying();
+  syncTarget();
   renderStyles();
-  renderPalette();
+  renderPalette('A');
+  renderPalette('B');
   renderMoveSet();
   renderErgo();
   renderCubes();
