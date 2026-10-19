@@ -11,68 +11,57 @@ Bez build kroku – čisté ES moduly.
 ```sh
 npm start   # http://localhost:8080
 npm test    # node --test
+npm run e2e # testy v prohlížeči (potřebují playwright a Chromium)
 ```
 
 ## Jak se používá
 
-Spodní lišta má čtyři sekce:
+Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zálohu dat.
 
-- **Timer** – zamíchání pro disciplíny WCA (2×2 až 7×7, OH, BLD, FMC, Clock,
-  Megaminx, Pyraminx, Skewb, Square-1), stopky ve stylu speedcubingu
-  (podržet mezerník/prst → pustit = start), volitelná inspekce 15 s, +2 a DNF.
-  2×2 se míchá z náhodného stavu, ostatní náhodnými tahy. Každá disciplína
-  může mít vlastní skupiny složení (např. pro různé kostky).
+- **Timer** – zamíchání pro disciplíny WCA (2×2 až 7×7, OH, BLD, FMC, Multi-Blind,
+  Clock, Megaminx, Pyraminx, Skewb, Square-1), stopky ve stylu speedcubingu
+  (podržet mezerník/prst → pustit = start), volitelná inspekce 15 s (i s hlasovým
+  hlášením 8 a 12 s), +2, DNF a poznámky. 2×2 a 3×3 (vč. OH, BLD, FMC a Multi-Blind)
+  se míchají z náhodného stavu, ostatní náhodnými tahy. Každá disciplína může mít
+  vlastní skupiny složení (např. pro různé kostky).
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
-  průměr, graf vývoje a seznam složení s úpravou trestů – pro každou skupinu zvlášť.
-- **Trenažér** – vlastní algoritmy uložené z Labu: náhodný případ (častěji ty
-  pomalejší a méně trénované), stopky, odhalení algoritmu a statistiky.
-- **Lab** – vlastní případy a hledání ergonomických algoritmů:
-  - **Zadání:** obě kostky (výchozí stav a cíl) se vybarvují po nálepkách
-    paletou barev (u rohu stačí dvě nálepky, třetí se doplní sama). Řeší se
-    dílky vybarvené v cíli, každý se stylem: plná = místo i natočení,
-    čárkovaná = jen místo, tečkovaná = jen natočení. Výchozí stav jde
-    i zamíchat tahy. Kostky jdou tažením volně otáčet.
-  - **Tahy a váhy:** povolené tahy a ergonomické váhy.
-  - **Řešení:** seznam řešení podle pohodlnosti, přehrávač a ukládání do trenažéru.
+  průměr, graf vývoje, rozložení časů, filtr období a seznam složení s úpravou
+  trestů a poznámek – pro každou skupinu zvlášť.
+- **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy): náhodný
+  případ (častěji ty pomalejší a méně trénované), nastavovací tahy, stopky,
+  odhalení algoritmu a statistiky.
+- **Lab** – vlastní případy a hledání ergonomických algoritmů pro **3×3, 2×2,
+  Pyraminx, Skewb a Square-1**:
+  - **Zadání:** výchozí stav i cíl se vybarvují po nálepkách paletou barev (dílek
+    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné) nebo nastaví
+    tahy. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
+    i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
+    ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.
+  - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
+    časů z trenažéru.
+  - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
+    přehrávač a ukládání do trenažéru.
 
-Všechna data se ukládají v prohlížeči (localStorage).
+Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají
+v prohlížeči (localStorage); zálohu jde stáhnout a obnovit v nastavení.
 
-## Struktura
+## Hlavolamy v Labu
 
-```
-index.html, styles.css      rozhraní
-src/core/
-  geometry.js     54 nálepek, 26 slotů dílků (URF, FR, …), orientace
-  notation.js     parsování/výpis tahů, inverze, zjednodušení, zrcadlení
-  cube.js         stav kostky, aplikace tahů, převod z/do barev (Kociemba)
-  task.js         zadání dvěma kostkami: rozpoznání vybarvených dílků
-  constraints.js  cíl = omezení pro každý dílek (složeno / permutace / orientace)
-  moveset.js      povolené tahy + kanonické pořadí pro hledání
-  metrics.js      HTM / QTM / STM / ETM
-  rotations.js    24 natočení celé kostky
-src/search/
-  engine.js       IDA* nad sledovanými dílky + pattern databáze (zpětné BFS)
-  worker.js       Web Worker – hledání mimo hlavní vlákno
-  client.js       ovládání workeru z UI (spuštění, průběh, zrušení)
-src/timer/
-  events.js       disciplíny WCA
-  scramble.js     zamíchání (N×N, Pyraminx, Skewb, Megaminx, Clock, Square-1)
-  random-state.js 2×2 z náhodného stavu (optimální řešení inverzí)
-  scramble-worker.js  zamíchání ve Web Workeru
-  stats.js        průměry podle WCA, formát časů
-src/ergonomics/
-  weights.js      váhy tahů, penalizace, úchopy (vše laditelné)
-  triggers.js     plynulé triggery (sexy move, sledge, …) + zrcadla pro levou ruku
-  score.js        Discomfort Score s rozpisem, řazení algoritmů
-src/ui/
-  app.js          navigace mezi sekcemi
-  timer.js, stats.js, trainer.js, lab.js   jednotlivé sekce
-  stopwatch.js    stopky (mezerník / dotyk, inspekce)
-  store.js        uložená složení a vlastní algoritmy
-  cube3d.js       3D kostka v CSS (otáčení, klepání, animace, styly nálepek)
-  icons.js        SVG ikony
-test/             testy (node --test)
-```
+Permutační hlavolamy (3×3, 2×2, Pyraminx, Skewb) mají společný model
+(`src/puzzles/perm.js`): z geometrie nálepek (střed a normála) se spočtou dílky
+a permutace tahů otočením kolem os. Hledání je pro ně společné.
+
+| hlavolam  | tahy                                  | poznámka                          |
+|-----------|---------------------------------------|-----------------------------------|
+| 3×3       | vnější, slice, široké, rotace         | plné ergonomické hodnocení        |
+| 2×2       | R U F L D B, rotace x y z             | hodnocení jako u 3×3              |
+| Pyraminx  | U L R B (vrstva), u l r b (špička)    | váhy tahů                         |
+| Skewb     | R U L B (notace WCA: rohy DRB ULB DLF DLB) | váhy tahů                    |
+| Square-1  | (a,b) a řez /                         | vlastní model a hledání po řezech |
+
+Square-1 (`src/puzzles/sq1.js`, `src/search/sq1engine.js`) mění tvar, takže má
+vlastní model: 2 × 12 pozic po 30°, prostřední vrstva, notace WCA. Hledání je IDA*
+po řezech s tabulkami (tvar po řezu × pozice dílku) a tabulkou tvarů.
 
 ## Model stavu
 
@@ -131,11 +120,12 @@ Všechny konstanty jsou v `src/ergonomics/weights.js` a dají se předat přes `
 ## Nasazení
 
 GitHub Actions (`.github/workflows/pages.yml`) při pushi do `main` spustí testy
-a nasadí web na GitHub Pages. V nastavení repozitáře musí být
+(i v prohlížeči) a nasadí web na GitHub Pages včetně seznamu souborů pro offline režim. V nastavení repozitáře musí být
 *Settings → Pages → Source: GitHub Actions*.
 
 ## Možná rozšíření
 
 - vlastní triggery a úchopy v UI, ergonomie pro levou ruku
 - hledání řízené přímo skóre (místo délky)
-- ukládání vlastních případů a sbírek algoritmů
+- silnější heuristika pro dlouhé případy Square-1 (dvojice dílků)
+- zamíchání 4×4 a větších z náhodného stavu, Bluetooth kostky

@@ -15,6 +15,7 @@ import { PUZZLES } from '../puzzles/index.js';
 import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomics/puzzles.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
+import { calibrate, featureLabel } from '../ergonomics/calibrate.js';
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
@@ -112,8 +113,12 @@ function snapshot() {
 
 // --- Pohledy -------------------------------------------------------------------------
 
+// Plošná síť místo 3D (jen 3×3 a 2×2); volba se pamatuje.
+let flat = !!storage.get('ergocube.lab.flat');
+const currentView = () => (flat && model.flatView ? model.flatView : model.view);
+
 function makeView(container, opts) {
-  const v = model.view;
+  const v = currentView();
   return v.type === 'cube3d'
     ? new Cube3D(container, { ...opts, facelets: v.facelets, scale: v.scale })
     : new NetView(container, { ...opts, viewBox: v.viewBox, polys: v.polys });
@@ -123,9 +128,12 @@ function buildViews() {
   cubeA = makeView($('cube-a'), { label: 'Výchozí stav', onSticker: tapA, fill: true });
   cubeB = makeView($('cube-b'), { label: 'Cíl', onSticker: tapB, fill: true });
   cubeP = makeView($('cube-p'), { label: 'Přehrávač' });
-  const is3d = model.view.type === 'cube3d';
+  const is3d = currentView().type === 'cube3d';
   $('a-view').hidden = !is3d;
   $('b-view').hidden = !is3d;
+  $('flat').hidden = !model.flatView;
+  $('flat').setAttribute('aria-pressed', String(flat));
+  $('flat').innerHTML = icon(flat ? 'cube3d' : 'net', { size: 22 });
 }
 
 function renderView(view, stickers, state) {
@@ -700,7 +708,7 @@ async function step(delta) {
   if (!steps || !steps.length) return false;
   const target = ui.step + delta;
   if (target < 0 || target > steps.length) return false;
-  if (model.view.type === 'cube3d') {
+  if (currentView().type === 'cube3d') {
     const m = delta > 0 ? steps[ui.step] : model.invertStep(steps[ui.step - 1]);
     await cubeP.animate(m);
   } else {
@@ -778,6 +786,13 @@ export function initLab({ onSub } = {}) {
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
+  $('flat').onclick = () => {
+    flat = !flat;
+    storage.set('ergocube.lab.flat', flat);
+    buildViews();
+    renderCubes();
+    renderPlayer();
+  };
   $('go-search').onclick = () => { showSub('results'); startSearch(); };
   $('sq1-shape').onchange = () => { ui.sq1 = { ...ui.sq1, shape: $('sq1-shape').checked }; save(); clearResults(); };
 
@@ -790,7 +805,20 @@ export function initLab({ onSub } = {}) {
   };
   $('sort').onchange = () => renderResults();
   $('opt-results').onchange = () => renderResults();
+  $('ergo-calibrate').onclick = () => {
+    const mine = algs.list().filter((a) => (a.task.puzzle ?? '333') === model.id);
+    const res = calibrate(P(), ui.ergo, mine);
+    if (!res.ok) { $('ergo-calibration').textContent = res.reason; return; }
+    ui.ergo = res.config;
+    renderErgo();
+    ergoChanged();
+    $('ergo-calibration').textContent = res.changes.length
+      ? `Podle ${res.used} algoritmů (≈ ${res.secondsPerUnit.toFixed(2)} s na jednotku váhy): `
+        + res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ')
+      : `Podle ${res.used} algoritmů váhy sedí, nic se nezměnilo.`;
+  };
   $('ergo-reset').onclick = () => {
+    $('ergo-calibration').textContent = '';
     ui.ergo = defaultErgo(P());
     if (P().ergonomics === 'sq1') ui.ergo = { ...SQ1_DEFAULTS, turn: [...SQ1_DEFAULTS.turn] };
     renderErgo();

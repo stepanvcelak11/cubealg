@@ -172,6 +172,7 @@
         <div class="task-actions">
           <button type="button" id="undo" class="icon-btn" data-icon="undo" title="Zpět" aria-label="Zpět"></button>
           <button type="button" id="help" class="icon-btn" data-icon="help" title="Nápověda" aria-label="Nápověda"></button>
+          <button type="button" id="flat" class="icon-btn" title="Plošná síť / 3D" aria-label="Přepnout plošnou síť a 3D pohled" aria-pressed="false"></button>
           <button type="button" id="go-search" class="primary" data-icon="search" data-icon-size="18"><span>Najít řešení</span></button>
         </div>
         <dialog id="help-dialog" class="help-dialog">
@@ -213,7 +214,11 @@
           <div class="grid-fields" id="ergo-main"></div>
           <h3 id="ergo-moves-head">Váhy tahů <small>po směru / proti / dvojitě</small></h3>
           <div id="ergo-moves" class="ergo-moves"></div>
-          <div class="actions"><button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button></div>
+          <div class="actions">
+            <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>
+            <button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button>
+          </div>
+          <p id="ergo-calibration" class="hint" aria-live="polite"></p>
         </article>
       </div>
 
