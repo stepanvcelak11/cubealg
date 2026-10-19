@@ -14,6 +14,7 @@ const FACE_ROT = {
 const AXIS_ROT = [(q) => `rotateX(${90 * q}deg)`, (q) => `rotateY(${-90 * q}deg)`, (q) => `rotateZ(${90 * q}deg)`];
 
 const DEFAULT_VIEW = { rx: -28, ry: -38 };
+const defaultMatrix = () => new DOMMatrix().rotateSelf(DEFAULT_VIEW.rx, 0, 0).rotateSelf(0, DEFAULT_VIEW.ry, 0);
 
 export class Cube3D {
   /**
@@ -25,7 +26,9 @@ export class Cube3D {
     // fill: kostka se přizpůsobí výšce i šířce kontejneru (stránka bez posouvání)
     this.fill = fill;
     this.container = container;
-    this.view = { ...DEFAULT_VIEW };
+    // Natočení kostky jako matice: tažení otáčí kolem os obrazovky (trackball),
+    // takže jde kostku volně otočit do libovolné polohy.
+    this.view = defaultMatrix();
     this.size = 40;
     this.scene = document.createElement('div');
     this.scene.className = 'cube3d-scene';
@@ -72,38 +75,50 @@ export class Cube3D {
   }
 
   applyView() {
-    this.cube.style.transform = `rotateX(${this.view.rx}deg) rotateY(${this.view.ry}deg)`;
+    this.cube.style.transform = this.view.toString();
   }
 
   resetView() {
-    this.view = { ...DEFAULT_VIEW };
+    this.view = defaultMatrix();
+    this.cube.style.transition = 'transform 250ms ease-out';
     this.applyView();
+    setTimeout(() => { this.cube.style.transition = ''; }, 260);
   }
 
   bindPointer() {
     let start = null;
     this.scene.addEventListener('pointerdown', (e) => {
-      start = { x: e.clientX, y: e.clientY, rx: this.view.rx, ry: this.view.ry, target: e.target, moved: false };
+      if (start) return; // druhý prst ignorujeme
+      start = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, id: e.pointerId, target: e.target, moved: false, slop: e.pointerType === 'touch' ? 10 : 5 };
       this.scene.setPointerCapture(e.pointerId);
     });
     this.scene.addEventListener('pointermove', (e) => {
-      if (!start) return;
-      const dx = e.clientX - start.x, dy = e.clientY - start.y;
-      if (!start.moved && Math.hypot(dx, dy) < 6) return;
-      start.moved = true;
-      this.view.ry = start.ry + dx * 0.6;
-      this.view.rx = Math.max(-89, Math.min(89, start.rx - dy * 0.6));
+      if (!start || e.pointerId !== start.id) return;
+      if (!start.moved) {
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < start.slop) return;
+        start.moved = true;
+      }
+      const dx = e.clientX - start.lastX, dy = e.clientY - start.lastY;
+      start.lastX = e.clientX;
+      start.lastY = e.clientY;
+      // citlivost podle velikosti: tažení přes celou kostku ≈ půl otáčky
+      const k = Math.max(0.45, 200 / Math.max(1, this.size * 4.6));
+      const angle = Math.hypot(dx, dy) * k;
+      if (!angle) return;
+      // otočení kolem osy kolmé ke směru tažení (v rovině obrazovky)
+      this.view = new DOMMatrix().rotateAxisAngleSelf(-dy, dx, 0, angle).multiply(this.view);
       this.applyView();
     });
-    const end = () => {
-      if (start && !start.moved && this.onSticker) {
+    const end = (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      if (!start.moved && this.onSticker) {
         const st = start.target.closest?.('.sticker3d');
         if (st) this.onSticker(Number(st.dataset.pos));
       }
       start = null;
     };
     this.scene.addEventListener('pointerup', end);
-    this.scene.addEventListener('pointercancel', () => { start = null; });
+    this.scene.addEventListener('pointercancel', (e) => { if (start && e.pointerId === start.id) start = null; });
   }
 
   /**

@@ -29,8 +29,9 @@ Spodní lišta má čtyři sekce:
 - **Lab** – vlastní případy a hledání ergonomických algoritmů:
   - **Zadání:** v cíli vyber štětec (plná = místo i natočení, čárkovaná = jen
     místo, tečkovaná = jen natočení, guma) a klepej na dílky. Ve výchozí kostce
-    klepni na místo a v nabídce vyber, který dílek tam leží a jak je natočený
-    (dílky se samy prohodí) – nebo zamíchej tahy.
+    vyber barvu z palety a vybarvuj jednotlivé nálepky (u rohu stačí dvě,
+    třetí se doplní sama) – nebo zamíchej tahy. Kostky jdou tažením volně
+    otáčet do libovolné polohy.
   - **Tahy a váhy:** povolené tahy a ergonomické váhy.
   - **Řešení:** seznam řešení podle pohodlnosti, přehrávač a ukládání do trenažéru.
 

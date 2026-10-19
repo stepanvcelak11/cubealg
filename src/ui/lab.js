@@ -4,8 +4,8 @@
 // Zadání po dílcích:
 //   Cíl     – vybereš štětec (plná / čárkovaná / tečkovaná / guma) a klepáním
 //             na dílky je vybarvuješ; nový dílek se objeví i ve výchozí kostce
-//   Výchozí – klepnutí na místo otevře nabídku, který dílek (a jak natočený)
-//             tam leží; dílky se prohazují, takže stav zůstává platný
+//   Výchozí – vybarvuje se po jednotlivých nálepkách barvou z palety;
+//             u rohu stačí dvě nálepky, třetí se doplní sama
 
 import { SLOTS, SLOT_OF, FACELETS } from '../core/geometry.js';
 import { BASES, MOVE_DEFS, parseAlg, moveToString, algToString } from '../core/notation.js';
@@ -15,7 +15,7 @@ import { compileGoal } from '../core/constraints.js';
 import { MoveSet, MOVESET_PRESETS, AMOUNTS } from '../core/moveset.js';
 import {
   EMPTY, blankColors, homeColors, moveColors, identifyPieces, buildStart, trackedPieces,
-  placePiece, removePiece, findPiece, pieceAt, setSlot, pieceColorsIn,
+  placePiece, removePiece, findPiece, pieceAt, completeCorner,
 } from '../core/task.js';
 import { scoreAlg } from '../ergonomics/score.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS, moveWeight } from '../ergonomics/weights.js';
@@ -44,7 +44,8 @@ const ui = {
   bases: saved.bases ?? MOVESET_PRESETS.RUF.bases,
   amounts: saved.amounts ?? AMOUNTS,
   style: 'solved',   // štětec: solved / permutation / orientation / erase
-  picking: null,    // místo ve výchozí kostce, pro které je otevřená nabídka
+  paint: 'U',       // barva štětce výchozí kostky (EMPTY = guma)
+  lastPaint: -1,    // naposledy vybarvená nálepka
   undo: [],
   results: new Map(),
   chosen: null,     // algoritmus v přehrávači
@@ -114,67 +115,46 @@ function mark(piece, style) {
   }
 }
 
+const PALETTE = [
+  { c: 'U', label: 'Bílá' }, { c: 'D', label: 'Žlutá' }, { c: 'F', label: 'Zelená' },
+  { c: 'B', label: 'Modrá' }, { c: 'R', label: 'Červená' }, { c: 'L', label: 'Oranžová' },
+  { c: EMPTY, label: 'Guma' },
+];
+
 function tapA(pos) {
-  ui.picking = SLOTS[SLOT_OF[pos]].name;
-  renderPicker();
-  renderCubes();
-  $('picker').hidden = false;
+  const slot = SLOTS[SLOT_OF[pos]];
+  const before = pieceAt(ui.colorsA, slot.name);
+  snapshot();
+  // stejná barva podruhé = smazat nálepku
+  let colors = [...ui.colorsA];
+  colors[pos] = colors[pos] === ui.paint ? EMPTY : ui.paint;
+  if (colors[pos] !== EMPTY) {
+    const complete = slot.facelets.every((f) => colors[f] !== EMPTY);
+    if (complete && slot.type !== 'center' && !pieceAt(colors, slot.name)) {
+      // Přebarvením vznikl nemožný dílek: zbylé nálepky se smažou (kromě té
+      // vybarvené těsně předtím), aby šel dílek rovnou přebarvit/natočit.
+      for (const f of slot.facelets) if (f !== pos && f !== ui.lastPaint) colors[f] = EMPTY;
+    }
+    colors = completeCorner(colors, slot.name);
+  }
+  ui.colorsA = colors;
+  ui.lastPaint = pos;
+  // Nově dokončený dílek, který v cíli ještě není, se v cíli označí.
+  const after = pieceAt(colors, slot.name);
+  if (after && after !== before && !isMarked(after)) ui.constraints[after] = ui.style === 'erase' ? 'solved' : ui.style;
+  taskChanged();
 }
 
-function closePicker() {
-  ui.picking = null;
-  $('picker').hidden = true;
-  renderCubes();
-}
-
-const FACE_NAMES = { U: 'nahoře', D: 'dole', F: 'vpředu', B: 'vzadu', R: 'vpravo', L: 'vlevo' };
-
-function swatches(colors, faded = false) {
-  return el('span', { className: `swatches${faded ? ' faded' : ''}` },
-    ...colors.map((c) => el('i', { className: 'swatch', style: `--c: var(--c-${c})` })));
-}
-
-// Nabídka „co leží na tomto místě“: všechny dílky daného typu ve všech natočeních.
-function renderPicker() {
-  const slot = SLOTS.find((s) => s.name === ui.picking);
-  const faces = slot.facelets.map((f) => FACELETS[f].face);
-  const current = pieceAt(ui.colorsA, slot.name);
-  const currentColors = slot.facelets.map((f) => ui.colorsA[f]).join('');
-  const twists = slot.type === 'center' ? 1 : slot.facelets.length;
-  const candidates = SLOTS.filter((s) => s.type === slot.type).map((s) => s.name);
-  const marked = candidates.filter(isMarked);
-  const others = candidates.filter((n) => !isMarked(n));
-
-  const option = (name) => [...Array(twists).keys()].map((t) => {
-    const colors = pieceColorsIn(name, slot.name, t);
-    const on = current === name && colors.join('') === currentColors;
-    const b = el('button', { type: 'button', className: `pick${on ? ' on' : ''}`, title: `${name}${t ? `, natočení ${t}` : ''}` },
-      swatches(colors), el('small', { textContent: name }));
-    b.onclick = () => {
-      snapshot();
-      if (!isMarked(name)) ui.constraints[name] = ui.style === 'erase' ? 'solved' : ui.style;
-      ui.colorsA = setSlot(ui.colorsA, slot.name, name, t);
-      closePicker();
-      taskChanged();
-    };
+function renderPalette() {
+  $('palette').replaceChildren(...PALETTE.map(({ c, label }) => {
+    const b = el('button', { type: 'button', className: `paint${c === EMPTY ? ' eraser' : ''}`, title: label, ariaLabel: label });
+    if (c === EMPTY) b.innerHTML = icon('eraser', { size: 16 });
+    else b.style.setProperty('--c', `var(--c-${c})`);
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(ui.paint === c));
+    b.onclick = () => { ui.paint = c; renderPalette(); };
     return b;
-  });
-  const empty = el('button', { type: 'button', className: `pick empty-pick${current ? '' : ' on'}` },
-    swatches(faces.map(() => EMPTY)), el('small', { textContent: 'prázdné' }));
-  empty.onclick = () => {
-    snapshot();
-    ui.colorsA = setSlot(ui.colorsA, slot.name, null);
-    closePicker();
-    taskChanged();
-  };
-
-  $('picker-title').textContent = `Co leží na místě ${slot.name}?`;
-  $('picker-faces').replaceChildren(el('span', { textContent: 'Barvy v pořadí:' }),
-    ...faces.map((f) => el('b', { textContent: `${f} (${FACE_NAMES[f]})` })));
-  $('picker-body').replaceChildren(
-    el('div', { className: 'pick-grid' }, empty, ...marked.flatMap(option)),
-    others.length ? el('h3', { textContent: 'Další dílky (označí se i v cíli)' }) : null,
-    others.length ? el('div', { className: 'pick-grid' }, ...others.flatMap(option)) : null);
+  }));
 }
 
 function renderStyles() {
@@ -193,9 +173,10 @@ function renderCubes() {
   const { pieces } = identifyPieces(ui.colorsA);
   const pieceAtSlot = new Map([...pieces].map(([name, p]) => [p.slot, name]));
   cubeA.render(ui.colorsA.map((color, pos) => {
-    if (color === EMPTY) return { color, style: 'none', selected: SLOTS[SLOT_OF[pos]].name === ui.picking };
+    if (color === EMPTY) return { color, style: 'none' };
     const name = pieceAtSlot.get(SLOT_OF[pos]);
-    return { color, style: STYLE_OF[ui.constraints[name]] ?? 'faded', selected: SLOTS[SLOT_OF[pos]].name === ui.picking };
+    // neúplný dílek se ukazuje plně, aby bylo vidět, co je už vybarvené
+    return { color, style: name ? STYLE_OF[ui.constraints[name]] ?? 'faded' : 'solid' };
   }));
   cubeB.render(FACELETS.map((f) => {
     const name = SLOTS[SLOT_OF[f.index]].name;
@@ -212,7 +193,7 @@ function renderTaskStatus() {
   const pieces = tracked.filter((n) => !CENTERS.includes(n));
   let node;
   if (!pieces.length) {
-    node = el('span', { className: 'warn', textContent: 'V cíli klepej na dílky, které se mají vyřešit. Ve výchozí kostce klepni na místo a vyber, co tam leží.' });
+    node = el('span', { className: 'warn', textContent: 'V cíli klepej na dílky, které se mají vyřešit. Ve výchozí kostce vybarvi nálepky podle skutečné kostky.' });
   } else if (errors.length) {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
   } else {
@@ -571,8 +552,6 @@ export function initLab({ onSub } = {}) {
   $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') $('a-apply').click(); };
   $('a-home').onclick = () => { snapshot(); ui.colorsA = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
   $('a-clear').onclick = () => { snapshot(); ui.colorsA = blankColors(); taskChanged(); };
-  $('picker-close').onclick = closePicker;
-  $('picker').onclick = (e) => { if (e.target === $('picker')) closePicker(); };
   $('b-clear').onclick = () => {
     snapshot();
     for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'ignore';
@@ -584,7 +563,6 @@ export function initLab({ onSub } = {}) {
     if (!last) return;
     ui.constraints = last.constraints;
     ui.colorsA = last.colorsA;
-    closePicker();
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
@@ -633,6 +611,7 @@ export function initLab({ onSub } = {}) {
 
   stopPlaying();
   renderStyles();
+  renderPalette();
   renderMoveSet();
   renderErgo();
   renderCubes();

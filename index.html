@@ -103,6 +103,7 @@
               <button type="button" class="icon-btn" id="a-view" data-icon="resetView" data-icon-size="18" title="Výchozí pohled" aria-label="Výchozí pohled"></button>
             </header>
             <div id="cube-a" class="cube-host fill"></div>
+            <div class="palette" id="palette" role="radiogroup" aria-label="Barva nálepky"></div>
             <div class="tool-row">
               <input id="a-moves" placeholder="Zamíchat tahy…" autocomplete="off" spellcheck="false" aria-label="Tahy pro výchozí stav">
               <button type="button" id="a-apply" class="icon-btn" data-icon="shuffle" data-icon-size="18" title="Provést tahy" aria-label="Provést tahy"></button>
@@ -131,16 +132,6 @@
           <button type="button" id="help" class="icon-btn" data-icon="help" title="Nápověda" aria-label="Nápověda"></button>
           <button type="button" id="go-search" class="primary" data-icon="search" data-icon-size="18"><span>Najít řešení</span></button>
         </div>
-        <div id="picker" class="picker-backdrop" hidden>
-          <div class="picker" role="dialog" aria-labelledby="picker-title">
-            <div class="sheet-head">
-              <h2 id="picker-title">Co leží na tomto místě?</h2>
-              <button type="button" id="picker-close" class="icon-btn" data-icon="close" aria-label="Zavřít"></button>
-            </div>
-            <div id="picker-faces" class="picker-faces"></div>
-            <div id="picker-body" class="picker-body"></div>
-          </div>
-        </div>
         <dialog id="help-dialog" class="help-dialog">
           <h2>Jak zadat případ</h2>
           <ol>
@@ -150,8 +141,9 @@
               <span class="legend"><i class="sw dotted"></i>tečkovaná = jen natočení</span>
               Klepnutím stejným štětcem nebo gumou dílek zrušíš.</li>
             <li>Vybarvený dílek se sám objeví i ve <b>výchozí kostce</b> na svém místě.</li>
-            <li><b>Výchozí stav:</b> klepni na libovolné místo a v nabídce vyber, který dílek tam leží
-              a jak je natočený. Dílky se samy prohodí. Nebo napiš tahy, kterými se má zamíchat.</li>
+            <li><b>Výchozí stav:</b> vyber barvu z palety a klepáním vybarvuj jednotlivé nálepky tak,
+              jak jsou na tvé kostce. Stejnou barvou nebo gumou nálepku smažeš. U rohu stačí dvě nálepky,
+              třetí se doplní sama. Nebo napiš tahy, kterými se má zamíchat.</li>
             <li>Kostky otáčíš tažením.</li>
           </ol>
           <form method="dialog"><button class="primary">Rozumím</button></form>

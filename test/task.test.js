@@ -123,3 +123,15 @@ test('setSlot: prohození dílků zachová platný stav', async () => {
   c = setSlot(c, 'UB', null);
   assert.equal(pieceAt(c, 'UB'), null);
 });
+
+test('completeCorner doplní třetí barvu rohu', async () => {
+  const { completeCorner, homeColors, blankColors } = await import('../src/core/task.js');
+  const { slotByName } = await import('../src/core/geometry.js');
+  const full = homeColors(['URF']);
+  for (let i = 0; i < 3; i++) {
+    const c = [...full];
+    c[slotByName('URF').facelets[i]] = 'X';
+    assert.deepEqual(completeCorner(c, 'URF'), full);
+  }
+  assert.deepEqual(completeCorner(blankColors(), 'URF'), blankColors());
+});

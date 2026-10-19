@@ -183,3 +183,25 @@ export function setSlot(colors, slotName, name, twist = 0) {
   }
   return result;
 }
+
+/**
+ * Doplní roh, na kterém jsou vybarvené dvě nálepky: třetí barva je
+ * jednoznačná (roh má pevné pořadí barev po směru hodinových ručiček).
+ */
+export function completeCorner(colors, slotName) {
+  const slot = slotByName(slotName);
+  if (slot.type !== 'corner') return colors;
+  const cs = slot.facelets.map((f) => colors[f]);
+  if (cs.filter((c) => c === EMPTY).length !== 1) return colors;
+  for (const piece of SLOTS.filter((s) => s.type === 'corner')) {
+    for (let t = 0; t < 3; t++) {
+      const want = pieceColorsIn(piece.name, slot.name, t);
+      if (want.every((c, i) => cs[i] === EMPTY || cs[i] === c)) {
+        const out = [...colors];
+        slot.facelets.forEach((f, i) => { out[f] = want[i]; });
+        return out;
+      }
+    }
+  }
+  return colors;
+}

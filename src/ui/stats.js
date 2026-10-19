@@ -24,9 +24,9 @@ function tiles(s, result) {
     tile('ao50', s.ao50.current, s.ao50.best),
     tile('ao100', s.ao100.current, s.ao100.best),
     el('div', { className: 'tile' },
-      el('span', { className: 'tile-label', textContent: 'Průměr / počet' }),
+      el('span', { className: 'tile-label', textContent: 'Průměr' }),
       el('b', { textContent: f(s.mean) }),
-      el('small', { textContent: `${s.count} složení${s.dnf ? `, ${s.dnf}× DNF` : ''}` })),
+      el('small', { textContent: `${s.count}×${s.dnf ? `, DNF ${s.dnf}` : ''}` })),
   ];
 }
 
@@ -53,7 +53,7 @@ function chart(list, result) {
   }
   const line = avg.length > 1 ? `<polyline points="${avg.join(' ')}" class="avg"/>` : '';
   const label = (v) => formatValue(v, result);
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Graf vývoje časů">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Graf vývoje časů">
     <line x1="${pad}" y1="${y(max)}" x2="${W - 8}" y2="${y(max)}" class="grid"/>
     <line x1="${pad}" y1="${y(min)}" x2="${W - 8}" y2="${y(min)}" class="grid"/>
     <text x="2" y="${y(max) + 4}" class="axis">${label(max)}</text>
