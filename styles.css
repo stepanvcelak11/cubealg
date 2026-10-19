@@ -136,7 +136,9 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 
 /* --- Timer ------------------------------------------------------------------------------ */
 .timer-head, .stats-head, .trainer-head { display: flex; gap: 8px; align-items: center; }
-.timer-head select, .stats-head select { flex: 1; max-width: 300px; }
+.timer-head select, .stats-head select { flex: 1; max-width: 300px; min-width: 0; }
+.timer-head .group-select, .stats-head .group-select { max-width: 200px; }
+@media (max-width: 480px) { #t-inspection span, #s-clear span { display: none; } }
 .stats-head button { margin-left: auto; }
 .scramble {
   font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: center; font-size: 1.15rem;
@@ -160,7 +162,7 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 [data-state="ready"] .time { color: var(--good); }
 [data-state="inspecting"] .time { color: var(--warn); }
 .timer-hint { color: var(--muted); font-size: 0.85rem; margin-top: 10px; min-height: 1.3em; }
-.preview { position: absolute; left: 0; bottom: 4px; width: min(160px, 36vw); opacity: 0.95; }
+.preview { order: 3; margin-top: 16px; width: min(170px, 40vw); opacity: 0.95; }
 .preview svg { display: block; width: 100%; }
 .preview .face-bg { fill: var(--plastic); }
 .fm-entry { display: flex; gap: 8px; }
@@ -249,7 +251,13 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .tool-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tool-row input { flex: 1 1 100px; padding: 6px 8px; font-size: 0.85rem; }
 .tool-row .small { flex: 1 1 auto; }
-.styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.styles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.sw-icon { display: grid; place-items: center; height: 18px; }
+@media (max-width: 600px) {
+  .styles { grid-template-columns: repeat(2, 1fr); }
+  .style-btn { flex-direction: row; gap: 5px; padding: 5px 4px; }
+  .style-btn .sw, .style-btn .sw-icon { width: 16px; height: 16px; flex: none; }
+}
 .style-btn { flex-direction: column; gap: 3px; padding: 6px 2px; font-size: 0.72rem; background: transparent; }
 @media (max-width: 400px) { .style-btn span { font-size: 0.66rem; } }
 .style-btn[aria-checked="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; }
@@ -377,3 +385,25 @@ table.breakdown i { display: inline-block; width: 10px; height: 10px; border-rad
 .ergo-move { display: grid; grid-template-columns: 20px repeat(3, minmax(0, 1fr)); gap: 4px; align-items: center; }
 .ergo-move b { font-family: ui-monospace, monospace; }
 .ergo-move input { padding: 4px 6px; }
+
+/* Nabídka dílku pro místo ve výchozí kostce */
+.picker-backdrop {
+  position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / 0.35);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.picker-backdrop[hidden] { display: none; }
+.picker {
+  width: 100%; max-width: 640px; max-height: 75dvh; display: flex; flex-direction: column;
+  background: var(--panel); border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgb(0 0 0 / 0.25);
+  padding-bottom: var(--safe-b);
+}
+.picker-faces { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 8px 14px 0; font-size: 0.8rem; color: var(--muted); }
+.picker-faces b { color: var(--text); font-weight: 600; }
+.picker-body { overflow-y: auto; padding: 8px 12px 16px; }
+.picker-body h3 { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin: 14px 2px 6px; }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.pick { flex-direction: column; gap: 4px; padding: 8px 4px; background: var(--panel-2); }
+.pick small { font-size: 0.7rem; color: var(--muted); }
+.pick.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.swatches { display: flex; gap: 3px; }
+.swatch { width: 20px; height: 20px; border-radius: 4px; background: var(--c, var(--c-gray)); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25); }

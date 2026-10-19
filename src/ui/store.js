@@ -15,6 +15,7 @@ function emitter() {
 const solvesData = storage.get('ergocube.solves') ?? {};
 const solvesEvents = emitter();
 
+// "event" je klíč skupiny z groups.key(disciplína, skupina).
 export const solves = {
   list(event) { return solvesData[event] ?? []; },
   add(event, solve) {
@@ -38,6 +39,40 @@ export const solves = {
     solvesEvents.emit();
   },
   subscribe: solvesEvents.subscribe,
+};
+
+// --- Skupiny složení ------------------------------------------------------------------
+// Každá disciplína má hlavní skupinu (id 'main', data pod klíčem disciplíny)
+// a libovolně vlastních (např. pro různé kostky); data pod klíčem 'disciplína/id'.
+
+const groupsData = storage.get('ergocube.groups') ?? {};
+const MAIN = { id: 'main', name: 'Hlavní' };
+
+export const groups = {
+  list(event) { return [MAIN, ...(groupsData[event] ?? [])]; },
+  get(event, id) { return this.list(event).find((g) => g.id === id) ?? null; },
+  key(event, id) { return !id || id === 'main' ? event : `${event}/${id}`; },
+  add(event, name) {
+    const id = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    (groupsData[event] ??= []).push({ id, name });
+    this.save();
+    return id;
+  },
+  rename(event, id, name) {
+    const g = (groupsData[event] ?? []).find((x) => x.id === id);
+    if (g) { g.name = name; this.save(); }
+  },
+  remove(event, id) {
+    if (id === 'main') return;
+    groupsData[event] = (groupsData[event] ?? []).filter((g) => g.id !== id);
+    delete solvesData[this.key(event, id)];
+    storage.set('ergocube.solves', solvesData);
+    this.save();
+  },
+  save() {
+    storage.set('ergocube.groups', groupsData);
+    solvesEvents.emit();
+  },
 };
 
 // --- Vlastní algoritmy ---------------------------------------------------------------

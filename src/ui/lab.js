@@ -2,10 +2,10 @@
 // hledání ergonomických řešení a jejich přehrávání.
 //
 // Zadání po dílcích:
-//   Cíl     – klepnutí na dílek ho označí (aktuálním stylem) a vybere;
-//             styl vybraného dílku se mění tlačítky, znovu klepnutí = odebrat
-//   Výchozí – klepnutí na místo přesune vybraný dílek tam; klepnutí na
-//             vybraný dílek ho natočí; klepnutí na jiný dílek ho vybere
+//   Cíl     – vybereš štětec (plná / čárkovaná / tečkovaná / guma) a klepáním
+//             na dílky je vybarvuješ; nový dílek se objeví i ve výchozí kostce
+//   Výchozí – klepnutí na místo otevře nabídku, který dílek (a jak natočený)
+//             tam leží; dílky se prohazují, takže stav zůstává platný
 
 import { SLOTS, SLOT_OF, FACELETS } from '../core/geometry.js';
 import { BASES, MOVE_DEFS, parseAlg, moveToString, algToString } from '../core/notation.js';
@@ -15,7 +15,7 @@ import { compileGoal } from '../core/constraints.js';
 import { MoveSet, MOVESET_PRESETS, AMOUNTS } from '../core/moveset.js';
 import {
   EMPTY, blankColors, homeColors, moveColors, identifyPieces, buildStart, trackedPieces,
-  placePiece, twistAt, removePiece, findPiece, pieceAt,
+  placePiece, removePiece, findPiece, pieceAt, setSlot, pieceColorsIn,
 } from '../core/task.js';
 import { scoreAlg } from '../ergonomics/score.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS, moveWeight } from '../ergonomics/weights.js';
@@ -31,6 +31,7 @@ const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
   { type: 'permutation', label: 'Čárkovaná', title: 'Jen místo (permutace)' },
   { type: 'orientation', label: 'Tečkovaná', title: 'Jen natočení (orientace)' },
+  { type: 'erase', label: 'Guma', title: 'Odebrat dílek' },
 ];
 const AMOUNT_LABELS = { 1: 'po směru', [-1]: "proti (')", 2: 'dvojitě (2)' };
 const SHOWN_RESULTS = 150;
@@ -42,8 +43,8 @@ const ui = {
   colorsA: saved.colorsA ?? homeColors(CENTERS),
   bases: saved.bases ?? MOVESET_PRESETS.RUF.bases,
   amounts: saved.amounts ?? AMOUNTS,
-  style: 'solved',
-  selected: null,   // vybraný dílek (název)
+  style: 'solved',   // štětec: solved / permutation / orientation / erase
+  picking: null,    // místo ve výchozí kostce, pro které je otevřená nabídka
   undo: [],
   results: new Map(),
   chosen: null,     // algoritmus v přehrávači
@@ -95,64 +96,95 @@ export function labSub() {
 function tapB(pos) {
   const piece = SLOTS[SLOT_OF[pos]].name;
   snapshot();
-  if (!isMarked(piece)) {
-    ui.constraints[piece] = ui.style;
-    // Nový dílek se objeví ve výchozí kostce na svém místě (je-li volné).
-    if (!findPiece(ui.colorsA, piece)) {
-      const home = SLOTS.find((s) => s.name === piece);
-      if (home.facelets.every((f) => ui.colorsA[f] === EMPTY)) ui.colorsA = placePiece(ui.colorsA, piece, piece);
-    }
-    ui.selected = piece;
-  } else if (ui.selected === piece) {
+  if (ui.style === 'erase' || ui.constraints[piece] === ui.style) {
     ui.constraints[piece] = 'ignore';
     ui.colorsA = removePiece(ui.colorsA, piece);
-    ui.selected = null;
   } else {
-    ui.selected = piece;
-    ui.style = ui.constraints[piece];
+    mark(piece, ui.style);
   }
   taskChanged();
 }
 
-function tapA(pos) {
-  const slot = SLOTS[SLOT_OF[pos]];
-  const occupant = pieceAt(ui.colorsA, slot.name);
-  const sel = ui.selected && isMarked(ui.selected) ? SLOTS.find((s) => s.name === ui.selected) : null;
-  if (occupant && occupant === sel?.name) {
-    // klepnutí na vybraný dílek = natočit
-    if (slot.type === 'center') return;
-    snapshot();
-    ui.colorsA = twistAt(ui.colorsA, slot.name);
-  } else if (occupant) {
-    // klepnutí na jiný dílek = vybrat ho
-    ui.selected = occupant;
-    if (isMarked(occupant)) ui.style = ui.constraints[occupant];
-  } else if (sel && sel.type === slot.type) {
-    // klepnutí na prázdné místo = přesunout tam vybraný dílek
-    snapshot();
-    ui.colorsA = placePiece(ui.colorsA, sel.name, slot.name);
-  } else {
-    return;
+// Označí dílek v cíli; není-li ještě ve výchozí kostce, objeví se na svém místě.
+function mark(piece, style) {
+  ui.constraints[piece] = style;
+  if (!findPiece(ui.colorsA, piece)) {
+    const home = SLOTS.find((s) => s.name === piece);
+    if (home.facelets.every((f) => ui.colorsA[f] === EMPTY)) ui.colorsA = placePiece(ui.colorsA, piece, piece);
   }
-  taskChanged();
+}
+
+function tapA(pos) {
+  ui.picking = SLOTS[SLOT_OF[pos]].name;
+  renderPicker();
+  renderCubes();
+  $('picker').hidden = false;
+}
+
+function closePicker() {
+  ui.picking = null;
+  $('picker').hidden = true;
+  renderCubes();
+}
+
+const FACE_NAMES = { U: 'nahoře', D: 'dole', F: 'vpředu', B: 'vzadu', R: 'vpravo', L: 'vlevo' };
+
+function swatches(colors, faded = false) {
+  return el('span', { className: `swatches${faded ? ' faded' : ''}` },
+    ...colors.map((c) => el('i', { className: 'swatch', style: `--c: var(--c-${c})` })));
+}
+
+// Nabídka „co leží na tomto místě“: všechny dílky daného typu ve všech natočeních.
+function renderPicker() {
+  const slot = SLOTS.find((s) => s.name === ui.picking);
+  const faces = slot.facelets.map((f) => FACELETS[f].face);
+  const current = pieceAt(ui.colorsA, slot.name);
+  const currentColors = slot.facelets.map((f) => ui.colorsA[f]).join('');
+  const twists = slot.type === 'center' ? 1 : slot.facelets.length;
+  const candidates = SLOTS.filter((s) => s.type === slot.type).map((s) => s.name);
+  const marked = candidates.filter(isMarked);
+  const others = candidates.filter((n) => !isMarked(n));
+
+  const option = (name) => [...Array(twists).keys()].map((t) => {
+    const colors = pieceColorsIn(name, slot.name, t);
+    const on = current === name && colors.join('') === currentColors;
+    const b = el('button', { type: 'button', className: `pick${on ? ' on' : ''}`, title: `${name}${t ? `, natočení ${t}` : ''}` },
+      swatches(colors), el('small', { textContent: name }));
+    b.onclick = () => {
+      snapshot();
+      if (!isMarked(name)) ui.constraints[name] = ui.style === 'erase' ? 'solved' : ui.style;
+      ui.colorsA = setSlot(ui.colorsA, slot.name, name, t);
+      closePicker();
+      taskChanged();
+    };
+    return b;
+  });
+  const empty = el('button', { type: 'button', className: `pick empty-pick${current ? '' : ' on'}` },
+    swatches(faces.map(() => EMPTY)), el('small', { textContent: 'prázdné' }));
+  empty.onclick = () => {
+    snapshot();
+    ui.colorsA = setSlot(ui.colorsA, slot.name, null);
+    closePicker();
+    taskChanged();
+  };
+
+  $('picker-title').textContent = `Co leží na místě ${slot.name}?`;
+  $('picker-faces').replaceChildren(el('span', { textContent: 'Barvy v pořadí:' }),
+    ...faces.map((f) => el('b', { textContent: `${f} (${FACE_NAMES[f]})` })));
+  $('picker-body').replaceChildren(
+    el('div', { className: 'pick-grid' }, empty, ...marked.flatMap(option)),
+    others.length ? el('h3', { textContent: 'Další dílky (označí se i v cíli)' }) : null,
+    others.length ? el('div', { className: 'pick-grid' }, ...others.flatMap(option)) : null);
 }
 
 function renderStyles() {
   $('styles').replaceChildren(...STYLES.map(({ type, label, title }) => {
     const b = el('button', { type: 'button', className: 'style-btn', title },
-      el('i', { className: `sw ${STYLE_OF[type]}` }), el('span', { textContent: label }));
+      type === 'erase' ? el('span', { className: 'sw-icon', innerHTML: icon('eraser', { size: 18 }) }) : el('i', { className: `sw ${STYLE_OF[type]}` }),
+      el('span', { textContent: label }));
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(ui.style === type));
-    b.onclick = () => {
-      ui.style = type;
-      if (ui.selected && isMarked(ui.selected) && ui.constraints[ui.selected] !== type) {
-        snapshot();
-        ui.constraints[ui.selected] = type;
-        taskChanged();
-      } else {
-        renderStyles();
-      }
-    };
+    b.onclick = () => { ui.style = type; renderStyles(); renderTaskStatus(); };
     return b;
   }));
 }
@@ -161,13 +193,13 @@ function renderCubes() {
   const { pieces } = identifyPieces(ui.colorsA);
   const pieceAtSlot = new Map([...pieces].map(([name, p]) => [p.slot, name]));
   cubeA.render(ui.colorsA.map((color, pos) => {
-    if (color === EMPTY) return { color, style: 'none' };
+    if (color === EMPTY) return { color, style: 'none', selected: SLOTS[SLOT_OF[pos]].name === ui.picking };
     const name = pieceAtSlot.get(SLOT_OF[pos]);
-    return { color, style: STYLE_OF[ui.constraints[name]] ?? 'faded', selected: !!name && name === ui.selected };
+    return { color, style: STYLE_OF[ui.constraints[name]] ?? 'faded', selected: SLOTS[SLOT_OF[pos]].name === ui.picking };
   }));
   cubeB.render(FACELETS.map((f) => {
     const name = SLOTS[SLOT_OF[f.index]].name;
-    return { color: f.face, style: STYLE_OF[ui.constraints[name]] ?? 'none', selected: name === ui.selected };
+    return { color: f.face, style: STYLE_OF[ui.constraints[name]] ?? 'none' };
   }));
 }
 
@@ -179,18 +211,14 @@ function renderTaskStatus() {
   const { tracked, errors } = taskInfo();
   const pieces = tracked.filter((n) => !CENTERS.includes(n));
   let node;
-  if (ui.selected && isMarked(ui.selected)) {
-    node = el('span', {}, el('b', { textContent: ui.selected }),
-      ' – ve výchozí kostce: prázdné místo = přesunout, dílek samotný = natočit.');
-  } else if (!pieces.length) {
-    node = el('span', { className: 'warn', textContent: 'Klepni v cíli na dílky, které se mají vyřešit.' });
+  if (!pieces.length) {
+    node = el('span', { className: 'warn', textContent: 'V cíli klepej na dílky, které se mají vyřešit. Ve výchozí kostce klepni na místo a vyber, co tam leží.' });
   } else if (errors.length) {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
   } else {
     node = el('span', { className: 'good', textContent: `✓ ${pieces.length} dílků: ${pieces.join(' ')}` });
   }
   $('task-status').replaceChildren(node);
-  $('b-remove').disabled = !(ui.selected && isMarked(ui.selected));
 }
 
 function taskChanged() {
@@ -543,19 +571,12 @@ export function initLab({ onSub } = {}) {
   $('a-moves').onkeydown = (e) => { if (e.key === 'Enter') $('a-apply').click(); };
   $('a-home').onclick = () => { snapshot(); ui.colorsA = homeColors(trackedPieces(ui.constraints)); taskChanged(); };
   $('a-clear').onclick = () => { snapshot(); ui.colorsA = blankColors(); taskChanged(); };
-  $('b-remove').onclick = () => {
-    if (!ui.selected || !isMarked(ui.selected)) return;
-    snapshot();
-    ui.colorsA = removePiece(ui.colorsA, ui.selected);
-    ui.constraints[ui.selected] = 'ignore';
-    ui.selected = null;
-    taskChanged();
-  };
+  $('picker-close').onclick = closePicker;
+  $('picker').onclick = (e) => { if (e.target === $('picker')) closePicker(); };
   $('b-clear').onclick = () => {
     snapshot();
     for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'ignore';
     ui.colorsA = blankColors();
-    ui.selected = null;
     taskChanged();
   };
   $('undo').onclick = () => {
@@ -563,6 +584,7 @@ export function initLab({ onSub } = {}) {
     if (!last) return;
     ui.constraints = last.constraints;
     ui.colorsA = last.colorsA;
+    closePicker();
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();

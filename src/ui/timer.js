@@ -5,11 +5,13 @@ import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
 import { summary, formatValue, formatSolve } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { solves } from './store.js';
+import { solves, groups } from './store.js';
 import { Stopwatch } from './stopwatch.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
+settings.groups ??= {};
 const saveSettings = () => storage.set('ergocube.timer', settings);
+const key = () => groups.key(settings.event, timerGroup());
 
 let worker = null;
 let requestId = 0;
@@ -30,6 +32,44 @@ function requestScramble(event) {
 export function eventOptions(select, value) {
   select.replaceChildren(...EVENTS.map((e) => el('option', { value: e.id, textContent: e.name })));
   select.value = value;
+}
+
+/** Naplní select skupin disciplíny; poslední volby jsou akce (nová / přejmenovat / smazat). */
+export function groupOptions(select, event, value) {
+  const list = groups.list(event);
+  select.replaceChildren(
+    ...list.map((g) => el('option', { value: g.id, textContent: g.name })),
+    el('option', { value: '+new', textContent: '+ Nová skupina…' }),
+    value !== 'main' ? el('option', { value: '+rename', textContent: 'Přejmenovat skupinu…' }) : null,
+    value !== 'main' ? el('option', { value: '+delete', textContent: 'Smazat skupinu…' }) : null);
+  select.value = groups.get(event, value) ? value : 'main';
+}
+
+/**
+ * Zpracuje výběr ve selectu skupin. Vrací id skupiny, která má být aktivní.
+ */
+export function pickGroup(select, event, current) {
+  const v = select.value;
+  if (v === '+new') {
+    const name = prompt('Název nové skupiny (např. název kostky):', '')?.trim();
+    return name ? groups.add(event, name) : current;
+  }
+  if (v === '+rename') {
+    const name = prompt('Nový název skupiny:', groups.get(event, current)?.name ?? '')?.trim();
+    if (name) groups.rename(event, current, name);
+    return current;
+  }
+  if (v === '+delete') {
+    const g = groups.get(event, current);
+    const n = solves.list(groups.key(event, current)).length;
+    return g && confirm(`Smazat skupinu „${g.name}“${n ? ` a jejích ${n} složení` : ''}?`) ? (groups.remove(event, current), 'main') : current;
+  }
+  return v;
+}
+
+export function timerGroup() {
+  const id = settings.groups[settings.event] ?? 'main';
+  return groups.get(settings.event, id) ? id : 'main';
 }
 
 async function newScramble() {
@@ -68,7 +108,7 @@ function renderPreview() {
 
 function render() {
   const ev = EVENT_BY_ID[settings.event];
-  const list = solves.list(settings.event);
+  const list = solves.list(key());
   const s = summary(list);
   const fmt = (v) => formatValue(v, ev.result);
   const tile = (label, v) => el('div', {}, el('span', { textContent: label }), el('b', { textContent: fmt(v) }));
@@ -82,14 +122,14 @@ function render() {
   const idx = list.length - 1;
   const penalty = (p, text) => {
     const b = el('button', { type: 'button', className: `chip${last.p === p ? ' on' : ''}`, textContent: text });
-    b.onclick = () => solves.update(settings.event, idx, { p: last.p === p ? 0 : p });
+    b.onclick = () => solves.update(key(), idx, { p: last.p === p ? 0 : p });
     return b;
   };
   box.replaceChildren(
     el('span', { className: 'last-time', textContent: formatSolve(last, ev.result) }),
     ev.result === 'time' ? penalty(2000, '+2') : null,
     penalty(-1, 'DNF'),
-    iconButton(icon('trash', { size: 18 }), { label: 'Smazat poslední složení', className: 'chip', onClick: () => solves.remove(settings.event, idx) }));
+    iconButton(icon('trash', { size: 18 }), { label: 'Smazat poslední složení', className: 'chip', onClick: () => solves.remove(key(), idx) }));
 }
 
 function syncMode() {
@@ -97,7 +137,7 @@ function syncMode() {
   $('t-fm').hidden = !fm;
   $('t-display').hidden = fm;
   $('t-hint').hidden = fm;
-  const last = solves.list(settings.event).at(-1);
+  const last = solves.list(key()).at(-1);
   stopwatch.show(last && !fm ? last.t : 0);
 }
 
@@ -109,10 +149,20 @@ export function initTimer({ isActive }) {
   $('t-event').onchange = () => {
     settings.event = $('t-event').value;
     saveSettings();
+    groupOptions($('t-group'), settings.event, timerGroup());
     syncMode();
     render();
     newScramble();
     $('t-event').blur();
+  };
+  groupOptions($('t-group'), settings.event, timerGroup());
+  $('t-group').onchange = () => {
+    settings.groups[settings.event] = pickGroup($('t-group'), settings.event, timerGroup());
+    saveSettings();
+    groupOptions($('t-group'), settings.event, timerGroup());
+    syncMode();
+    render();
+    $('t-group').blur();
   };
   const insp = $('t-inspection');
   insp.setAttribute('aria-pressed', String(settings.inspection));
@@ -130,7 +180,7 @@ export function initTimer({ isActive }) {
     isActive: () => isActiveFn() && EVENT_BY_ID[settings.event].result === 'time',
     inspection: () => settings.inspection,
     onStop: (ms, p) => {
-      solves.add(settings.event, { t: ms, p, s: current, d: Date.now() });
+      solves.add(key(), { t: ms, p, s: current, d: Date.now() });
       newScramble();
     },
     onState: (s) => {
@@ -145,16 +195,16 @@ export function initTimer({ isActive }) {
     e.preventDefault();
     const n = Number($('t-fm-moves').value);
     if (!Number.isInteger(n) || n < 1) return;
-    solves.add(settings.event, { t: n, p: 0, s: current, d: Date.now() });
+    solves.add(key(), { t: n, p: 0, s: current, d: Date.now() });
     $('t-fm-moves').value = '';
     newScramble();
   };
   $('t-fm-dnf').onclick = () => {
-    solves.add(settings.event, { t: 0, p: -1, s: current, d: Date.now() });
+    solves.add(key(), { t: 0, p: -1, s: current, d: Date.now() });
     newScramble();
   };
 
-  solves.subscribe(render);
+  solves.subscribe(() => { groupOptions($('t-group'), settings.event, timerGroup()); render(); });
   syncMode();
   render();
   newScramble();

@@ -4,10 +4,12 @@ import { EVENT_BY_ID } from '../timer/events.js';
 import { summary, value, currentAverage, formatValue, formatSolve, DNF } from '../timer/stats.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { solves } from './store.js';
-import { eventOptions, timerEvent } from './timer.js';
+import { solves, groups } from './store.js';
+import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup } from './timer.js';
 
 let event = '333';
+let group = 'main';
+const key = () => groups.key(event, group);
 
 function tiles(s, result) {
   const f = (v) => formatValue(v, result);
@@ -62,14 +64,16 @@ function chart(list, result) {
 
 function render() {
   const ev = EVENT_BY_ID[event];
-  const list = solves.list(event);
+  if (!groups.get(event, group)) group = 'main';
+  groupOptions($('s-group'), event, group);
+  const list = solves.list(key());
   $('s-tiles').replaceChildren(...tiles(summary(list), ev.result));
   chart(list, ev.result);
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   $('s-list').replaceChildren(...list.map((solve, i) => {
     const penalty = (p, text) => {
       const b = el('button', { type: 'button', className: `chip${solve.p === p ? ' on' : ''}`, textContent: text });
-      b.onclick = () => solves.update(event, i, { p: solve.p === p ? 0 : p });
+      b.onclick = () => solves.update(key(), i, { p: solve.p === p ? 0 : p });
       return b;
     };
     return el('li', { className: 'solve' },
@@ -81,18 +85,20 @@ function render() {
       el('span', { className: 'solve-actions' },
         ev.result === 'time' ? penalty(2000, '+2') : null,
         penalty(-1, 'DNF'),
-        iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(event, i) })));
+        iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(key(), i) })));
   }).reverse());
   if (!list.length) $('s-list').replaceChildren(el('li', { className: 'hint', textContent: 'Zatím žádná složení.' }));
 }
 
 export function initStats() {
   event = timerEvent();
+  group = timerGroup();
   eventOptions($('s-event'), event);
-  $('s-event').onchange = () => { event = $('s-event').value; render(); };
+  $('s-event').onchange = () => { event = $('s-event').value; group = 'main'; render(); };
+  $('s-group').onchange = () => { group = pickGroup($('s-group'), event, group); render(); };
   $('s-clear').onclick = () => {
-    const name = EVENT_BY_ID[event].name;
-    if (solves.list(event).length && confirm(`Smazat všechna složení ${name}?`)) solves.clear(event);
+    const name = `${EVENT_BY_ID[event].name} – ${groups.get(event, group)?.name}`;
+    if (solves.list(key()).length && confirm(`Smazat všechna složení ${name}?`)) solves.clear(key());
   };
   solves.subscribe(render);
   render();
@@ -101,6 +107,7 @@ export function initStats() {
 /** Při otevření stránky ukáže disciplínu, která je právě v timeru. */
 export function showStats() {
   event = timerEvent();
+  group = timerGroup();
   $('s-event').value = event;
   render();
 }

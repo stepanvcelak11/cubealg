@@ -108,3 +108,18 @@ test('natočení dílku odpovídá skutečnému tahu', async () => {
   const placed1 = twistAt(placed0, 'FR');
   assert.ok([placed0, placed1].some((p) => p.join() === moved.join()));
 });
+
+test('setSlot: prohození dílků zachová platný stav', async () => {
+  const { setSlot, homeColors, identifyPieces, pieceColorsIn, pieceAt } = await import('../src/core/task.js');
+  let c = homeColors(['URF', 'UFL', 'UF', 'UB']);
+  c = setSlot(c, 'UFL', 'URF', 1);
+  assert.equal(pieceAt(c, 'UFL'), 'URF');
+  assert.equal(pieceAt(c, 'URF'), 'UFL');
+  c = setSlot(c, 'UB', 'UF', 1);
+  assert.equal(pieceAt(c, 'UB'), 'UF');
+  assert.equal(pieceAt(c, 'UF'), 'UB');
+  assert.deepEqual(identifyPieces(c).errors, []);
+  assert.deepEqual(pieceColorsIn('URF', 'URF', 0), ['U', 'R', 'F']);
+  c = setSlot(c, 'UB', null);
+  assert.equal(pieceAt(c, 'UB'), null);
+});

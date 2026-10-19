@@ -20,16 +20,17 @@ Spodní lišta má čtyři sekce:
 - **Timer** – zamíchání pro disciplíny WCA (2×2 až 7×7, OH, BLD, FMC, Clock,
   Megaminx, Pyraminx, Skewb, Square-1), stopky ve stylu speedcubingu
   (podržet mezerník/prst → pustit = start), volitelná inspekce 15 s, +2 a DNF.
-  2×2 se míchá z náhodného stavu, ostatní náhodnými tahy.
+  2×2 se míchá z náhodného stavu, ostatní náhodnými tahy. Každá disciplína
+  může mít vlastní skupiny složení (např. pro různé kostky).
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
-  průměr, graf vývoje a seznam složení s úpravou trestů.
+  průměr, graf vývoje a seznam složení s úpravou trestů – pro každou skupinu zvlášť.
 - **Trenažér** – vlastní algoritmy uložené z Labu: náhodný případ (častěji ty
   pomalejší a méně trénované), stopky, odhalení algoritmu a statistiky.
 - **Lab** – vlastní případy a hledání ergonomických algoritmů:
-  - **Zadání:** v cíli klepnutím označ dílek a tlačítky mu zvol styl
-    (plná = místo i natočení, čárkovaná = jen místo, tečkovaná = jen natočení).
-    Ve výchozí kostce dílek vybereš klepnutím, klepnutím na prázdné místo ho
-    přesuneš a dalším klepnutím natočíš – nebo zamíchej tahy.
+  - **Zadání:** v cíli vyber štětec (plná = místo i natočení, čárkovaná = jen
+    místo, tečkovaná = jen natočení, guma) a klepej na dílky. Ve výchozí kostce
+    klepni na místo a v nabídce vyber, který dílek tam leží a jak je natočený
+    (dílky se samy prohodí) – nebo zamíchej tahy.
   - **Tahy a váhy:** povolené tahy a ergonomické váhy.
   - **Řešení:** seznam řešení podle pohodlnosti, přehrávač a ukládání do trenažéru.
 

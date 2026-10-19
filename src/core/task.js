@@ -151,3 +151,35 @@ export function pieceAt(colors, slotName) {
   for (const [name, p] of identifyPieces(colors).pieces) if (p.slot === slot.id) return name;
   return null;
 }
+
+/** Barvy, které by měl dílek ve slotu při natočení twist (v pořadí nálepek slotu). */
+export function pieceColorsIn(name, slotName, twist = 0) {
+  const piece = slotByName(name);
+  const slot = slotByName(slotName);
+  const n = slot.facelets.length;
+  const out = new Array(n);
+  piece.facelets.forEach((k, i) => { out[(i + twist) % n] = FACELETS[k].face; });
+  return out;
+}
+
+/**
+ * Do slotu dá dílek name s natočením twist (nebo slot vyprázdní, je-li name null).
+ * Leží-li dílek jinde a slot je obsazený, dílky se prohodí (původní obyvatel
+ * slotu se přesune na uvolněné místo se stejným natočením).
+ */
+export function setSlot(colors, slotName, name, twist = 0) {
+  const slot = slotByName(slotName);
+  const out = [...colors];
+  if (!name) {
+    for (const f of slot.facelets) out[f] = EMPTY;
+    return out;
+  }
+  const occupant = pieceAt(colors, slot.name);
+  const from = findPiece(colors, name);
+  let result = placePiece(out.map((c, i) => (slot.facelets.includes(i) ? EMPTY : c)), name, slot.name, twist);
+  if (occupant && occupant !== slotByName(name).name && from) {
+    const moved = slot.facelets.map((f) => colors[f]);
+    from.facelets.forEach((f, j) => { result[f] = moved[j]; });
+  }
+  return result;
+}
