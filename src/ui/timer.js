@@ -2,7 +2,7 @@
 
 import { solved, applyAlg, toFacelets } from '../core/cube.js';
 import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
-import { summary, formatValue, formatSolve } from '../timer/stats.js';
+import { summary, formatValue, formatSolve, formatClock } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups } from './store.js';
@@ -19,14 +19,21 @@ let current = '';
 const pending = new Map();
 let isActiveFn = () => false;
 
-function requestScramble(event) {
+function requestScramble(event, opts) {
   worker ??= new Worker(new URL('../timer/scramble-worker.js', import.meta.url), { type: 'module' });
   worker.onmessage = ({ data }) => { pending.get(data.id)?.(data); pending.delete(data.id); };
   const id = ++requestId;
   return new Promise((resolve) => {
     pending.set(id, resolve);
-    worker.postMessage({ id, event });
+    worker.postMessage({ id, event, opts });
   });
+}
+
+/** „12:34“ nebo „1:02:03“ → ms (NaN, když to nejde přečíst). */
+function parseClock(text) {
+  const parts = String(text).trim().split(':').map(Number);
+  if (!parts.length || parts.length > 3 || parts.some((x) => !Number.isFinite(x) || x < 0)) return NaN;
+  return parts.reduce((acc, x) => acc * 60 + x, 0) * 1000;
 }
 
 export function eventOptions(select, value) {
@@ -77,7 +84,7 @@ async function newScramble() {
   box.classList.add('loading');
   box.textContent = 'Míchám…';
   const event = settings.event;
-  const res = await requestScramble(event);
+  const res = await requestScramble(event, { count: settings.mbfCount ?? 3 });
   if (event !== settings.event) return;
   box.classList.remove('loading');
   current = res.scramble ?? '';
@@ -112,9 +119,10 @@ function render() {
   const s = summary(list);
   const fmt = (v) => formatValue(v, ev.result);
   const tile = (label, v) => el('div', {}, el('span', { textContent: label }), el('b', { textContent: fmt(v) }));
-  $('t-mini').replaceChildren(
-    tile('ao5', s.ao5.current), tile('ao12', s.ao12.current),
-    tile('nejlepší', s.single.best), el('div', {}, el('span', { textContent: 'složení' }), el('b', { textContent: String(s.count) })));
+  const count = el('div', {}, el('span', { textContent: 'složení' }), el('b', { textContent: String(s.count) }));
+  $('t-mini').replaceChildren(...(ev.result === 'multi'
+    ? [tile('poslední', s.single.current), tile('nejlepší', s.single.best), count]
+    : [tile('ao5', s.ao5.current), tile('ao12', s.ao12.current), tile('nejlepší', s.single.best), count]));
 
   const last = list[list.length - 1];
   const box = $('t-last');
@@ -129,12 +137,23 @@ function render() {
     el('span', { className: 'last-time', textContent: formatSolve(last, ev.result) }),
     ev.result === 'time' ? penalty(2000, '+2') : null,
     penalty(-1, 'DNF'),
+    iconButton(icon('edit', { size: 18 }), {
+      label: 'Poznámka k poslednímu složení',
+      className: `chip${last.n ? ' on' : ''}`,
+      onClick: () => {
+        const text = prompt('Poznámka ke složení:', last.n ?? '');
+        if (text !== null) solves.update(key(), idx, { n: text.trim() || undefined });
+      },
+    }),
     iconButton(icon('trash', { size: 18 }), { label: 'Smazat poslední složení', className: 'chip', onClick: () => solves.remove(key(), idx) }));
 }
 
 function syncMode() {
-  const fm = EVENT_BY_ID[settings.event].result === 'moves';
+  const result = EVENT_BY_ID[settings.event].result;
+  const fm = result === 'moves';
   $('t-fm').hidden = !fm;
+  $('t-mbf').hidden = result !== 'multi';
+  $('t-mbf-count').value = String(settings.mbfCount ?? 3);
   $('t-display').hidden = fm;
   $('t-hint').hidden = fm;
   const last = solves.list(key()).at(-1);
@@ -179,7 +198,14 @@ export function initTimer({ isActive }) {
     display: $('t-display'),
     isActive: () => isActiveFn() && EVENT_BY_ID[settings.event].result === 'time',
     inspection: () => settings.inspection,
+    voice: () => !!settings.voice,
     onStop: (ms, p) => {
+      // Multi-Blind: čas se jen předvyplní, výsledek se doplní ve formuláři
+      if (EVENT_BY_ID[settings.event].result === 'multi') {
+        $('t-mbf-time').value = formatClock(ms);
+        $('t-mbf-solved').focus();
+        return;
+      }
       solves.add(key(), { t: ms, p, s: current, d: Date.now() });
       newScramble();
     },
@@ -199,6 +225,26 @@ export function initTimer({ isActive }) {
     $('t-fm-moves').value = '';
     newScramble();
   };
+  $('t-mbf-count').onchange = () => {
+    const n = Math.round(Number($('t-mbf-count').value));
+    if (n >= 2 && n <= 60) { settings.mbfCount = n; saveSettings(); newScramble(); }
+  };
+  $('t-mbf').onsubmit = (e) => {
+    e.preventDefault();
+    const attempted = Math.round(Number($('t-mbf-count').value));
+    const solved = Math.round(Number($('t-mbf-solved').value));
+    const ms = parseClock($('t-mbf-time').value);
+    if (!(attempted >= 2) || !(solved >= 0 && solved <= attempted) || !Number.isFinite(ms)) {
+      $('t-hint').hidden = false;
+      $('t-hint').textContent = 'Zadej počet vyřešených (0–počet kostek) a čas jako m:ss.';
+      return;
+    }
+    solves.add(key(), { t: ms, p: 0, s: current, d: Date.now(), m: { solved, attempted } });
+    $('t-mbf-solved').value = '';
+    $('t-mbf-time').value = '';
+    $('t-mbf-solved').blur();
+    newScramble();
+  };
   $('t-fm-dnf').onclick = () => {
     solves.add(key(), { t: 0, p: -1, s: current, d: Date.now() });
     newScramble();
@@ -208,6 +254,12 @@ export function initTimer({ isActive }) {
   syncMode();
   render();
   newScramble();
+}
+
+/** Volby timeru pro dialog nastavení (čtení, případně změna). */
+export function timerOptions(patch) {
+  if (patch) { Object.assign(settings, patch); saveSettings(); }
+  return { voice: !!settings.voice };
 }
 
 export function timerEvent() {

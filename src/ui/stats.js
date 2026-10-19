@@ -7,12 +7,24 @@ import { icon } from './icons.js';
 import { solves, groups } from './store.js';
 import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup } from './timer.js';
 
+// Období, ze kterého se počítají statistiky (ms zpět, 0 = vše).
+const RANGES = [['all', 'Vše', 0], ['day', 'Dnes', 0], ['week', '7 dní', 7 * 864e5], ['month', '30 dní', 30 * 864e5]];
+let range = 'all';
+
 let event = '333';
 let group = 'main';
 const key = () => groups.key(event, group);
 
 function tiles(s, result) {
   const f = (v) => formatValue(v, result);
+  if (result === 'multi') {
+    return [
+      el('div', { className: 'tile' }, el('span', { className: 'tile-label', textContent: 'Nejlepší' }), el('b', { textContent: f(s.single.best) })),
+      el('div', { className: 'tile' }, el('span', { className: 'tile-label', textContent: 'Poslední' }), el('b', { textContent: f(s.single.current) })),
+      el('div', { className: 'tile' }, el('span', { className: 'tile-label', textContent: 'Pokusů' }), el('b', { textContent: String(s.count) }),
+        el('small', { textContent: s.dnf ? `${s.dnf} DNF` : '' })),
+    ];
+  }
   const tile = (label, cur, best) => el('div', { className: 'tile' },
     el('span', { className: 'tile-label', textContent: label }),
     el('b', { textContent: f(cur) }),
@@ -33,6 +45,10 @@ function tiles(s, result) {
 // Graf: body = jednotlivé časy, čára = průběžný ao5 (u FMC mo3).
 function chart(list, result) {
   const box = $('s-chart');
+  if (result === 'multi') {
+    box.replaceChildren(el('p', { className: 'hint', textContent: 'U Multi-Blind se graf nekreslí, výsledky jsou v seznamu.' }));
+    return;
+  }
   const pts = list.map(value);
   const finite = pts.filter((v) => v !== DNF);
   if (finite.length < 2) {
@@ -62,32 +78,82 @@ function chart(list, result) {
     <div class="legend-row"><span><i class="dot-sw"></i>složení</span>${line ? `<span><i class="line-sw"></i>${result === 'moves' ? 'mo3' : 'ao5'}</span>` : ''}</div>`;
 }
 
+// Rozložení časů: sloupce po „hezkých“ intervalech (bez DNF).
+function histogram(list, result) {
+  const box = $('s-hist');
+  const vals = list.map(value).filter((v) => v !== DNF);
+  box.closest('article').hidden = result === 'multi';
+  if (vals.length < 5) {
+    box.replaceChildren(el('p', { className: 'hint', textContent: 'Rozložení se zobrazí po pěti složeních.' }));
+    return;
+  }
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const steps = result === 'moves' ? [1, 2, 5, 10] : [100, 250, 500, 1000, 2000, 5000, 10000, 30000, 60000];
+  const step = steps.find((st) => (max - min) / st <= 12) ?? steps.at(-1);
+  const lo = Math.floor(min / step) * step;
+  const bins = new Array(Math.floor((max - lo) / step) + 1).fill(0);
+  for (const v of vals) bins[Math.floor((v - lo) / step)]++;
+  const top = Math.max(...bins);
+  const W = 100 / bins.length;
+  const label = (v) => (result === 'moves' ? String(v) : formatValue(v, result).replace(/\.00$/, ''));
+  box.innerHTML = `<div class="hist" role="img" aria-label="Rozložení časů">${bins.map((n, i) => `
+    <div class="hist-col" style="width:${W}%" title="${label(lo + i * step)} – ${label(lo + (i + 1) * step)}: ${n}×">
+      <span class="hist-n">${n || ''}</span><span class="hist-bar" style="height:${(n / top) * 100}%"></span>
+      <span class="hist-x">${i % Math.ceil(bins.length / 6) === 0 ? label(lo + i * step) : ''}</span>
+    </div>`).join('')}</div>`;
+}
+
+function inRange(solve) {
+  const r = RANGES.find(([id]) => id === range);
+  if (!r || r[0] === 'all') return true;
+  if (r[0] === 'day') return new Date(solve.d).toDateString() === new Date().toDateString();
+  return Date.now() - solve.d <= r[2];
+}
+
+function renderRanges() {
+  $('s-range').replaceChildren(...RANGES.map(([id, label]) => {
+    const b = el('button', { type: 'button', textContent: label, className: id === range ? 'active' : '' });
+    b.onclick = () => { range = id; render(); };
+    return b;
+  }));
+}
+
 function render() {
   const ev = EVENT_BY_ID[event];
   if (!groups.get(event, group)) group = 'main';
   groupOptions($('s-group'), event, group);
-  const list = solves.list(key());
+  renderRanges();
+  const all = solves.list(key());
+  // indexy do celého seznamu (kvůli úpravám), statistiky jen ze zvoleného období
+  const shown = all.map((solve, i) => ({ solve, i })).filter(({ solve }) => inRange(solve));
+  const list = shown.map(({ solve }) => solve);
   $('s-tiles').replaceChildren(...tiles(summary(list), ev.result));
   chart(list, ev.result);
+  histogram(list, ev.result);
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
-  $('s-list').replaceChildren(...list.map((solve, i) => {
+  $('s-list').replaceChildren(...shown.map(({ solve, i }, n) => {
     const penalty = (p, text) => {
       const b = el('button', { type: 'button', className: `chip${solve.p === p ? ' on' : ''}`, textContent: text });
       b.onclick = () => solves.update(key(), i, { p: solve.p === p ? 0 : p });
       return b;
     };
+    const note = () => {
+      const text = prompt('Poznámka ke složení:', solve.n ?? '');
+      if (text !== null) solves.update(key(), i, { n: text.trim() || undefined });
+    };
     return el('li', { className: 'solve' },
-      el('span', { className: 'solve-n', textContent: `${i + 1}.` }),
+      el('span', { className: 'solve-n', textContent: `${n + 1}.` }),
       el('b', { className: 'solve-time', textContent: formatSolve(solve, ev.result) }),
-      el('span', { className: 'solve-meta' },
+      el('button', { type: 'button', className: 'solve-meta', title: 'Poznámka ke složení', onclick: note },
         el('span', { textContent: date(solve.d) }),
+        solve.n ? el('span', { className: 'solve-note', textContent: solve.n }) : null,
         el('span', { className: 'solve-scramble', textContent: solve.s ?? '' })),
       el('span', { className: 'solve-actions' },
         ev.result === 'time' ? penalty(2000, '+2') : null,
         penalty(-1, 'DNF'),
         iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(key(), i) })));
   }).reverse());
-  if (!list.length) $('s-list').replaceChildren(el('li', { className: 'hint', textContent: 'Zatím žádná složení.' }));
+  if (!list.length) $('s-list').replaceChildren(el('li', { className: 'hint', textContent: all.length ? 'V tomto období žádná složení.' : 'Zatím žádná složení.' }));
 }
 
 export function initStats() {

@@ -1,8 +1,11 @@
 // Zamíchání pro disciplíny WCA.
 //
-// 2×2 je náhodný stav (optimálně vyřešený náhodný stav, viz scramble-worker),
+// 2×2 a 3×3 jsou z náhodného stavu (2×2 viz scramble-worker, 3×3 two-phase),
 // ostatní jsou náhodné tahy v notaci WCA bez zbytečných kombinací tahů
 // (stejná vrstva po sobě, opakování na stejné ose).
+
+import { randomStateScramble } from './twophase.js';
+import { simplifyAlg, algToString } from '../core/notation.js';
 
 /** Náhodné celé číslo 0 … n-1 (kryptograficky, je-li k dispozici). */
 export function randomInt(n) {
@@ -148,10 +151,30 @@ export function sq1Scramble(slashes = 12) {
  * Zamíchání pro disciplínu (kromě 2×2, které potřebuje řešič – viz scramble-worker).
  * @param {string} eventId
  */
-export function scramble(eventId) {
+/** 3×3 z náhodného stavu (inverze řešení two-phase). */
+export function scramble333() {
+  return algToString(simplifyAlg(randomStateScramble((n) => randomInt(n))));
+}
+
+// FMC: zamíchání začíná i končí R' U' F (WCA), aby nešlo „ukrást“ začátek řešení.
+const FMC_PAD = "R' U' F";
+
+/**
+ * @param {string} eventId
+ * @param {{count?: number}} [opts] count = počet kostek u Multi-Blind
+ */
+export function scramble(eventId, { count = 3 } = {}) {
   switch (eventId) {
-    case '333': case '333oh': case '333fm': return nxnScramble(3, 25);
-    case '333bf': return [nxnScramble(3, 25), bldSuffix(BLD_ORIENT_3)].filter(Boolean).join(' ');
+    case '333': case '333oh': return scramble333();
+    case '333fm': {
+      // jádro nesmí s výplní nic zkrátit (první tah mimo osu F/B, poslední mimo R/L)
+      let core;
+      do { core = scramble333(); } while (/^[FB]/.test(core) || /[RL]['2]?$/.test(core));
+      return `${FMC_PAD} ${core} ${FMC_PAD}`;
+    }
+    case '333bf': return [scramble333(), bldSuffix(BLD_ORIENT_3)].filter(Boolean).join(' ');
+    case '333mbf': return Array.from({ length: Math.max(2, Math.min(60, count)) },
+      (_, i) => `${i + 1}. ${scramble333()}`).join('\n');
     case '444': return nxnScramble(4, 40);
     case '555': return nxnScramble(5, 60);
     case '666': return nxnScramble(6, 80);

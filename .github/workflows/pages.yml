@@ -25,9 +25,20 @@ jobs:
           node-version: 22
       - run: npm test
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-package-lock playwright@1.48.2
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+
   deploy:
     if: github.event_name != 'pull_request'
-    needs: test
+    needs: [test, e2e]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -37,7 +48,10 @@ jobs:
       - name: Připravit soubory
         run: |
           mkdir _site
-          cp -r index.html styles.css src _site/
+          cp -r index.html styles.css src icons manifest.webmanifest sw.js _site/
+          sed -i "s/__VERSION__/${GITHUB_SHA::12}/" _site/sw.js
+          (cd _site && find . -type f ! -name sw.js ! -name precache.json | sed 's|^\./||' | sort \
+            | python3 -c 'import json,sys; print(json.dumps(["./"] + [l.strip() for l in sys.stdin]))' > precache.json)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
       - id: deployment

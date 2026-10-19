@@ -67,7 +67,6 @@ body.lock { overflow: hidden; overscroll-behavior: none; height: 100dvh; }
     conic-gradient(var(--c-R) 0 25%, var(--c-F) 0 50%, var(--c-D) 0 75%, var(--c-B) 0);
   box-shadow: 0 0 0 2px var(--plastic);
 }
-.topbar-info { color: var(--muted); font-size: 0.82rem; text-align: right; }
 
 main { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
 .page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; padding-bottom: 16px; }
@@ -167,6 +166,9 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .preview .face-bg { fill: var(--plastic); }
 .fm-entry { display: flex; gap: 8px; }
 .fm-entry input { width: 140px; text-align: center; font-size: 1.2rem; }
+.mbf-entry { flex-wrap: wrap; justify-content: center; align-items: flex-end; margin-top: 12px; }
+.mbf-entry label { display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem; color: var(--muted); }
+.mbf-entry input { width: 84px; font-size: 1rem; }
 .last-actions { display: flex; gap: 8px; justify-content: center; align-items: center; min-height: 34px; }
 .last-time { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 6px; }
 .mini-stats {
@@ -199,7 +201,15 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .solve { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; min-width: 0; }
 .solve-n { color: var(--muted); font-size: 0.78rem; min-width: 2.4em; text-align: right; font-variant-numeric: tabular-nums; }
 .solve-time { min-width: 4.6em; font-variant-numeric: tabular-nums; }
-.solve-meta { display: flex; flex-direction: column; font-size: 0.75rem; color: var(--muted); min-width: 0; flex: 1; }
+.solve-meta { display: flex; flex-direction: column; align-items: flex-start; font-size: 0.75rem; color: var(--muted); min-width: 0; flex: 1; border: 0; background: none; padding: 0; text-align: left; min-height: 0; }
+.solve-meta > span { max-width: 100%; }
+.solve-note { color: var(--text); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.segmented.range { grid-template-columns: repeat(4, 1fr); }
+.hist { display: flex; align-items: flex-end; height: 150px; padding-bottom: 18px; }
+.hist-col { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 1px; }
+.hist-bar { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 1px; opacity: 0.85; }
+.hist-n { font-size: 0.68rem; color: var(--muted); }
+.hist-x { position: absolute; bottom: -17px; left: 0; font-size: 0.66rem; color: var(--muted); white-space: nowrap; }
 .solve-scramble { font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .solve-actions { display: inline-flex; gap: 4px; flex: none; }
 .solve-actions .chip { min-height: 26px; padding: 2px 8px; }
@@ -212,6 +222,10 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 }
 .trainer-name { font-weight: 600; color: var(--muted); min-height: 1.4em; }
 .reveal { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 60px; }
+.reveal .row-btns { justify-content: center; }
+.reveal-setup { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.reveal-setup small { color: var(--muted); font-size: 0.75rem; }
+.reveal-setup code { font-size: 0.95rem; }
 .reveal-alg { font-family: ui-monospace, monospace; font-size: 1.15rem; text-align: center; }
 .reveal-stats { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; font-size: 0.8rem; color: var(--muted); }
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
@@ -284,6 +298,13 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .help-dialog h2 { margin: 0 0 8px; font-size: 1.05rem; }
 .help-dialog ol { padding-left: 20px; margin: 0 0 14px; display: grid; gap: 8px; font-size: 0.9rem; }
 .help-dialog form { display: flex; justify-content: flex-end; }
+.settings-dialog section { border-top: 1px solid var(--border); padding: 10px 0; }
+.settings-dialog h3 { margin: 0 0 6px; font-size: 0.9rem; }
+.settings-dialog .hint { margin: 4px 0 8px; font-size: 0.82rem; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.check-row input { width: 18px; height: 18px; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.icon-btn.ghost { background: transparent; border-color: transparent; }
 .legend { display: inline-flex; align-items: center; margin: 2px 10px 2px 0; white-space: nowrap; }
 
 /* --- 3D kostka ------------------------------------------------------------------------------ */

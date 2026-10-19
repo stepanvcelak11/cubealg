@@ -7,13 +7,39 @@
   <meta name="theme-color" content="#14171c">
   <title>ErgoCube Lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' rx='.3' fill='%23222'/%3E%3Crect x='.1' y='.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='1.1' y='.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3Crect x='2.1' y='.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='.1' y='1.1' width='.8' height='.8' rx='.12' fill='%232563d9'/%3E%3Crect x='1.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23fff'/%3E%3Crect x='2.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23f08a1c'/%3E%3Crect x='.1' y='2.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='1.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='2.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3C/svg%3E">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
     <h1><span class="logo" aria-hidden="true"></span>ErgoCube Lab</h1>
-    <span id="topbar-info" class="topbar-info"></span>
+    <button type="button" id="settings-btn" class="icon-btn ghost" data-icon="settings" title="Nastavení a data" aria-label="Nastavení a data"></button>
   </header>
+
+  <dialog id="settings-dialog" class="help-dialog settings-dialog">
+    <h2>Nastavení a data</h2>
+    <section>
+      <h3>Timer</h3>
+      <label class="check-row"><input type="checkbox" id="set-voice"> Hlásit 8 a 12 s v inspekci (hlasem)</label>
+    </section>
+    <section>
+      <h3>Záloha</h3>
+      <p class="hint">Data jsou uložená jen v tomto prohlížeči. Zálohu si stáhni do souboru a obnovíš ji tady i na jiném zařízení.</p>
+      <div class="row-btns">
+        <button type="button" id="set-export" class="secondary" data-icon="download" data-icon-size="18"><span>Stáhnout zálohu</span></button>
+        <button type="button" id="set-import" class="secondary" data-icon="upload" data-icon-size="18"><span>Obnovit ze zálohy</span></button>
+        <input type="file" id="set-file" accept="application/json,.json" hidden>
+      </div>
+      <p id="set-status" class="hint" aria-live="polite"></p>
+    </section>
+    <section id="set-install" hidden>
+      <h3>Aplikace</h3>
+      <button type="button" id="set-install-btn" class="secondary" data-icon="phone" data-icon-size="18"><span>Nainstalovat na plochu</span></button>
+    </section>
+    <form method="dialog"><button class="primary">Zavřít</button></form>
+  </dialog>
 
   <main>
     <!-- ===================== Timer ===================== -->
@@ -34,6 +60,12 @@
           <button type="submit" class="primary">Uložit</button>
           <button type="button" id="t-fm-dnf" class="secondary">DNF</button>
         </form>
+        <form id="t-mbf" class="fm-entry mbf-entry" hidden>
+          <label>Kostek <input id="t-mbf-count" type="number" min="2" max="60" inputmode="numeric"></label>
+          <label>Vyřešeno <input id="t-mbf-solved" type="number" min="0" max="60" inputmode="numeric"></label>
+          <label>Čas <input id="t-mbf-time" placeholder="m:ss" inputmode="numeric" autocomplete="off"></label>
+          <button type="submit" class="primary">Uložit</button>
+        </form>
       </div>
       <div id="t-last" class="last-actions"></div>
       <div id="t-mini" class="mini-stats"></div>
@@ -46,10 +78,15 @@
         <select id="s-group" class="group-select" aria-label="Skupina"></select>
         <button type="button" id="s-clear" class="secondary small" data-icon="trash" data-icon-size="18"><span>Smazat vše</span></button>
       </div>
+      <div id="s-range" class="segmented range" role="group" aria-label="Období"></div>
       <div id="s-tiles" class="tiles"></div>
       <article class="panel">
         <h2>Vývoj</h2>
         <div id="s-chart" class="chart"></div>
+      </article>
+      <article class="panel">
+        <h2>Rozložení</h2>
+        <div id="s-hist"></div>
       </article>
       <article class="panel">
         <h2>Složení</h2>
@@ -204,7 +241,7 @@
               <div class="grid-fields">
                 <label class="field">Max. tahů <input id="opt-max" type="number" min="1" max="20" value="11"></label>
                 <label class="field">Tahů nad optimum <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
-                <label class="field">Max. výsledků <input id="opt-results" type="number" min="1" max="5000" value="15"></label>
+                <label class="field" title="Hledá se víc řešení, ukáže se jen tolik nejpohodlnějších">Zobrazit nejlepších <input id="opt-results" type="number" min="1" max="500" value="15"></label>
                 <label class="field">Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
               </div>
             </details>

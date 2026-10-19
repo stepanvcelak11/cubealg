@@ -6,6 +6,15 @@ import { formatTime } from '../timer/stats.js';
 
 const HOLD_MS = 300;
 
+function say(text) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'cs-CZ';
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  } catch { /* prohlížeč bez syntézy řeči */ }
+}
+
 export class Stopwatch {
   /**
    * @param {object} o
@@ -13,11 +22,12 @@ export class Stopwatch {
    * @param {HTMLElement} o.display prvek s časem
    * @param {() => boolean} o.isActive zda stopky reagují (viditelná stránka)
    * @param {() => boolean} [o.inspection] zda použít inspekci
+   * @param {() => boolean} [o.voice] zda v inspekci hlásit 8 a 12 s (jako rozhodčí WCA)
    * @param {(ms:number, penalty:number) => void} o.onStop
    * @param {(state:string) => void} [o.onState] idle | holding | ready | inspecting | running
    */
-  constructor({ pad, display, isActive, inspection = () => false, onStop, onState }) {
-    Object.assign(this, { pad, display, isActive, inspection, onStop, onState });
+  constructor({ pad, display, isActive, inspection = () => false, voice = () => false, onStop, onState }) {
+    Object.assign(this, { pad, display, isActive, inspection, voice, onStop, onState });
     this.state = 'idle';
     this.holdTimer = null;
     this.raf = 0;
@@ -84,9 +94,14 @@ export class Stopwatch {
   startInspection() {
     this.inspectStart = performance.now();
     this.setState('inspecting');
+    const calls = [[8, 'Osm sekund'], [12, 'Dvanáct sekund']];
     const tick = () => {
       if (this.state !== 'inspecting' && this.state !== 'holding' && this.state !== 'ready') return;
       const s = (performance.now() - this.inspectStart) / 1000;
+      if (calls.length && s >= calls[0][0]) {
+        const [, text] = calls.shift();
+        if (this.voice()) say(text);
+      }
       if (this.state === 'inspecting') this.display.textContent = s < 15 ? String(15 - Math.floor(s)) : s < 17 ? '+2' : 'DNF';
       this.raf = requestAnimationFrame(tick);
     };

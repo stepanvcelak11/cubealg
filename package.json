@@ -6,6 +6,10 @@
   "description": "ErgoCube Lab – generátor ergonomických algoritmů pro dílčí stavy Rubikovy kostky",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "start": "npx --yes http-server -c-1 -p 8080 ."
+    "start": "npx --yes http-server -c-1 -p 8080 .",
+    "e2e": "node --test e2e/*.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.48.2"
   }
 }

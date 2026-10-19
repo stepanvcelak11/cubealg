@@ -1,6 +1,6 @@
 // Disciplíny WCA, které timer podporuje.
 //
-// result: 'time' = čas, 'moves' = počet tahů (FMC)
+// result: 'time' = čas, 'moves' = počet tahů (FMC), 'multi' = vyřešeno/pokusů + čas
 // preview: zda lze zobrazit náhled zamíchání 3×3
 
 export const EVENTS = [
@@ -20,6 +20,7 @@ export const EVENTS = [
   { id: 'sq1', name: 'Square-1', result: 'time' },
   { id: '444bf', name: '4×4 naslepo', result: 'time' },
   { id: '555bf', name: '5×5 naslepo', result: 'time' },
+  { id: '333mbf', name: '3×3 multi naslepo', result: 'multi' },
 ];
 
 export const EVENT_BY_ID = Object.fromEntries(EVENTS.map((e) => [e.id, e]));

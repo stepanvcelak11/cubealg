@@ -1,12 +1,22 @@
 // Statistiky skládání podle pravidel WCA.
 //
-// Složení: { t: čas v ms (nebo počet tahů u FMC), p: 0 | 2000 (+2) | -1 (DNF), s, d }
+// Složení: { t: čas v ms (nebo počet tahů u FMC), p: 0 | 2000 (+2) | -1 (DNF), s, d,
+//            m?: { solved, attempted } u Multi-Blind, n?: poznámka }
 
 export const DNF = Infinity;
+
+// Multi-Blind: body = vyřešeno − nevyřešeno; víc bodů je lepší, při shodě kratší čas.
+// Hodnota (nižší = lepší) se skládá jako (1000 − body) · 1e8 + čas v ms.
+const MULTI = 1e8;
+export const multiPoints = ({ solved, attempted }) => solved - (attempted - solved);
 
 /** Výsledná hodnota složení (DNF = Infinity). */
 export function value(solve) {
   if (solve.p === -1) return DNF;
+  if (solve.m) {
+    const points = multiPoints(solve.m);
+    return points <= 0 ? DNF : (1000 - points) * MULTI + solve.t;
+  }
   return solve.t + (solve.p > 0 ? solve.p : 0);
 }
 
@@ -91,6 +101,12 @@ export function formatTime(ms) {
 
 /** Hodnota pro zobrazení podle typu výsledku (čas / tahy). */
 export function formatValue(v, result = 'time') {
+  if (result === 'multi') {
+    if (v === DNF) return 'DNF';
+    if (!Number.isFinite(v)) return '–';
+    const points = 1000 - Math.floor(v / MULTI);
+    return `${points} b. ${formatClock(v % MULTI)}`;
+  }
   if (result === 'moves') {
     if (v === DNF) return 'DNF';
     return Number.isFinite(v) ? (Number.isInteger(v) ? String(v) : v.toFixed(2)) : '–';
@@ -98,7 +114,17 @@ export function formatValue(v, result = 'time') {
   return formatTime(v);
 }
 
+/** Čas jako m:ss (Multi-Blind se měří na celé sekundy). */
+export function formatClock(ms) {
+  const sec = Math.floor(ms / 1000);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
 export function formatSolve(solve, result = 'time') {
+  if (solve.m) {
+    const text = `${solve.m.solved}/${solve.m.attempted} ${formatClock(solve.t)}`;
+    return value(solve) === DNF ? `DNF (${text})` : text;
+  }
   if (solve.p === -1) return 'DNF';
   const base = formatValue(solve.t + (solve.p > 0 ? solve.p : 0), result);
   return solve.p > 0 ? `${base}+` : base;

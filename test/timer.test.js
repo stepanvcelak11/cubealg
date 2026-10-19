@@ -16,13 +16,20 @@ test('každá disciplína má zamíchání', () => {
   }
 });
 
-test('3×3: 25 tahů, platná notace, žádná stejná vrstva dvakrát po sobě', () => {
-  for (let i = 0; i < 50; i++) {
+test('3×3 z náhodného stavu: krátké, platná notace, žádná stejná vrstva dvakrát po sobě', () => {
+  for (let i = 0; i < 10; i++) {
     const s = scramble('333');
     const moves = parseAlg(s);
-    assert.equal(moves.length, 25);
+    assert.ok(moves.length >= 2 && moves.length <= 24, s);
     for (let j = 1; j < moves.length; j++) assert.notEqual(moves[j].base, moves[j - 1].base, s);
   }
+});
+
+test('FMC začíná i končí R\' U\' F, Multi-Blind má zvolený počet kostek', () => {
+  const s = scramble('333fm');
+  assert.ok(s.startsWith("R' U' F "), s);
+  assert.ok(s.endsWith(" R' U' F"), s);
+  assert.equal(scramble('333mbf', { count: 4 }).split('\n').length, 4);
 });
 
 test('N×N: délky a šířky vrstev', () => {
@@ -83,4 +90,15 @@ test('formát času', () => {
   assert.equal(formatTime(DNF), 'DNF');
   assert.equal(formatSolve({ t: 10000, p: 2000 }), '12.00+');
   assert.equal(formatSolve({ t: 28, p: 0 }, 'moves'), '28');
+});
+
+test('Multi-Blind: body, DNF a pořadí', async () => {
+  const { value, formatSolve, bestSingle } = await import('../src/timer/stats.js');
+  const a = { t: 3000000, p: 0, m: { solved: 5, attempted: 6 } }; // 4 body
+  const b = { t: 2000000, p: 0, m: { solved: 4, attempted: 5 } }; // 3 body
+  const c = { t: 1000000, p: 0, m: { solved: 2, attempted: 4 } }; // 0 bodů = DNF
+  assert.ok(value(a) < value(b));
+  assert.equal(value(c), DNF);
+  assert.equal(formatSolve(a, 'multi'), '5/6 50:00');
+  assert.equal(bestSingle([b, a, c]), value(a));
 });

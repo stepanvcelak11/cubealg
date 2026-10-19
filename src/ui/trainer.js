@@ -2,6 +2,7 @@
 // algoritmu a statistiky pro každý algoritmus.
 
 import { buildStart } from '../core/task.js';
+import { invertAlg, algToString } from '../core/notation.js';
 import { averageOf, formatTime } from '../timer/stats.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
@@ -63,15 +64,25 @@ function showCase() {
   renderReveal(a);
 }
 
+let showSetup = false;
+
 function renderReveal(a) {
   const st = algStats(a);
   const box = $('tr-reveal');
+  // Nastavení případu na skutečné kostce = inverze algoritmu.
+  const setup = showSetup
+    ? el('div', { className: 'reveal-setup' }, el('small', { textContent: 'Nastavení na kostce:' }), el('code', { textContent: setupOf(a) }))
+    : null;
   if (!revealed) {
     const b = el('button', { type: 'button', className: 'secondary small' });
     b.innerHTML = icon('eye', { size: 16 });
     b.append(el('span', { textContent: 'Ukázat algoritmus' }));
     b.onclick = () => { revealed = true; showCase(); };
-    box.replaceChildren(b);
+    const sb = el('button', { type: 'button', className: `secondary small${showSetup ? ' on' : ''}` });
+    sb.innerHTML = icon('shuffle', { size: 16 });
+    sb.append(el('span', { textContent: 'Nastavení' }));
+    sb.onclick = () => { showSetup = !showSetup; renderReveal(a); };
+    box.replaceChildren(el('div', { className: 'row-btns' }, b, sb), setup);
     return;
   }
   box.replaceChildren(
@@ -80,7 +91,12 @@ function renderReveal(a) {
       el('span', { textContent: `pokusů ${st.count}` }),
       el('span', { textContent: `nejlepší ${formatTime(st.best)}` }),
       el('span', { textContent: `ao5 ${formatTime(st.ao5)}` }),
-      el('span', { textContent: `průměr ${formatTime(st.mean)}` })));
+      el('span', { textContent: `průměr ${formatTime(st.mean)}` })),
+    setup);
+}
+
+function setupOf(a) {
+  try { return algToString(invertAlg(a.alg)); } catch { return '–'; }
 }
 
 function next() {

@@ -6,6 +6,7 @@ import { initTimer } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer } from './trainer.js';
 import { initLab, showLab, labSub } from './lab.js';
+import { initSettings } from './settings.js';
 
 let page = storage.get('ergocube.page') ?? 'timer';
 
@@ -39,4 +40,10 @@ initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });
 initLab({ onSub: () => updateLock() });
+initSettings();
 showPage(page);
+
+// Offline režim (jen přes http/https, ne z file://).
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* bez offline režimu */ });
+}

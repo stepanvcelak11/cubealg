@@ -34,7 +34,6 @@ const STYLES = [
   { type: 'orientation', label: 'Tečkovaná', title: 'Jen natočení (orientace)' },
 ];
 const AMOUNT_LABELS = { 1: 'po směru', [-1]: "proti (')", 2: 'dvojitě (2)' };
-const SHOWN_RESULTS = 150;
 const CENTERS = SLOTS.filter((s) => s.type === 'center').map((s) => s.name);
 
 const saved = storage.get('ergocube.v3') ?? {};
@@ -376,7 +375,8 @@ function startSearch() {
   const opts = {
     maxLength: num('opt-max', 1, 20),
     extraDepth: num('opt-extra', 0, 6),
-    maxResults: num('opt-results', 1, 5000),
+    // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejpohodlnější
+    maxResults: Math.min(5000, Math.max(500, num('opt-results', 1, 500) * 40)),
     timeLimit: num('opt-time', 1, 300) * 1000,
   };
   searchUi(true);
@@ -463,7 +463,8 @@ function toggleSave(alg) {
 
 function renderResults() {
   const list = sortedResults();
-  $('results').replaceChildren(...list.slice(0, SHOWN_RESULTS).map(({ alg, score: s }, i) => {
+  const shown = num('opt-results', 1, 500);
+  $('results').replaceChildren(...list.slice(0, shown).map(({ alg, score: s }, i) => {
     const isSaved = !!savedFor(alg);
     const row = el('div', { className: `result${alg === ui.chosen ? ' selected' : ''}`, role: 'button', tabIndex: 0 },
       el('span', { className: 'rank', textContent: `${i + 1}.` }),
@@ -484,10 +485,10 @@ function renderResults() {
     row.onkeydown = (e) => { if (e.key === 'Enter') choose(alg, true); };
     return el('li', {}, row);
   }));
-  $('results-more').textContent = list.length > SHOWN_RESULTS ? `Zobrazeno ${SHOWN_RESULTS} z ${list.length}.` : '';
+  $('results-more').textContent = list.length > shown ? `Zobrazeno ${shown} nejlepších z ${list.length} nalezených.` : '';
   const count = $('results-count');
   count.hidden = !list.length;
-  count.textContent = String(list.length);
+  count.textContent = String(Math.min(list.length, shown));
 }
 
 // --- Přehrávač ------------------------------------------------------------------------
@@ -637,6 +638,7 @@ export function initLab({ onSub } = {}) {
     renderResults();
   };
   $('sort').onchange = () => renderResults();
+  $('opt-results').onchange = () => renderResults();
   $('ergo-reset').onclick = () => {
     ui.ergo = { ...DEFAULT_CONFIG, moveWeights: { ...DEFAULT_MOVE_WEIGHTS } };
     renderErgo();
