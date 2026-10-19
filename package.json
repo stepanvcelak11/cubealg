@@ -1,0 +1,11 @@
+{
+  "name": "ergocube-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ErgoCube Lab – generátor ergonomických algoritmů pro dílčí stavy Rubikovy kostky",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "npx --yes http-server -c-1 -p 8080 ."
+  }
+}

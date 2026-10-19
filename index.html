@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ErgoCube Lab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>ErgoCube Lab</h1>
+    <p>Ergonomické algoritmy pro dílčí stavy kostky</p>
+  </header>
+
+  <main>
+    <section class="card" id="goal-card">
+      <h2>Cíl (stav B) – co musí zůstat zachováno</h2>
+      <label>Preset
+        <select id="preset"></select>
+      </label>
+      <p class="hint">U každého dílku zvol: <b>složeno</b> (místo i natočení), <b>permutace</b> (jen místo),
+        <b>orientace</b> (jen natočení), <b>nezáleží</b>.</p>
+      <div id="pieces" class="pieces"></div>
+    </section>
+
+    <section class="card">
+      <h2>Povolené tahy</h2>
+      <label>Sada
+        <select id="moveset-preset"></select>
+      </label>
+      <div id="bases" class="chips"></div>
+      <div id="amounts" class="chips"></div>
+    </section>
+
+    <section class="card">
+      <h2>Algoritmus</h2>
+      <label>Algoritmus
+        <input id="alg" value="R U R' U' R U R'" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Stav A – zamíchání (prázdné = případ, který algoritmus řeší)
+        <input id="scramble" value="" autocomplete="off" spellcheck="false">
+      </label>
+      <div id="alg-error" class="error" hidden></div>
+      <div class="split">
+        <div>
+          <h3>Stav A</h3>
+          <div id="net" class="net"></div>
+        </div>
+        <div id="result"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Porovnání algoritmů</h2>
+      <label>Jeden algoritmus na řádek
+        <textarea id="compare" rows="5" spellcheck="false">R U R' U' R U R'
+y' U' L' U L U' L' U L y
+U R U' R' U R U' R' U R U' R'
+R' F R F' R U R'</textarea>
+      </label>
+      <ol id="ranking" class="ranking"></ol>
+    </section>
+  </main>
+
+  <footer>Milník 1 – jádro kostky, omezení dílků a ergonomická funkce. Hledání algoritmů přijde v dalším kroku.</footer>
+  <script type="module" src="src/ui/app.js"></script>
+</body>
+</html>
