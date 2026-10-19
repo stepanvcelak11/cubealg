@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { solved, applyAlg, caseOf } from '../src/core/cube.js';
-import { compileGoal, presetConstraints, makeConstraints } from '../src/core/constraints.js';
+import { compileGoal } from '../src/core/constraints.js';
+import { spec as makeConstraints, preset as presetConstraints } from './helpers.js';
 import { MoveSet } from '../src/core/moveset.js';
 import { findAlgs } from '../src/search/engine.js';
 

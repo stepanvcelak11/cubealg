@@ -2,138 +2,140 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Generátor ergonomických algoritmů pro dílčí stavy Rubikovy kostky">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Hledání ergonomických algoritmů pro vlastní dílčí stavy Rubikovy kostky">
+  <meta name="theme-color" content="#14171c">
   <title>ErgoCube Lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' fill='%23222'/%3E%3Crect x='.1' y='.1' width='.8' height='.8' fill='%23f5d20b'/%3E%3Crect x='1.1' y='.1' width='.8' height='.8' fill='%23d62d2d'/%3E%3Crect x='2.1' y='.1' width='.8' height='.8' fill='%231f9d4c'/%3E%3Crect x='.1' y='1.1' width='.8' height='.8' fill='%232563d9'/%3E%3Crect x='1.1' y='1.1' width='.8' height='.8' fill='%23fff'/%3E%3Crect x='2.1' y='1.1' width='.8' height='.8' fill='%23f08a1c'/%3E%3Crect x='.1' y='2.1' width='.8' height='.8' fill='%231f9d4c'/%3E%3Crect x='1.1' y='2.1' width='.8' height='.8' fill='%23f5d20b'/%3E%3Crect x='2.1' y='2.1' width='.8' height='.8' fill='%23d62d2d'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <header class="topbar">
     <h1>ErgoCube Lab</h1>
-    <p>Hledá ergonomické algoritmy pro dílčí stavy kostky a řadí je podle pohodlnosti, ne jen podle počtu tahů.</p>
+    <span id="topbar-info" class="topbar-info"></span>
   </header>
 
   <main>
-    <section class="card" id="start-card">
-      <h2><span class="step">1</span> Stav A – výchozí</h2>
-      <div class="tabs" role="tablist" id="start-mode">
-        <button type="button" data-mode="case" class="active">Případ algoritmu</button>
-        <button type="button" data-mode="scramble">Zamíchání</button>
-        <button type="button" data-mode="colors">Barvy / kamera</button>
-      </div>
-      <div id="start-text-wrap">
-        <label><span id="start-text-label">Algoritmus, který případ řeší</span>
-          <input id="start-text" value="U R U' R' U' F' U F" autocomplete="off" spellcheck="false">
-        </label>
-      </div>
-      <div id="editor" hidden>
-        <p class="hint">Vyber barvu a klikej na nálepky. Středy určují barvy stěn.</p>
-        <div id="palette" class="palette"></div>
-        <div class="actions">
-          <button type="button" id="scan" class="secondary">📷 Naskenovat kamerou</button>
-          <button type="button" id="editor-reset" class="secondary">Složená kostka</button>
-          <button type="button" id="editor-from-start" class="secondary">Převzít předchozí stav</button>
-        </div>
-        <div id="scanner"></div>
-        <label>Barvy jako text (54 znaků URFDLB, formát Kociemba)
-          <input id="facelets" autocomplete="off" spellcheck="false">
-        </label>
-      </div>
-      <div id="start-error" class="error" hidden></div>
-      <div id="start-net" class="net"></div>
-    </section>
-
-    <section class="card" id="goal-card">
-      <h2><span class="step">2</span> Cíl – stav B</h2>
-      <label>Preset
-        <select id="preset"></select>
-      </label>
-      <p class="hint">Pro každý dílek: <b>složeno</b> (místo i natočení), <b>permutace</b> (jen místo),
-        <b>orientace</b> (jen natočení – rohy vůči U/D, hrany vůči F/B), <b>nezáleží</b>.</p>
-      <div id="pieces" class="pieces"></div>
-      <details>
-        <summary>Jiný cílový stav než složená kostka</summary>
-        <label>Stav B jako zamíchání složené kostky (prázdné = složená)
-          <input id="target-text" value="" autocomplete="off" spellcheck="false">
-        </label>
-      </details>
-    </section>
-
-    <section class="card">
-      <h2><span class="step">3</span> Povolené tahy</h2>
-      <label>Sada
-        <select id="moveset-preset"></select>
-      </label>
-      <div id="bases" class="chips"></div>
-      <div id="amounts" class="chips"></div>
-    </section>
-
-    <section class="card">
-      <h2><span class="step">4</span> Hledání</h2>
-      <div class="grid4">
-        <label>Max. tahů <input id="opt-max" type="number" min="1" max="20" value="11"></label>
-        <label>Tahů nad optimum <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
-        <label>Max. výsledků <input id="opt-results" type="number" min="1" max="5000" value="500"></label>
-        <label>Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
-      </div>
-      <div class="actions">
-        <button type="button" id="search">Hledat</button>
-        <button type="button" id="stop" class="secondary" disabled>Zastavit</button>
-      </div>
-      <p id="status" class="status"></p>
-      <div id="comparison"></div>
-      <ol id="results" class="results"></ol>
-      <p id="results-more" class="hint"></p>
-    </section>
-
-    <section class="card wide" id="player-card">
-      <h2><span class="step">5</span> Přehrávač a hodnocení</h2>
-      <label>Algoritmus
-        <input id="alg" value="U R U' R' U' F' U F" autocomplete="off" spellcheck="false">
-      </label>
-      <div id="alg-error" class="error" hidden></div>
-      <div class="split">
-        <div>
-          <div id="player-net" class="net"></div>
-          <div class="player-controls">
-            <button type="button" id="step-first" class="secondary" aria-label="Na začátek">⏮</button>
-            <button type="button" id="step-back" class="secondary" aria-label="Zpět">◀</button>
-            <input id="step" type="range" min="0" max="0" value="0" aria-label="Krok">
-            <button type="button" id="step-fwd" class="secondary" aria-label="Vpřed">▶</button>
-            <button type="button" id="step-last" class="secondary" aria-label="Na konec">⏭</button>
+    <!-- 1. Zadání -->
+    <section class="page" id="page-task" data-page="task">
+      <div class="cubes">
+        <article class="panel">
+          <header class="panel-head">
+            <h2>Výchozí stav</h2>
+            <button type="button" class="icon-btn" id="a-view" title="Výchozí pohled" aria-label="Výchozí pohled">⟲</button>
+          </header>
+          <div id="cube-a" class="cube-host"></div>
+          <div class="tool-row" id="palette" role="radiogroup" aria-label="Barva"></div>
+          <div class="tool-row">
+            <input id="a-moves" placeholder="Provést tahy, např. R U R'" autocomplete="off" spellcheck="false" aria-label="Tahy pro výchozí stav">
+            <button type="button" id="a-apply" class="secondary">Provést</button>
           </div>
-          <button type="button" id="show-3d" class="secondary">Zobrazit 3D (cubing.js)</button>
-          <div id="twisty"></div>
-        </div>
-        <div id="result"></div>
+          <div class="tool-row wrap">
+            <button type="button" id="a-home" class="secondary small">Vložit dílky z cíle</button>
+            <button type="button" id="a-clear" class="secondary small">Vyčistit</button>
+            <button type="button" id="a-scan" class="secondary small">📷 Kamera</button>
+          </div>
+          <div id="scanner"></div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head">
+            <h2>Cíl</h2>
+            <button type="button" class="icon-btn" id="b-view" title="Výchozí pohled" aria-label="Výchozí pohled">⟲</button>
+          </header>
+          <div id="cube-b" class="cube-host"></div>
+          <div class="tool-row" id="brushes" role="radiogroup" aria-label="Co řešit"></div>
+          <div class="tool-row wrap">
+            <button type="button" id="b-clear" class="secondary small">Zrušit vše</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="panel help">
+        <p><b>Cíl:</b> vyber styl a klepni na dílky, které se mají vyřešit.
+          <span class="legend"><i class="sw solid"></i>plná = místo i natočení</span>
+          <span class="legend"><i class="sw dashed"></i>čárkovaná = jen místo (permutace)</span>
+          <span class="legend"><i class="sw dotted"></i>tečkovaná = jen natočení (orientace)</span>
+          Opětovné klepnutí dílek zruší.</p>
+        <p><b>Výchozí stav:</b> vybarvi, kde označené dílky leží (barva + klepnutí na nálepku), nebo je vlož z cíle a zamíchej tahy.
+          Táhnutím kostku otočíš.</p>
+      </div>
+
+      <div id="task-status" class="task-status"></div>
+      <div class="actions">
+        <button type="button" id="undo" class="secondary">↶ Zpět</button>
+        <button type="button" id="go-search" class="primary">Najít řešení →</button>
       </div>
     </section>
 
-    <section class="card">
-      <h2>Ergonomie – váhy</h2>
-      <p class="hint">Změny se hned promítnou do skóre všech výsledků a uloží se v prohlížeči.</p>
-      <div class="grid4" id="ergo-main"></div>
-      <details>
-        <summary>Váhy jednotlivých tahů (po směru / proti / dvojitě)</summary>
+    <!-- 2. Tahy a váhy -->
+    <section class="page" id="page-moves" data-page="moves" hidden>
+      <article class="panel">
+        <h2>Povolené tahy</h2>
+        <label class="field">Sada
+          <select id="moveset-preset"></select>
+        </label>
+        <div id="bases" class="chips"></div>
+        <div id="amounts" class="chips"></div>
+      </article>
+      <article class="panel">
+        <h2>Ergonomie – váhy</h2>
+        <p class="hint">Nižší číslo = pohodlnější. Změny se hned promítnou do hodnocení řešení.</p>
+        <div class="grid-fields" id="ergo-main"></div>
+        <h3>Váhy tahů <small>po směru / proti / dvojitě</small></h3>
         <div id="ergo-moves" class="ergo-moves"></div>
-      </details>
-      <div class="actions"><button type="button" id="ergo-reset" class="secondary">Výchozí hodnoty</button></div>
+        <div class="actions"><button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button></div>
+      </article>
     </section>
 
-    <section class="card">
-      <h2>Porovnání algoritmů</h2>
-      <label>Jeden algoritmus na řádek
-        <textarea id="compare" rows="5" spellcheck="false">U R U' R' U' F' U F
-y U' L' U L U' L' U L y'
-U R U' R' U R U' R' U R U' R'
-R' F R F' R U R'</textarea>
-      </label>
-      <ol id="ranking" class="ranking"></ol>
+    <!-- 3. Řešení -->
+    <section class="page" id="page-results" data-page="results" hidden>
+      <div class="results-layout">
+        <article class="panel player">
+          <div id="cube-p" class="cube-host"></div>
+          <div class="player-controls">
+            <button type="button" class="icon-btn" id="p-first" aria-label="Na začátek">⏮</button>
+            <button type="button" class="icon-btn" id="p-back" aria-label="Zpět">◀</button>
+            <button type="button" class="icon-btn play" id="p-play" aria-label="Přehrát">▶</button>
+            <button type="button" class="icon-btn" id="p-fwd" aria-label="Vpřed">▶|</button>
+            <button type="button" class="icon-btn" id="p-last" aria-label="Na konec">⏭</button>
+          </div>
+          <input id="alg" placeholder="Vlastní algoritmus k ohodnocení" autocomplete="off" spellcheck="false" aria-label="Algoritmus">
+          <div id="detail"></div>
+        </article>
+
+        <article class="panel">
+          <div class="search-bar">
+            <button type="button" id="search" class="primary">Hledat</button>
+            <button type="button" id="stop" class="secondary" disabled>Zastavit</button>
+            <select id="sort" aria-label="Řazení">
+              <option value="score">Podle pohodlnosti</option>
+              <option value="length">Podle délky</option>
+            </select>
+          </div>
+          <details class="settings">
+            <summary>Nastavení hledání</summary>
+            <div class="grid-fields">
+              <label class="field">Max. tahů <input id="opt-max" type="number" min="1" max="20" value="11"></label>
+              <label class="field">Tahů nad optimum <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
+              <label class="field">Max. výsledků <input id="opt-results" type="number" min="1" max="5000" value="500"></label>
+              <label class="field">Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
+            </div>
+          </details>
+          <p id="status" class="status"></p>
+          <ol id="results" class="results"></ol>
+          <p id="results-more" class="hint"></p>
+        </article>
+      </div>
     </section>
   </main>
 
-  <footer>ErgoCube Lab · hledání běží v prohlížeči (Web Worker) · 3D náhled: <a href="https://js.cubing.net/cubing/">cubing.js</a></footer>
+  <nav class="tabbar" aria-label="Sekce">
+    <button type="button" data-tab="task" class="active"><span aria-hidden="true">◧</span>Zadání</button>
+    <button type="button" data-tab="moves"><span aria-hidden="true">⚙</span>Tahy a váhy</button>
+    <button type="button" data-tab="results"><span aria-hidden="true">☰</span>Řešení <b id="results-count" class="count" hidden></b></button>
+  </nav>
+
   <script type="module" src="src/ui/app.js"></script>
 </body>
 </html>

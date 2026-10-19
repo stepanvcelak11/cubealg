@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { solved, applyAlg, caseOf } from '../src/core/cube.js';
-import { compileGoal, makeConstraints, presetConstraints, stickerVisibility } from '../src/core/constraints.js';
+import { compileGoal } from '../src/core/constraints.js';
+import { spec as makeConstraints, preset as presetConstraints } from './helpers.js';
 import { MoveSet } from '../src/core/moveset.js';
 
 const reaches = (goal, start, alg) => goal.test(applyAlg(start, alg));
@@ -61,10 +62,6 @@ test('cílový stav B nemusí být složená kostka', () => {
   assert.ok(goal.test(applyAlg(solved(), 'U')));
 });
 
-test('zobrazení podstavu podle omezení', () => {
-  const vis = stickerVisibility(makeConstraints({ orientation: ['UF'], solved: ['U'] }));
-  assert.equal(vis.filter((v) => v === 'color').length, 2); // střed U + referenční nálepka UF
-});
 
 test('MoveSet respektuje povolené tahy', () => {
   const ms = new MoveSet({ bases: ['R', 'U', 'M'], amounts: [1, -1] });

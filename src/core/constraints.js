@@ -15,57 +15,18 @@ import { solved } from './cube.js';
 
 export const CONSTRAINT_TYPES = ['ignore', 'solved', 'permutation', 'orientation'];
 
-export const PIECE_GROUPS = {
-  centers: ['U', 'R', 'F', 'D', 'L', 'B'],
-  cross: ['DF', 'DR', 'DB', 'DL'],
-  'pair-FR': ['DFR', 'FR'],
-  'pair-FL': ['DLF', 'FL'],
-  'pair-BL': ['DBL', 'BL'],
-  'pair-BR': ['DRB', 'BR'],
-  'u-edges': ['UF', 'UR', 'UB', 'UL'],
-  'u-corners': ['URF', 'UFL', 'ULB', 'UBR'],
-  'd-corners': ['DFR', 'DLF', 'DBL', 'DRB'],
-  'e-edges': ['FR', 'FL', 'BL', 'BR'],
-  edges: SLOTS.filter((s) => s.type === 'edge').map((s) => s.name),
-  corners: SLOTS.filter((s) => s.type === 'corner').map((s) => s.name),
-};
-PIECE_GROUPS.f2l = [...PIECE_GROUPS.cross, ...PIECE_GROUPS['d-corners'], ...PIECE_GROUPS['e-edges']];
-PIECE_GROUPS['u-layer'] = [...PIECE_GROUPS['u-edges'], ...PIECE_GROUPS['u-corners']];
-
-const expand = (names) => names.flatMap((n) => PIECE_GROUPS[n] ?? [n]);
-
 /**
- * Sestaví mapu omezení. Pozdější klíče přepisují dřívější, takže lze psát
- * např. { orientation: ['edges'], solved: ['centers', 'cross'] }.
+ * Sestaví mapu omezení ze seznamů dílků, např. { solved: ['FR', 'DFR'] }.
+ * Pozdější typy (v pořadí CONSTRAINT_TYPES) přepisují dřívější.
  * @param {Partial<Record<string, string[]>>} spec
  * @returns {Record<string, string>} název dílku → typ omezení
  */
 export function makeConstraints(spec) {
   const out = Object.fromEntries(SLOTS.map((s) => [s.name, 'ignore']));
   for (const type of CONSTRAINT_TYPES) {
-    for (const name of expand(spec[type] ?? [])) out[slotByName(name).name] = type;
+    for (const name of spec[type] ?? []) out[slotByName(name).name] = type;
   }
   return out;
-}
-
-export const SUBSTATE_PRESETS = {
-  full: { label: 'Celá kostka', spec: { solved: ['centers', 'edges', 'corners'] } },
-  cross: { label: 'Kříž', spec: { solved: ['centers', 'cross'] } },
-  'f2l-fr': { label: 'F2L – slot FR', spec: { solved: ['centers', 'cross', 'pair-FR'] } },
-  'f2l-fl': { label: 'F2L – slot FL', spec: { solved: ['centers', 'cross', 'pair-FL'] } },
-  'f2l-br': { label: 'F2L – slot BR', spec: { solved: ['centers', 'cross', 'pair-BR'] } },
-  'f2l-bl': { label: 'F2L – slot BL', spec: { solved: ['centers', 'cross', 'pair-BL'] } },
-  f2l: { label: 'Celé F2L', spec: { solved: ['centers', 'f2l'] } },
-  oll: { label: 'OLL (F2L + orientace U)', spec: { solved: ['centers', 'f2l'], orientation: ['u-layer'] } },
-  pll: { label: 'PLL (vše složené)', spec: { solved: ['centers', 'edges', 'corners'] } },
-  eo: { label: 'EO (orientace hran)', spec: { solved: ['centers'], orientation: ['edges'] } },
-  cp: { label: 'CP (permutace rohů)', spec: { solved: ['centers'], permutation: ['corners'] } },
-};
-
-export function presetConstraints(id) {
-  const p = SUBSTATE_PRESETS[id];
-  if (!p) throw new Error(`Neznámý preset „${id}“`);
-  return makeConstraints(p.spec);
 }
 
 /**
@@ -108,17 +69,4 @@ export function compileGoal(constraints, target = solved()) {
   }
 
   return { test, violations, constraints: { ...constraints } };
-}
-
-/** Jak dílek k zobrazit: barva všech nálepek, jen referenční, nebo šedě. */
-export function stickerVisibility(constraints) {
-  const vis = new Array(54).fill('gray');
-  for (const s of SLOTS) {
-    const type = constraints[s.name] ?? 'ignore';
-    s.facelets.forEach((k, i) => {
-      if (type === 'solved' || type === 'permutation') vis[k] = 'color';
-      else if (type === 'orientation' && (i === 0 || s.type === 'center')) vis[k] = 'color';
-    });
-  }
-  return vis;
 }
