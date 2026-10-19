@@ -20,8 +20,11 @@ export class Cube3D {
    * @param {HTMLElement} container
    * @param {{onSticker?: (pos:number) => void, label?: string}} [opts]
    */
-  constructor(container, { onSticker, label = 'Kostka' } = {}) {
+  constructor(container, { onSticker, label = 'Kostka', fill = false } = {}) {
     this.onSticker = onSticker;
+    // fill: kostka se přizpůsobí výšce i šířce kontejneru (stránka bez posouvání)
+    this.fill = fill;
+    this.container = container;
     this.view = { ...DEFAULT_VIEW };
     this.size = 40;
     this.scene = document.createElement('div');
@@ -44,14 +47,16 @@ export class Cube3D {
     container.replaceChildren(this.scene);
     this.bindPointer();
     this.resizeObserver = new ResizeObserver(() => this.layout());
-    this.resizeObserver.observe(this.scene);
+    this.resizeObserver.observe(fill ? container : this.scene);
     this.layout();
   }
 
   layout() {
     const w = this.scene.clientWidth || 240;
-    this.size = Math.max(22, Math.min(64, Math.floor(w / 4.4)));
-    this.scene.style.height = `${Math.round(this.size * 4.6)}px`;
+    const h = this.fill ? this.container.clientHeight : Infinity;
+    if (this.fill && !h) return;
+    this.size = Math.max(16, Math.min(64, Math.floor(Math.min(w / 4.3, h / 4.4))));
+    this.scene.style.height = this.fill ? '100%' : `${Math.round(this.size * 4.6)}px`;
     this.cube.style.setProperty('--s', `${this.size}px`);
     this.stickers.forEach((s, i) => { s.style.transform = this.baseTransform(i); });
     this.applyView();
@@ -102,14 +107,15 @@ export class Cube3D {
   }
 
   /**
-   * @param {{color: string, style: 'solid'|'dashed'|'dotted'|'faded'|'none'}[]} stickers
+   * @param {{color: string, style: 'solid'|'dashed'|'dotted'|'faded'|'none', selected?: boolean}[]} stickers
    *   pro každou pozici 0–53; color je U R F D L B nebo X (nevybarveno)
    */
   render(stickers) {
-    stickers.forEach(({ color, style }, i) => {
+    stickers.forEach(({ color, style, selected }, i) => {
       const el = this.stickers[i];
       const blank = color === 'X' || style === 'none';
       el.dataset.style = blank ? 'none' : style;
+      el.classList.toggle('selected', !!selected);
       el.style.setProperty('--c', blank ? 'var(--c-gray)' : `var(--c-${color})`);
     });
     this.scene.classList.toggle('editable', !!this.onSticker);

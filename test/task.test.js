@@ -73,3 +73,38 @@ test('úplně vybarvená nemožná kostka je odmítnuta', () => {
   const constraints = makeConstraints({ solved: ['UF'] });
   assert.match(buildStart(all, constraints).errors[0], /nejde/);
 });
+
+test('úpravy po dílcích: položit, natočit, přesunout, odebrat', async () => {
+  const { placePiece, twistAt, pieceAt, findPiece, removePiece } = await import('../src/core/task.js');
+  let c = placePiece(blankColors(), 'FR', 'UF');
+  assert.equal(pieceAt(c, 'UF'), 'FR');
+  // dvojí překlopení hrany = původní stav
+  assert.deepEqual(twistAt(twistAt(c, 'UF'), 'UF'), c);
+  assert.notDeepEqual(twistAt(c, 'UF'), c);
+  // roh: tři natočení, všechna platná
+  let r = placePiece(blankColors(), 'DFR', 'ULB');
+  for (let i = 0; i < 3; i++) {
+    assert.deepEqual(identifyPieces(r).errors, []);
+    assert.equal(pieceAt(r, 'ULB'), 'DFR');
+    r = twistAt(r, 'ULB');
+  }
+  assert.deepEqual(r, placePiece(blankColors(), 'DFR', 'ULB'));
+  // přesun: z UF do BR, UF se uvolní
+  c = placePiece(c, 'FR', 'BR', 1);
+  assert.equal(pieceAt(c, 'UF'), null);
+  assert.equal(findPiece(c, 'FR').name, 'BR');
+  // vytlačení: položím UF na místo, kde je FR
+  c = placePiece(c, 'UF', 'BR');
+  assert.equal(findPiece(c, 'FR'), null);
+  assert.deepEqual(removePiece(c, 'UF'), blankColors());
+  assert.throws(() => placePiece(c, 'UF', 'URF'), /nepatří/);
+});
+
+test('natočení dílku odpovídá skutečnému tahu', async () => {
+  const { placePiece, twistAt } = await import('../src/core/task.js');
+  // po F je hrana UF v pozici FR – překlopená vůči domovu? porovnáme s identifikací
+  const moved = moveColors(homeColors(['UF']), 'F');
+  const placed0 = placePiece(blankColors(), 'UF', 'FR');
+  const placed1 = twistAt(placed0, 'FR');
+  assert.ok([placed0, placed1].some((p) => p.join() === moved.join()));
+});

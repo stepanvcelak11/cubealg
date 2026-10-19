@@ -105,3 +105,49 @@ export function buildStart(colors, constraints) {
   }
   return { loc, errors, untracked };
 }
+
+// --- Úpravy po dílcích ------------------------------------------------------------
+
+/** Kde ve vybarvení leží dílek (slot), nebo null. */
+export function findPiece(colors, name) {
+  const p = identifyPieces(colors).pieces.get(slotByName(name).name);
+  return p ? SLOTS[p.slot] : null;
+}
+
+/** Odebere dílek z vybarvení. */
+export function removePiece(colors, name) {
+  const slot = findPiece(colors, name);
+  const out = [...colors];
+  if (slot) for (const f of slot.facelets) out[f] = EMPTY;
+  return out;
+}
+
+/**
+ * Položí dílek do slotu (stejného typu) s natočením twist; dílek, který tam
+ * byl, se odebere, a dílek se odebere ze svého předchozího místa.
+ */
+export function placePiece(colors, name, slotName, twist = 0) {
+  const piece = slotByName(name);
+  const slot = slotByName(slotName);
+  if (piece.type !== slot.type) throw new Error(`Dílek ${piece.name} do pozice ${slot.name} nepatří`);
+  const out = removePiece(colors, name);
+  const n = slot.facelets.length;
+  piece.facelets.forEach((k, i) => { out[slot.facelets[(i + twist) % n]] = FACELETS[k].face; });
+  return out;
+}
+
+/** Natočí dílek ve slotu o jeden krok (roh o 120°, hrana překlopí). */
+export function twistAt(colors, slotName) {
+  const slot = slotByName(slotName);
+  const out = [...colors];
+  const n = slot.facelets.length;
+  slot.facelets.forEach((f, i) => { out[slot.facelets[(i + 1) % n]] = colors[f]; });
+  return out;
+}
+
+/** Název dílku, který leží ve slotu (podle vybarvení), nebo null. */
+export function pieceAt(colors, slotName) {
+  const slot = slotByName(slotName);
+  for (const [name, p] of identifyPieces(colors).pieces) if (p.slot === slot.id) return name;
+  return null;
+}
