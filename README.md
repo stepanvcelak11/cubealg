@@ -60,22 +60,32 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     z nabídky. Povolené tahy, ergonomika, nalezené i uložené algoritmy se pak píšou
     podle toho, jak hlavolam držíš (U = stěna nebo špička nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
-    časů z trenažéru. Hodnocení bere v úvahu i **návaznost tahů** (prstoklad,
-    pravák v home grip): kterým prstem se tah udělá podle polohy zápěstí, stejný
-    prst dvakrát po sobě, dva prstové tahy jednou rukou, bonus za střídání rukou.
-    Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
+    časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
+    Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým
+    prstem se tah udělá podle polohy zápěstí, stejný prst dvakrát po sobě, dva
+    prstové tahy jednou rukou, bonus za střídání rukou. Volba **levák** hodnotí
+    zrcadlově. Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
     přehrávač a ukládání do zvolené sady trenažéru. Tři **pohledy** řadí všechna
     řešení jinak: ⚡ rychlost (nejdřív co nejméně přehmatů a rotací, pak co
     nejpříjemnější tahy a návaznost, délka skoro nehraje roli), ◎ efektivita (co
-    nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (kombinace obou).
-    U řádků je pořadí v ostatních pohledech (např. ⚡ 1.), v detailu pořadí ve všech.
-  - **Postupné zlepšování:** hledání nejdřív rychle najde nějaké řešení (u mnoha
-    druhů tahů přes trojice R U x) a pak ho v kolech zlepšuje – každá sada tahů se
-    prohloubí o tah, přibývají delší a různorodější řešení a nejlepší řešení každého
-    pohledu se dolaďuje výměnou úseků za rovnocenné sekvence (stejný účinek na kostku,
-    nalezené setkáním uprostřed). Nad výsledky jsou tři „nejlepší zatím“ (rychlost,
-    efektivita, všestranné), které se během hledání mění; klepnutím se otevřou.
+    nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (poměr délky a
+    pohodlí nastavíš posuvníkem „kratší ↔ pohodlnější“). Graf **délka × pohodlí**
+    ukazuje všechna řešení a zvýrazní ta, která nejde zlepšit v jednom bez
+    zhoršení druhého. U řádků je pořadí v ostatních pohledech, v detailu ve všech.
+  - **AUF:** řešení smí začít a skončit natočením horní vrstvy, které se do délky
+    ani hodnocení nepočítá – zápis „(U) R U R' … (U2)“ (vypnout jde v nastavení
+    hledání).
+  - **Postupné zlepšování:** hledání běží v několika vláknech najednou (podle
+    počtu jader, každé prohledá svůj díl). Nejdřív rychle najde nějaké řešení (u
+    mnoha druhů tahů přes menší sady ⟨R U⟩, ⟨R U r⟩, ⟨R U D⟩, ⟨R U M⟩, R U x…) a
+    pak ho v kolech zlepšuje: každá sada tahů se prohloubí o tah, úplná sada hledá
+    kratší řešení a **hledání podle pohodlí** (větve a meze podle ceny rychlosti)
+    hledá pohodlnější, než je nejlepší známé. Kandidáti každého pohledu se
+    dolaďují výměnou úseků za rovnocenné sekvence; při uváznutí v lokálním optimu
+    se algoritmus náhodně „postrčí“ a ladí dál. Když úplná sada projde všechny
+    kratší délky, u efektivity se ukáže **✓ nejkratší možné**. Nad výsledky jsou
+    tři „nejlepší zatím“, které se během hledání mění; klepnutím se otevřou.
     Odhad vzdálenosti zesiluje tabulka všech stavů do ~5 tahů od cíle.
 
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají

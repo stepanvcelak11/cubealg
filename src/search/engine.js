@@ -48,12 +48,13 @@ const UNREACHABLE = 255;
  * @param {object} [p.puzzle] hlavolam (viz src/puzzles), výchozí 3×3
  * @param {Record<string,string>} p.constraints omezení dílků (viz core/constraints.js)
  * @param {Uint8Array} [p.target] cílový stav B
+ * @param {Uint8Array[]} [p.targets] víc cílů (stačí splnit kterýkoli, např. cíl po AUF)
  * @param {{base:string, amount:number}[]} p.moves povolené tahy
  * @param {number} [p.tableLimit] max. velikost jedné pattern databáze
  * @param {number} [p.nearLimit] max. počet stavů v tabulce „blízko cíle“ (0 = bez ní)
  * @param {(info:{table:number, tables:number}) => void} [p.onTable]
  */
-export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable }) {
+export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), targets = [target], moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable }) {
   const { SLOT_OF, ORI_AT } = puzzle;
   const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
   const moveCount = moves.length;
@@ -70,15 +71,16 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
     if (slot.facelets.length === 1) type = type === 'ignore' || type === 'orientation' ? 'ignore' : 'solved';
     if (type === 'ignore') continue;
     const ref = slot.facelets[0];
-    const goalPos = target[ref];
     const positions = TYPE_POSITIONS[slot.type];
-    const ok = Uint8Array.from(positions, (pos) => {
+    // pro každý cíl: které hodnoty dílku ho splňují
+    const oks = targets.map((t) => Uint8Array.from(positions, (pos) => {
+      const goalPos = t[ref];
       if (type === 'solved') return pos === goalPos;
       if (type === 'permutation') return SLOT_OF[pos] === SLOT_OF[goalPos];
       return ORI_AT[pos] === ORI_AT[goalPos];
-    });
+    }));
     const faces = new Set(slot.facelets.map((f) => puzzle.stickerFace[f]));
-    pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok, constraint: type, faces, stickers: slot.facelets.length });
+    pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok: oks[0], oks, constraint: type, faces, stickers: slot.facelets.length });
   }
 
   // Přechody: trans[type][m * size + v] = hodnota po tahu m.
@@ -115,7 +117,7 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   }
 
   return {
-    puzzle, local: LOCAL,
+    puzzle, local: LOCAL, targetCount: targets.length,
     pieces, tables, near, trans, moves, moveCount, redundant,
     names: moves.map((m) => puzzle.moveToString(m)),
     pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
@@ -169,13 +171,18 @@ function buildTable(group, moveCount, invTrans) {
     for (let i = k - 1; i >= 0; i--) { digits[i] = idx % sizes[i]; idx = (idx - digits[i]) / sizes[i]; }
   };
 
-  // Cílové stavy: každý dílek má hodnotu z povolené množiny.
+  // Cílové stavy: každý dílek má hodnotu z povolené množiny (aspoň pro jeden cíl).
   let frontier = 0;
+  const targets = group[0].oks.length;
   for (let idx = 0; idx < total; idx++) {
     decode(idx);
-    let ok = true;
-    for (let i = 0; i < k && ok; i++) ok = group[i].ok[digits[i]] === 1;
-    if (ok) { dist[idx] = 0; frontier++; }
+    let any = false;
+    for (let t = 0; t < targets && !any; t++) {
+      let ok = true;
+      for (let i = 0; i < k && ok; i++) ok = group[i].oks[t][digits[i]] === 1;
+      any = ok;
+    }
+    if (any) { dist[idx] = 0; frontier++; }
   }
 
   // Zpětné BFS: předchůdce stavu s tahem m získáme inverzní přechodovou tabulkou.
@@ -203,10 +210,15 @@ function buildTable(group, moveCount, invTrans) {
 function buildNear(pieces, moveCount, invTrans, limit) {
   const n = pieces.length;
   if (!n || limit <= 0) return null;
-  // cílové stavy = kartézský součin povolených hodnot dílků
-  const okValues = pieces.map((p) => [...p.ok.keys()].filter((v) => p.ok[v] === 1));
-  let goals = 1;
-  for (const vs of okValues) { goals *= vs.length; if (goals > limit / 4) return null; }
+  // cílové stavy = pro každý cíl kartézský součin povolených hodnot dílků
+  const products = pieces[0].oks.map((_, t) => pieces.map((p) => [...p.oks[t].keys()].filter((v) => p.oks[t][v] === 1)));
+  let goals = 0;
+  for (const okValues of products) {
+    let g = 1;
+    for (const vs of okValues) { g *= vs.length; if (g > limit / 4) return null; }
+    goals += g;
+    if (goals > limit / 4) return null;
+  }
 
   // velikost: mocnina dvou, zaplnění nejvýš ~70 %, klíče nejvýš ~48 MB
   let cap = 1;
@@ -238,13 +250,18 @@ function buildNear(pieces, moveCount, invTrans, limit) {
   let frontier = new Uint8Array(goals * n);
   {
     const digits = new Array(n).fill(0);
-    for (let g = 0; g < goals; g++) {
-      let r = g;
-      for (let i = n - 1; i >= 0; i--) { const len = okValues[i].length; digits[i] = okValues[i][r % len]; r = Math.floor(r / len); }
-      frontier.set(digits, g * n);
-      const i = slot(frontier, g * n);
-      if (dist[i] === UNREACHABLE) { keys.set(digits, i * n); dist[i] = 0; count++; }
+    let at = 0;
+    for (const okValues of products) {
+      const g0 = okValues.reduce((a, vs) => a * vs.length, 1);
+      for (let g = 0; g < g0; g++) {
+        let r = g;
+        for (let i = n - 1; i >= 0; i--) { const len = okValues[i].length; digits[i] = okValues[i][r % len]; r = Math.floor(r / len); }
+        frontier.set(digits, at * n);
+        const i = slot(frontier, at * n);
+        if (dist[i] === UNREACHABLE) { keys.set(digits, i * n); dist[i] = 0; count++; at++; }
+      }
     }
+    frontier = frontier.subarray(0, at * n);
   }
   let radius = 0;
   const invs = pieces.map((p) => invTrans[p.kind]);
@@ -297,34 +314,28 @@ export function encode(problem, loc) {
   return Uint8Array.from(problem.pieces, (p) => problem.local[loc[p.ref]]);
 }
 
-/**
- * Najde algoritmy z výchozího stavu do cíle.
- * @param {ReturnType<typeof prepare>} problem
- * @param {Uint8Array} start výchozí stav A (loc)
- * @param {object} [opts]
- * @param {number} [opts.maxLength] maximální počet tahů
- * @param {number} [opts.minLength] hledat až od této délky (kratší už jsou známé)
- * @param {number} [opts.extraDepth] kolik tahů nad optimum ještě hledat
- * @param {number} [opts.maxResults] po kolika výsledcích skončit
- * @param {number} [opts.timeLimit] časový limit v ms
- * @param {(alg:string, length:number) => void} [opts.onSolution]
- * @param {(info:{depth:number, nodes:number, found:number}) => void} [opts.onProgress]
- */
-export function search(problem, start, {
-  maxLength = 12, minLength = 1, extraDepth = 2, maxResults = 500, timeLimit = 15000, onSolution, onProgress,
-} = {}) {
-  const { pieces, tables, near, trans, moveCount, redundant, names, pieceIndex } = problem;
-  const nearRadius = near ? near.radius : 0;
-  const n = pieces.length;
-  const t0 = Date.now();
-  const solutions = [];
-  const piecesTrans = pieces.map((p) => trans[p.kind]);
-  const sizes = pieces.map((p) => p.size);
-  const tableIdx = tables.map((t) => t.pieces.map((name) => pieceIndex.get(name)));
+/** Výchozí stavy hledání: jeden stav, nebo víc (např. po AUF) jako [{loc, pre}]. */
+function rootsOf(problem, start) {
+  const list = start instanceof Uint8Array || Array.isArray(start) && typeof start[0] === 'number' ? [{ loc: start, pre: null }] : start;
+  return list.map((r, i) => ({ ...r, index: i, v: encode(problem, Uint8Array.from(r.loc)) }));
+}
 
-  const isGoal = (v) => {
-    for (let i = 0; i < n; i++) if (pieces[i].ok[v[i]] !== 1) return false;
-    return true;
+/** Společné části hledání: cíl, heuristika a odhad vzdálenosti. */
+function evaluator(problem) {
+  const { pieces, tables, near, pieceIndex, targetCount } = problem;
+  const n = pieces.length;
+  const tableIdx = tables.map((t) => t.pieces.map((name) => pieceIndex.get(name)));
+  const nearRadius = near ? near.radius : 0;
+  const oks = Array.from({ length: targetCount }, (_, t) => pieces.map((p) => p.oks[t]));
+  /** Index splněného cíle, nebo −1. */
+  const goalOf = (v) => {
+    for (let t = 0; t < targetCount; t++) {
+      const ok = oks[t];
+      let i = 0;
+      while (i < n && ok[i][v[i]] === 1) i++;
+      if (i === n) return t;
+    }
+    return -1;
   };
   const heuristic = (v) => {
     let h = 0;
@@ -338,7 +349,6 @@ export function search(problem, start, {
     }
     return h;
   };
-
   // přesnější dolní odhad: tabulka blízko cíle (mimo ni je vzdálenost > radius)
   const estimate = (v) => {
     const h = heuristic(v);
@@ -346,45 +356,84 @@ export function search(problem, start, {
     const d = near.get(v);
     return d >= 0 ? d : Math.max(h, nearRadius + 1);
   };
+  return { goalOf, heuristic, estimate, near, nearRadius };
+}
 
-  const root = encode(problem, start);
+/**
+ * Najde algoritmy z výchozího stavu do cíle.
+ * @param {ReturnType<typeof prepare>} problem
+ * @param {Uint8Array | {loc: Uint8Array, pre: any}[]} start výchozí stav A (loc), nebo víc výchozích stavů
+ * @param {object} [opts]
+ * @param {number} [opts.maxLength] maximální počet tahů
+ * @param {number} [opts.minLength] hledat až od této délky (kratší už jsou známé)
+ * @param {number} [opts.extraDepth] kolik tahů nad optimum ještě hledat
+ * @param {number} [opts.maxResults] po kolika výsledcích skončit
+ * @param {number} [opts.timeLimit] časový limit v ms
+ * @param {{index:number, count:number}} [opts.shard] prohledá jen svůj díl (výchozí stav × první tah)
+ *   – víc workerů tak hledá souběžně každý jinou část
+ * @param {number} [opts.skip] na první délce přeskočit tolik větví (pokračování přerušeného hledání)
+ * @param {(alg:string, length:number, info:{pre:any, target:number}) => void} [opts.onSolution]
+ * @param {(info:{depth:number, nodes:number, found:number}) => void} [opts.onProgress]
+ * @returns výsledek; `cleared` = všechny délky pod touto hodnotou jsou (v tomto dílu) prohledané bez řešení
+ */
+export function search(problem, start, {
+  maxLength = 12, minLength = 1, extraDepth = 2, maxResults = 500, timeLimit = 15000, shard, skip = 0, onSolution, onProgress,
+} = {}) {
+  const { pieces, trans, moveCount, redundant, names } = problem;
+  const { goalOf, heuristic, estimate, near, nearRadius } = evaluator(problem);
+  const n = pieces.length;
+  const t0 = Date.now();
+  const solutions = [];
+  const piecesTrans = pieces.map((p) => trans[p.kind]);
+  const sizes = pieces.map((p) => p.size);
+
+  const roots = rootsOf(problem, start);
   const result = (reason, extra = {}) => ({
     reason, solutions, nodes, elapsed: Date.now() - t0, ...extra,
   });
   let nodes = 0;
-  if (isGoal(root)) return result('already-solved', { optimal: 0 });
-  const h0 = estimate(root);
-  if (heuristic(root) >= UNREACHABLE) return result('unsolvable');
+  if (roots.some((r) => goalOf(r.v) >= 0)) return result('already-solved', { optimal: 0, cleared: 0 });
+  if (roots.every((r) => heuristic(r.v) >= UNREACHABLE)) return result('unsolvable', { cleared: Infinity });
+  for (const r of roots) r.h = estimate(r.v);
+  const h0 = Math.min(...roots.map((r) => r.h));
 
   const stack = Array.from({ length: maxLength + 1 }, () => new Uint8Array(n));
   const path = new Int16Array(maxLength);
   let bound = 0;
   let stopped = null;
+  let root = null;
+  let branch = 0; // pořadí větve (výchozí stav × první tah) pro rozdělení mezi workery
+  let skipNow = 0; // kolik větví přeskočit na této délce
+  let doneBranches = 0; // dokončené větve na této délce (pro pokračování)
 
   const dfs = (depth, prev) => {
     const cur = stack[depth];
     const next = stack[depth + 1];
     for (let m = 0; m < moveCount; m++) {
       if (prev >= 0 && redundant[prev * moveCount + m]) continue;
+      if (depth === 0) {
+        const idx = branch++;
+        if (idx < skipNow || (shard && idx % shard.count !== shard.index)) { doneBranches = Math.max(doneBranches, idx + 1); continue; }
+      }
       for (let i = 0; i < n; i++) next[i] = piecesTrans[i][m * sizes[i] + cur[i]];
       if (++nodes % 8192 === 0) {
         if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
         onProgress?.({ depth: bound, nodes, found: solutions.length });
       }
       const remaining = bound - depth - 1;
-      const goal = isGoal(next);
+      const goal = goalOf(next);
       path[depth] = m;
       if (remaining === 0) {
-        if (goal) {
+        if (goal >= 0) {
           const alg = Array.from(path.subarray(0, bound), (i) => names[i]).join(' ');
           solutions.push(alg);
-          onSolution?.(alg, bound);
+          onSolution?.(alg, bound, { pre: root.pre, target: goal });
           if (solutions.length >= maxResults) { stopped = 'results'; return; }
         }
         continue;
       }
       // Pokud cíl splní už kratší prefix, prodlužování nemá smysl.
-      if (goal) continue;
+      if (goal >= 0) continue;
       if (heuristic(next) > remaining) continue;
       // posledních nearRadius tahů: jen stavy z tabulky blízko cíle
       if (remaining <= nearRadius) {
@@ -393,19 +442,120 @@ export function search(problem, start, {
       }
       dfs(depth + 1, m);
       if (stopped) return;
+      if (depth === 0) doneBranches = branch;
     }
   };
 
   let optimal = null;
-  for (bound = Math.max(1, h0, minLength); bound <= maxLength; bound++) {
-    stack[0].set(root);
-    dfs(0, -1);
+  const first = Math.max(1, h0, minLength);
+  let cleared = first;
+  for (bound = first; bound <= maxLength; bound++) {
+    const before = solutions.length;
+    branch = 0;
+    doneBranches = 0;
+    skipNow = bound === first ? skip : 0;
+    for (const r of roots) {
+      if (r.h > bound) { branch += moveCount; doneBranches = branch; continue; }
+      root = r;
+      stack[0].set(r.v);
+      dfs(0, -1);
+      if (stopped) break;
+    }
     if (optimal === null && solutions.length) optimal = bound;
     onProgress?.({ depth: bound, nodes, found: solutions.length });
     if (stopped) break;
+    if (solutions.length === before && optimal === null) cleared = bound + 1;
     if (optimal !== null && bound >= optimal + extraDepth) break;
   }
-  return result(stopped ?? (solutions.length ? 'done' : 'not-found'), { optimal, depth: Math.min(bound, maxLength) });
+  return result(stopped ?? (solutions.length ? 'done' : 'not-found'), { optimal, depth: Math.min(bound, maxLength), cleared, branch: doneBranches });
+}
+
+/**
+ * Hledání podle pohodlí (větve a meze) pro jednu přesnou délku: prochází do
+ * hloubky, levnější tahy první, a zahodí větev, jakmile cena + dolní odhad zbytku
+ * (zbývající tahy × nejlevnější tah) dosáhne ceny nejlepšího známého řešení. Každé
+ * lepší nalezené řešení mez zpřísní. Při pevné délce je odhad zbytku přesný v počtu
+ * tahů, takže drahé tahy (F, S, přehmaty) se rychle odříznou.
+ * @param {ReturnType<typeof prepare>} problem
+ * @param {Uint8Array | {loc: Uint8Array, pre: any}[]} start
+ * @param {object} opts
+ * @param {{start:number, step:(ctx:number, m:number) => number, cost:(ctx:number, m:number) => number}} opts.cost
+ *   model ceny: stav ruky je číslo, step = nový stav po tahu m, cost = cena tahu m
+ * @param {number} opts.minMove dolní mez ceny jednoho tahu
+ * @param {number} opts.bound cena nejlepšího známého řešení (hledá se levnější)
+ * @param {number} opts.length délka hledaných řešení
+ * @param {number} [opts.timeLimit]
+ * @param {{index:number, count:number}} [opts.shard]
+ * @param {(alg:string, cost:number, info:{pre:any, target:number}) => void} [opts.onSolution]
+ * @param {(info:{nodes:number}) => void} [opts.onProgress]
+ */
+export function searchCost(problem, start, { cost, minMove, bound, length, timeLimit = 5000, shard, onSolution, onProgress }) {
+  const { pieces, trans, moveCount, redundant, names } = problem;
+  const { goalOf, heuristic, near, nearRadius } = evaluator(problem);
+  const n = pieces.length;
+  const t0 = Date.now();
+  const piecesTrans = pieces.map((p) => trans[p.kind]);
+  const sizes = pieces.map((p) => p.size);
+  const roots = rootsOf(problem, start);
+  const stack = Array.from({ length: length + 1 }, () => new Uint8Array(n));
+  const path = new Int16Array(length);
+  const order = Array.from({ length }, () => new Int16Array(moveCount));
+  const costs = Array.from({ length }, () => new Float64Array(moveCount));
+  let nodes = 0, found = 0, stopped = null, root = null, branch = 0;
+
+  const dfs = (depth, prev, ctx, g) => {
+    const cur = stack[depth];
+    const next = stack[depth + 1];
+    const remaining = length - depth - 1;
+    const rest = remaining * minMove;
+    // tahy seřazené od nejlevnějšího (dřív najde dobré řešení → silnější mez)
+    const ord = order[depth], cs = costs[depth];
+    let k = 0;
+    for (let m = 0; m < moveCount; m++) {
+      if (prev >= 0 && redundant[prev * moveCount + m]) continue;
+      if (depth === 0 && shard && (branch++ % shard.count) !== shard.index) continue;
+      cs[m] = cost.cost(ctx, m);
+      let j = k++;
+      while (j > 0 && cs[ord[j - 1]] > cs[m]) { ord[j] = ord[j - 1]; j--; }
+      ord[j] = m;
+    }
+    for (let q = 0; q < k; q++) {
+      const m = ord[q];
+      const g2 = g + cs[m];
+      if (g2 + rest >= bound) break; // další tahy jsou ještě dražší
+      for (let i = 0; i < n; i++) next[i] = piecesTrans[i][m * sizes[i] + cur[i]];
+      if (++nodes % 8192 === 0) {
+        if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
+        onProgress?.({ nodes });
+      }
+      path[depth] = m;
+      const goal = goalOf(next);
+      if (remaining === 0) {
+        if (goal >= 0) {
+          bound = g2;
+          found++;
+          onSolution?.(Array.from(path, (i) => names[i]).join(' '), g2, { pre: root.pre, target: goal });
+        }
+        continue;
+      }
+      if (goal >= 0) continue; // kratší řešení už je
+      if (heuristic(next) > remaining) continue;
+      if (remaining <= nearRadius) {
+        const d = near.get(next);
+        if (d < 0 || d > remaining) continue;
+      }
+      dfs(depth + 1, m, cost.step(ctx, m), g2);
+      if (stopped) return;
+    }
+  };
+  for (const r of roots) {
+    if (goalOf(r.v) >= 0) continue;
+    root = r;
+    stack[0].set(r.v);
+    dfs(0, -1, cost.start, 0);
+    if (stopped) break;
+  }
+  return { reason: stopped ?? 'done', nodes, found, bound, elapsed: Date.now() - t0 };
 }
 
 /** Pohodlná varianta: vše v jednom volání. */

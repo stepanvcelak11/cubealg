@@ -99,28 +99,36 @@ function normalize(seq, moves, indexOf, orderOf, commutes) {
 }
 
 /**
- * Lokální vylepšování algoritmu podle cíle `value` (nižší = lepší; pole se
- * porovnává lexikograficky).
+ * Vylepšování algoritmu podle cíle `value` (nižší = lepší; pole se porovnává
+ * lexikograficky). Iterované lokální hledání: stoupá k lepším sousedům (výměna
+ * úseku), a když se zasekne v lokálním optimu, algoritmus „postrčí“ náhodnou
+ * výměnou úseku (smí být i o něco horší) a stoupá znovu. Po několika marných
+ * postrčeních se vrací k nejlepšímu známému. Hlásí se jen zlepšení nejlepšího.
  * @param {ReturnType<typeof buildTable>} table
  * @param {string} alg výchozí algoritmus (platné řešení)
  * @param {(alg: string) => number[]} value hodnota algoritmu pro daný cíl
- * @param {{deadline: number, onImproved?: (alg:string) => void, maxWindow?: number}} opts
+ * @param {{deadline: number, onImproved?: (alg:string) => void, maxWindow?: number, kicks?: boolean}} opts
  * @returns {{alg: string, value: number[], steps: number}}
  */
-export function improve(table, alg, value, { deadline, onImproved, maxWindow }) {
+export function improve(table, alg, value, { deadline, onImproved, maxWindow, kicks = true }) {
   const { puzzle, moves, perms, entries, byKey, refs, n } = table;
   const indexOf = new Map(moves.map((m, i) => [`${m.base}${m.amount}`, i]));
   const toString = (seq) => seq.map((i) => puzzle.moveToString(moves[i])).join(' ');
   const less = (a, b) => { for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return a[i] < b[i]; } return false; };
   let cur = puzzle.parseAlg(alg).map((m) => indexOf.get(`${m.base}${m.amount}`));
-  const orderOf = (base) => puzzle.orderOf(base);
   if (cur.some((i) => i === undefined)) return { alg, value: value(alg), steps: 0 };
-  let curValue = value(alg);
+  const cache = new Map();
+  const evaluate = (text) => {
+    let v = cache.get(text);
+    if (!v) { v = value(text); if (cache.size < 200000) cache.set(text, v); }
+    return v;
+  };
+  let curValue = evaluate(toString(cur));
+  let best = cur, bestValue = curValue;
   let steps = 0;
   const maxW = Math.min(maxWindow ?? 2 * table.depth + 2, 2 * table.depth + 2);
   const winLoc = new Uint8Array(n);
   const target = new Uint8Array(n);
-  const tried = new Set([toString(cur)]);
   const comm = new Map();
   const commutes = (a, b) => {
     const key = a * 1024 + b;
@@ -132,44 +140,78 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow }) 
     }
     return comm.get(key);
   };
+  const orderOf = (base) => puzzle.orderOf(base);
 
-  for (let improved = true; improved && Date.now() < deadline;) {
-    improved = false;
-    // okna od delších (větší změny) po kratší, v náhodném pořadí poloh
-    outer:
-    for (let len = Math.min(maxW, cur.length); len >= 1; len--) {
-      const starts = Array.from({ length: cur.length - len + 1 }, (_, i) => i).sort(() => Math.random() - 0.5);
-      for (const i of starts) {
-        if (Date.now() > deadline) break outer;
-        // stav, který okno udělá z čisté kostky
-        for (let k = 0; k < n; k++) winLoc[k] = k;
-        for (let j = i; j < i + len; j++) { const to = perms[cur[j]]; for (let k = 0; k < n; k++) winLoc[k] = to[winLoc[k]]; }
-        const prefix = cur.slice(0, i), suffix = cur.slice(i + len);
-        for (const a of entries) {
-          // B = A⁻¹ · W
-          for (let r = 0; r < refs.length; r++) target[refs[r]] = winLoc[a.inv[refs[r]]];
-          const list = byKey.get(keyOf(target, refs));
-          if (!list) continue;
-          for (const b of list) {
-            let same = true;
-            for (let r = 0; r < refs.length && same; r++) same = b.loc[refs[r]] === target[refs[r]];
-            if (!same) continue;
-            const seq = normalize([...prefix, ...a.seq, ...b.seq, ...suffix], moves, indexOf, (base) => puzzle.orderOf(base), commutes);
-            if (!seq || !seq.length) continue;
-            const text = toString(seq);
-            if (tried.has(text)) continue;
-            tried.add(text);
-            const v = value(text);
-            if (less(v, curValue)) {
-              cur = seq; curValue = v; steps++;
-              onImproved?.(text);
-              improved = true;
-              break outer;
-            }
-          }
+  /** Projde náhrady okna cur[i … i+len) a pro každou zavolá visit(seq, text); true = konec. */
+  const replacements = (i, len, visit, from = 0) => {
+    for (let k = 0; k < n; k++) winLoc[k] = k;
+    for (let j = i; j < i + len; j++) { const to = perms[cur[j]]; for (let k = 0; k < n; k++) winLoc[k] = to[winLoc[k]]; }
+    const prefix = cur.slice(0, i), suffix = cur.slice(i + len);
+    for (let e = 0; e < entries.length; e++) {
+      const a = entries[(e + from) % entries.length];
+      // B = A⁻¹ · W
+      for (let r = 0; r < refs.length; r++) target[refs[r]] = winLoc[a.inv[refs[r]]];
+      const list = byKey.get(keyOf(target, refs));
+      if (!list) continue;
+      for (const b of list) {
+        let same = true;
+        for (let r = 0; r < refs.length && same; r++) same = b.loc[refs[r]] === target[refs[r]];
+        if (!same) continue;
+        const seq = normalize([...prefix, ...a.seq, ...b.seq, ...suffix], moves, indexOf, orderOf, commutes);
+        if (!seq || !seq.length) continue;
+        if (visit(seq, toString(seq))) return true;
+      }
+    }
+    return false;
+  };
+
+  /** Stoupání: první lepší soused, dokud nějaký je. */
+  const climb = () => {
+    for (let improved = true; improved && Date.now() < deadline;) {
+      improved = false;
+      // okna od delších (větší změny) po kratší, v náhodném pořadí poloh
+      outer:
+      for (let len = Math.min(maxW, cur.length); len >= 1; len--) {
+        const starts = Array.from({ length: cur.length - len + 1 }, (_, i) => i).sort(() => Math.random() - 0.5);
+        for (const i of starts) {
+          if (Date.now() > deadline) break outer;
+          const hit = replacements(i, len, (seq, text) => {
+            const v = evaluate(text);
+            if (!less(v, curValue)) return false;
+            cur = seq; curValue = v; steps++;
+            if (less(v, bestValue)) { best = seq; bestValue = v; onImproved?.(text); }
+            return true;
+          });
+          if (hit) { improved = true; break outer; }
         }
       }
     }
+  };
+
+  /** Postrčení: náhodná jiná náhrada náhodného okna (nejvýš o 2 tahy delší). */
+  const kick = () => {
+    for (let tries = 0; tries < 8; tries++) {
+      const len = Math.min(cur.length, 2 + Math.floor(Math.random() * (maxW - 1)));
+      const i = Math.floor(Math.random() * (cur.length - len + 1));
+      const before = toString(cur);
+      const hit = replacements(i, len, (seq, text) => {
+        if (text === before || seq.length > cur.length + 2) return false;
+        cur = seq; curValue = evaluate(text);
+        return true;
+      }, Math.floor(Math.random() * entries.length));
+      if (hit) return true;
+    }
+    return false;
+  };
+
+  climb();
+  let fails = 0;
+  while (kicks && Date.now() < deadline) {
+    const was = bestValue;
+    if (!kick()) break;
+    climb();
+    if (less(bestValue, was)) fails = 0;
+    else if (++fails >= 4) { cur = best; curValue = bestValue; fails = 0; }
   }
-  return { alg: toString(cur), value: curValue, steps };
+  return { alg: toString(best), value: bestValue, steps };
 }

@@ -1,17 +1,31 @@
 // Kalibrace vah tahů podle naměřených časů z trenažéru.
 //
-// Model: čas algoritmu ≈ c + Σ (počet tahů daného druhu × β_tahu).
+// Model: čas algoritmu ≈ c + Σ (počet tahů daného druhu × β_tahu)
+//                          + Σ (počet přehmatů, změn úchopu, míst se stejným prstem,
+//                               dvou tahů jednou rukou a střídání rukou × β).
 // Nejdřív se odhadne c a měřítko k (sekund na jednotku váhy) z výchozího
 // hodnocení, pak ridge regrese táhne β k k·výchozí váha – málo dat tedy váhy
 // skoro nezmění, hodně dat je přizpůsobí tvým rukám. Nová váha = β / k.
 
 import { parseSq1 } from '../puzzles/sq1.js';
+import { scoreAlg } from './score.js';
+import { mirrorMove } from '../core/notation.js';
+
+// Druhy míst v kostkovém hodnocení (kromě tahů) a jejich nastavení.
+const EVENTS = {
+  regrip: { get: (c) => c.regripPenalty, set: (c, w) => { c.regripPenalty = w; }, min: 0, max: 8 },
+  grip: { get: (c) => c.gripChangePenalty, set: (c, w) => { c.gripChangePenalty = w; }, min: 0, max: 4 },
+  'flow:reuse': { get: (c) => c.reuse * c.flowScale, set: (c, w) => { c.reuse = w / c.flowScale; }, min: 0, max: 4, flow: true },
+  'flow:sameHand': { get: (c) => c.sameHand * c.flowScale, set: (c, w) => { c.sameHand = w / c.flowScale; }, min: 0, max: 4, flow: true },
+  // bonus: příspěvek je záporný
+  'flow:alternate': { get: (c) => -c.alternate * c.flowScale, set: (c, w) => { c.alternate = -w / c.flowScale; }, min: -1.5, max: 0, flow: true },
+};
 
 export const MIN_ALGS = 5;
 export const MIN_TIMES = 3;
 
-/** Druhy tahů v algoritmu (klíč → počet) podle typu hodnocení hlavolamu. */
-export function features(puzzle, alg) {
+/** Druhy tahů v algoritmu (klíč → počet) podle typu hodnocení hlavolamu; u kostek i přehmaty a návaznost. */
+export function features(puzzle, alg, config = {}) {
   const out = new Map();
   const add = (k) => out.set(k, (out.get(k) ?? 0) + 1);
   if (puzzle.ergonomics === 'sq1') {
@@ -21,15 +35,26 @@ export function features(puzzle, alg) {
     }
     return out;
   }
-  for (const m of puzzle.parseAlg(alg)) {
-    if (puzzle.rotations?.includes(m.base)) continue;
+  const moves = puzzle.parseAlg(alg);
+  for (const m0 of moves) {
+    if (puzzle.rotations?.includes(m0.base)) continue;
+    const m = config.leftHanded && puzzle.ergonomics === 'cube' ? mirrorMove(m0) : m0;
     add(`${m.base}:${m.amount === 1 ? 0 : m.amount === -1 ? 1 : 2}`);
+  }
+  if (puzzle.ergonomics === 'cube') {
+    const s = scoreAlg(puzzle.id === '333' ? alg : puzzle.algToString(alg), config);
+    for (const it of s.perMove) {
+      if (it.regrip > 0) add('regrip');
+      if (it.gripChange > 0) add('grip');
+      if (it.flowKind && config.flowScale > 0) add(`flow:${it.flowKind}`);
+    }
   }
   return out;
 }
 
 /** Současná váha druhu tahu v nastavení. */
 function weightOf(puzzle, config, key) {
+  if (EVENTS[key]) return EVENTS[key].get(config);
   if (key === 'slash') return config.slash;
   if (key.startsWith('turn:')) return config.turn[Number(key.slice(5))];
   const [base, i] = key.split(':');
@@ -41,7 +66,8 @@ function weightOf(puzzle, config, key) {
 function withWeights(puzzle, config, weights) {
   const next = structuredClone(config);
   for (const [key, w] of weights) {
-    if (key === 'slash') next.slash = w;
+    if (EVENTS[key]) EVENTS[key].set(next, w);
+    else if (key === 'slash') next.slash = w;
     else if (key.startsWith('turn:')) next.turn[Number(key.slice(5))] = w;
     else {
       const [base, i] = key.split(':');
@@ -82,7 +108,7 @@ function solve(A, b) {
 export function calibrate(puzzle, config, items, { lambda = 3 } = {}) {
   const data = items.filter((a) => a.times.length >= MIN_TIMES).map((a) => ({
     y: median(a.times.slice(-12).map((x) => x.t)) / 1000,
-    x: features(puzzle, a.alg),
+    x: features(puzzle, a.alg, config),
   })).filter((d) => d.x.size);
   if (data.length < MIN_ALGS) {
     return { ok: false, reason: `Potřebuju aspoň ${MIN_ALGS} algoritmů tohoto hlavolamu, každý změřený aspoň ${MIN_TIMES}×. Teď jich je ${data.length}.` };
@@ -114,13 +140,19 @@ export function calibrate(puzzle, config, items, { lambda = 3 } = {}) {
   const beta = solve(A, rhs);
   if (!beta) return { ok: false, reason: 'Výpočet se nepovedl (málo různorodá data).' };
   const round = (v) => Math.round(v * 10) / 10;
-  const weights = new Map(keys.map((key, j) => [key, round(Math.min(6, Math.max(0.2, beta[j] / k)))]));
+  const clamp = (key, v) => (EVENTS[key] ? Math.min(EVENTS[key].max, Math.max(EVENTS[key].min, v)) : Math.min(6, Math.max(0.2, v)));
+  const weights = new Map(keys.map((key, j) => [key, round(clamp(key, beta[j] / k))]));
   const changes = keys.map((key, j) => ({ key, from: w0[j], to: weights.get(key) })).filter((x) => Math.abs(x.to - x.from) >= 0.05);
   return { ok: true, config: withWeights(puzzle, config, weights), changes, used: n, secondsPerUnit: k };
 }
 
 /** Čitelný název druhu tahu („R'“, „U2“, „řez“, „otočení o 3“). */
+const EVENT_LABELS = {
+  regrip: 'přehmat', grip: 'změna úchopu', 'flow:reuse': 'stejný prst dvakrát',
+  'flow:sameHand': 'dva tahy jednou rukou', 'flow:alternate': 'střídání rukou',
+};
 export function featureLabel(key) {
+  if (EVENT_LABELS[key]) return EVENT_LABELS[key];
   if (key === 'slash') return 'řez /';
   if (key.startsWith('turn:')) return `otočení o ${key.slice(5)}`;
   const [base, i] = key.split(':');

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreAlg } from '../src/ergonomics/score.js';
-import { styleMetrics, rankResults, ranksOf } from '../src/ergonomics/style.js';
+import { styleMetrics, rankResults, ranksOf, paretoFront } from '../src/ergonomics/style.js';
 
 const ALGS = [
   "F R U R' U' F'",               // 6 tahů, F
@@ -28,11 +28,22 @@ test('pohledy: efektivita = nejmíň tahů, rychlost = bez přehmatů a plynulé
 
 test('pohledy: všestranné kombinuje délku a příjemnost', () => {
   const bal = rankResults(list, 'balanced');
-  // krátký a příjemný vyhraje, nejhorší je krátký s přehmaty, dlouhý plynulý je uprostřed
-  assert.equal(bal[0].alg, "F R U R' U' F'");
+  // krátké a příjemné vyhrají, nejhorší je krátký s přehmaty
+  assert.deepEqual(bal.slice(0, 2).map((x) => x.alg).sort(), ["F R U R' U' F'", "R U R' U R U2 R'"]);
+  // posuvník: λ = 0 → jen délka, λ = 1 → jen pohodlí
+  assert.equal(rankResults(list, 'balanced', { lambda: 0 })[0].m.length, 6);
+  assert.equal(rankResults(list, 'balanced', { lambda: 1 })[0].alg, "R U R' U R U2 R'");
   const at = (alg) => bal.findIndex((x) => x.alg === alg);
   assert.ok(at("R U R' U R U2 R'") < at("R U R U R U R'"));
   assert.ok(bal.at(-1).m.regrips > 0);
   const ranks = ranksOf(list);
   for (const x of list) for (const v of ['balanced', 'speed', 'efficient']) assert.ok(ranks.get(x)[v] >= 1 && ranks.get(x)[v] <= list.length);
+});
+
+test('Paretova hranice: nejkratší a nejpohodlnější, nic dominovaného', () => {
+  const front = paretoFront(list).map((x) => x.alg);
+  assert.equal(front[0], "F R U R' U' F'");
+  assert.ok(front.includes("R U R' U R U2 R'"));
+  assert.ok(!front.includes("R2 U R2 U' R2 U2 R2"));
+  assert.ok(!front.includes("F U F' R U R'"));
 });

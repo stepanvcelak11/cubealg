@@ -7,68 +7,86 @@
 //          + návaznost tahů (prstoklad: kdo tah dělá a z jaké polohy, viz flow.js)
 //          − bonusy za plynulé triggery
 
-import { parseAlg, moveToString, MOVE_DEFS } from '../core/notation.js';
+import { parseAlg, moveToString, mirrorMove, MOVE_DEFS } from '../core/notation.js';
 import { metrics } from '../core/metrics.js';
 import { DEFAULT_CONFIG, moveWeight } from './weights.js';
 import { buildTriggers, findTriggers } from './triggers.js';
-import { flowOf } from './flow.js';
+import { flowStep, FLOW_START, FLOW_DEFAULTS } from './flow.js';
 
 // Které tahy točí zápěstím (a kterým směrem vůči „nahoru“).
 const WRIST = { R: ['right', 1], r: ['right', 1], L: ['left', -1], l: ['left', -1] };
 
 const round = (v) => Math.round(v * 100) / 100;
 
+const isRotation = (b) => MOVE_DEFS[b].kind === 'rotation';
+
+/** Výchozí stav ruky před algoritmem (zápěstí, oblast úchopu, prstoklad). */
+export const ERGO_START = Object.freeze({ wristR: 0, wristL: 0, zone: null, flow: FLOW_START });
+
+/**
+ * Jeden tah hodnocení bez triggerů: položka perMove a nový stav ruky (s se nemění).
+ * Hledání podle pohodlí (search/worker.js) tak počítá cenu tah po tahu stejně
+ * jako celé hodnocení. Tah m je už v rámci ruky (u leváka zrcadlený).
+ * @param {typeof ERGO_START} s
+ * @param {{base:string, amount:number}} m
+ * @param {typeof DEFAULT_CONFIG} cfg úplné nastavení
+ */
+export function ergoStep(s, m, cfg) {
+  const item = { move: moveToString(m), base: 0, rotation: 0, regrip: 0, gripChange: 0, flow: 0, flowReason: null, flowKind: null, hand: null };
+  if (isRotation(m.base)) {
+    item.rotation = cfg.rotationPenalty * Math.abs(m.amount);
+    return [item, ERGO_START]; // po rotaci se kostka stejně přehmatává
+  }
+  item.base = moveWeight(m, cfg);
+  let { wristR, wristL } = s;
+  const w = WRIST[m.base];
+  if (w) {
+    const [hand, sign] = w;
+    const cur = hand === 'right' ? wristR : wristL;
+    let next = cur + sign * m.amount;
+    if (Math.abs(next) > cfg.maxWristTurn) {
+      item.regrip = cfg.regripPenalty;
+      next = sign * m.amount;
+    }
+    if (hand === 'right') wristR = next; else wristL = next;
+  }
+  const zone = cfg.gripZones[m.base] ?? 'other';
+  if (s.zone && zone !== s.zone && zone !== 'home' && s.zone !== 'home') item.gripChange = cfg.gripChangePenalty;
+  const [f, flow] = flowStep(s.flow, m, isRotation, cfg);
+  item.flow = f.cost; item.flowReason = f.reason; item.flowKind = f.kind; item.hand = f.hand;
+  return [item, { wristR, wristL, zone, flow }];
+}
+
+/** Úplné nastavení hodnocení (výchozí hodnoty doplněné). */
+export const fullConfig = (config = {}) => ({ ...DEFAULT_CONFIG, ...FLOW_DEFAULTS, ...config });
+
 /**
  * @param {string | {base:string, amount:number}[]} alg
  * @param {Partial<typeof DEFAULT_CONFIG> & {triggers?: ReturnType<typeof buildTriggers>}} [config]
+ *   leftHanded: hodnotí se zrcadlový algoritmus (levák dělá zrcadlově to, co pravák)
  */
 export function scoreAlg(alg, config = {}) {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const cfg = fullConfig(config);
   const triggers = cfg.triggers ?? buildTriggers();
-  const moves = parseAlg(alg);
-  const wrist = { right: 0, left: 0 };
-  let prevZone = null;
-
-  const perMove = moves.map((m) => {
-    const item = { move: moveToString(m), base: 0, rotation: 0, regrip: 0, gripChange: 0 };
-    if (MOVE_DEFS[m.base].kind === 'rotation') {
-      item.rotation = cfg.rotationPenalty * Math.abs(m.amount);
-      wrist.right = wrist.left = 0; // po rotaci se kostka stejně přehmatává
-      prevZone = null;
-      return item;
-    }
-    item.base = moveWeight(m, cfg);
-
-    const w = WRIST[m.base];
-    if (w) {
-      const [hand, sign] = w;
-      const next = wrist[hand] + sign * m.amount;
-      if (Math.abs(next) > cfg.maxWristTurn) {
-        item.regrip = cfg.regripPenalty;
-        wrist[hand] = sign * m.amount;
-      } else wrist[hand] = next;
-    }
-
-    const zone = cfg.gripZones[m.base] ?? 'other';
-    if (prevZone && zone !== prevZone && zone !== 'home' && prevZone !== 'home') {
-      item.gripChange = cfg.gripChangePenalty;
-    }
-    prevZone = zone;
+  const written = parseAlg(alg);
+  const moves = cfg.leftHanded ? written.map(mirrorMove) : written;
+  let s = ERGO_START;
+  const perMove = moves.map((m, i) => {
+    const [item, next] = ergoStep(s, m, cfg);
+    s = next;
+    item.move = moveToString(written[i]);
     return item;
   });
 
-  const flow = flowOf(moves, (b) => MOVE_DEFS[b].kind === 'rotation', cfg);
-  flow.forEach((f, i) => { perMove[i].flow = f.cost; perMove[i].flowReason = f.reason; perMove[i].hand = f.hand; });
-
   const found = findTriggers(moves, triggers).map((t) => ({ ...t, bonus: t.bonus * cfg.triggerBonusScale }));
-  const sum = (key) => perMove.reduce((s, it) => s + it[key], 0);
+  const sum = (key) => perMove.reduce((acc, it) => acc + it[key], 0);
   const breakdown = {
     moves: round(sum('base')),
     rotations: round(sum('rotation')),
     regrips: round(sum('regrip')),
     gripChanges: round(sum('gripChange')),
     flow: round(sum('flow')),
-    triggerBonus: round(-found.reduce((s, t) => s + t.bonus, 0)),
+    triggerBonus: round(-found.reduce((acc, t) => acc + t.bonus, 0)),
   };
   const total = Math.max(0, Object.values(breakdown).reduce((a, b) => a + b, 0));
   return { total: round(total), breakdown, perMove, triggers: found, metrics: metrics(moves) };

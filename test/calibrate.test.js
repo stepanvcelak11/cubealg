@@ -32,3 +32,19 @@ test('kalibrace funguje i pro jednoduché váhy (Pyraminx)', () => {
   assert.ok(res.ok, res.reason);
   assert.ok(res.config.weights.B[0] >= res.config.weights.R[0]);
 });
+
+test('kalibrace kostky: pomalé přehmaty zdraží přehmat, levák hodnotí zrcadlově', async () => {
+  const { scoreAlg } = await import('../src/ergonomics/score.js');
+  const algs = ["R U R' U'", "R2 U R2 U'", "R U R U R U R'", "R U2 R' U' R U' R'", "R' F R F'", "R U R' U R U2 R'", "R2 U2 R2 U2 R2", "F R U R' U' F'", "R U R' F' R U R' U' R' F R2 U' R'"];
+  const items = algs.map((alg) => {
+    const s = scoreAlg(alg);
+    const t = 500 + CUBE3.parseAlg(alg).length * 150 + s.perMove.filter((m) => m.regrip > 0).length * 900;
+    return { alg, times: [{ t }, { t: t + 10 }, { t: t - 10 }] };
+  });
+  const cfg = defaultErgo(CUBE3);
+  const res = calibrate(CUBE3, cfg, items, { lambda: 0.5 });
+  assert.ok(res.ok, res.reason);
+  assert.ok(res.config.regripPenalty > cfg.regripPenalty, `${res.config.regripPenalty}`);
+  // levák: R' F R F' hodnotí jako zrcadlo (L F' L' F)
+  assert.equal(scoreAlg("R' F R F'", { leftHanded: true }).total, scoreAlg("L F' L' F").total);
+});

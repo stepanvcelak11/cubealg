@@ -88,6 +88,53 @@ function options(base, amount, wR, wL) {
   return o;
 }
 
+/** Výchozí stav prstokladu (home grip, žádný předchozí tah). */
+export const FLOW_START = Object.freeze({ wR: 0, wL: 0, prev: null });
+
+/**
+ * Jeden krok prstokladu: cena tahu m ze stavu s a nový stav (s se nemění).
+ * @returns {[{cost:number, hand:string|null, finger:string|null, reason:string|null}, typeof FLOW_START]}
+ */
+export function flowStep(s, m, isRotation, c) {
+  if (isRotation(m.base)) return [{ cost: 0, hand: null, finger: null, reason: null, kind: null }, FLOW_START];
+  let { wR, wL } = s;
+  const { prev } = s;
+  const reasons = [];
+  let cost = 0, hand, finger, kind = null;
+  if (WRIST_MOVES[m.base]) {
+    hand = WRIST_MOVES[m.base];
+    finger = 'wrist';
+    const w = hand === 'R' ? wR : wL;
+    // R2 se dělá z otočeného zápěstí na druhou stranu (−1 → +1); z home je po něm
+    // zápěstí zase v použitelné poloze (přehmat počítá hlavní skóre)
+    const next = m.amount === 2 ? (w === 0 ? 0 : -w) : Math.max(-2, Math.min(2, w + WRIST_SIGN[m.base] * m.amount));
+    if (hand === 'R') wR = next; else wL = next;
+  } else {
+    const best = options(m.base, m.amount, wR, wL).sort((a, b) => a[2] - b[2])[0];
+    [hand, finger, cost] = best;
+    if (cost >= 0.4) reasons.push(`${finger.includes('push') ? 'náhradní prst' : 'zápěstí není v pozici'}`);
+  }
+  if (prev) {
+    if (finger !== 'wrist' && prev.hand === hand && prev.finger === finger && prev.base !== m.base) {
+      cost += c.reuse;
+      kind = 'reuse';
+      reasons.push('stejný prst dvakrát po sobě');
+    } else if (finger !== 'wrist' && prev.finger !== 'wrist' && prev.hand === hand) {
+      cost += c.sameHand;
+      kind = 'sameHand';
+      reasons.push('dva prstové tahy jednou rukou');
+    } else if (prev.hand !== hand) {
+      cost -= c.alternate;
+      kind = 'alternate';
+    }
+  }
+  return [
+    // kind = která penalizace/bonus návaznosti se použila (pro kalibraci)
+    { cost: cost * c.flowScale, hand, finger, reason: reasons.length ? reasons.join(', ') : null, kind },
+    { wR, wL, prev: { hand, finger, base: m.base } },
+  ];
+}
+
 /**
  * Cena návaznosti pro každý tah algoritmu.
  * @param {{base:string, amount:number}[]} moves
@@ -96,41 +143,10 @@ function options(base, amount, wR, wL) {
  */
 export function flowOf(moves, isRotation, cfg = FLOW_DEFAULTS) {
   const c = { ...FLOW_DEFAULTS, ...cfg };
-  let wR = 0, wL = 0;
-  let prev = null; // {hand, finger, base}
+  let s = FLOW_START;
   return moves.map((m) => {
-    if (isRotation(m.base)) {
-      wR = wL = 0;
-      prev = null;
-      return { cost: 0, hand: null, finger: null, reason: null };
-    }
-    const reasons = [];
-    let cost = 0, hand, finger;
-    if (WRIST_MOVES[m.base]) {
-      hand = WRIST_MOVES[m.base];
-      finger = 'wrist';
-      const w = hand === 'R' ? wR : wL;
-      // R2 se dělá z otočeného zápěstí na druhou stranu (−1 → +1); z home je po něm
-      // zápěstí zase v použitelné poloze (přehmat počítá hlavní skóre)
-      const next = m.amount === 2 ? (w === 0 ? 0 : -w) : Math.max(-2, Math.min(2, w + WRIST_SIGN[m.base] * m.amount));
-      if (hand === 'R') wR = next; else wL = next;
-    } else {
-      const best = options(m.base, m.amount, wR, wL).sort((a, b) => a[2] - b[2])[0];
-      [hand, finger, cost] = best;
-      if (cost >= 0.4) reasons.push(`${finger.includes('push') ? 'náhradní prst' : 'zápěstí není v pozici'}`);
-    }
-    if (prev) {
-      if (finger !== 'wrist' && prev.hand === hand && prev.finger === finger && prev.base !== m.base) {
-        cost += c.reuse;
-        reasons.push('stejný prst dvakrát po sobě');
-      } else if (finger !== 'wrist' && prev.finger !== 'wrist' && prev.hand === hand) {
-        cost += c.sameHand;
-        reasons.push('dva prstové tahy jednou rukou');
-      } else if (prev.hand !== hand) {
-        cost -= c.alternate;
-      }
-    }
-    prev = { hand, finger, base: m.base };
-    return { cost: cost * c.flowScale, hand, finger, reason: reasons.length ? reasons.join(', ') : null };
+    const [r, next] = flowStep(s, m, isRotation, c);
+    s = next;
+    return r;
   });
 }

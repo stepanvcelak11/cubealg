@@ -253,12 +253,13 @@
         <article class="panel">
           <h2>Ergonomie – váhy</h2>
           <p class="hint">Nižší číslo = pohodlnější. Změny se hned promítnou do hodnocení řešení.</p>
-          <p class="hint"><b>Návaznost tahů</b> hodnotí prstoklad (pravák, home grip): kterým prstem se tah udělá podle polohy zápěstí (např. U po R' už pravý ukazováček neudělá), stejný prst dvakrát po sobě a dva prstové tahy jednou rukou; střídání rukou je bonus. Tahy se špatnou návazností jsou ve výsledcích podbarvené růžově – podrž na nich prst / myš pro důvod.</p>
+          <label id="ergo-left-row" class="check-row"><input type="checkbox" id="ergo-left"> Jsem levák (hodnotí se zrcadlově: co je pro praváka R, je pro tebe L)</label>
+          <p class="hint"><b>Návaznost tahů</b> hodnotí prstoklad (home grip, pravák nebo zrcadlově levák): kterým prstem se tah udělá podle polohy zápěstí (např. U po R' už pravý ukazováček neudělá), stejný prst dvakrát po sobě a dva prstové tahy jednou rukou; střídání rukou je bonus. Tahy se špatnou návazností jsou ve výsledcích podbarvené růžově – podrž na nich prst / myš pro důvod.</p>
           <div class="grid-fields" id="ergo-main"></div>
           <h3 id="ergo-moves-head">Váhy tahů <small>po směru / proti / dvojitě</small></h3>
           <div id="ergo-moves" class="ergo-moves"></div>
           <div class="actions">
-            <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>
+            <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů, přehmatů a návaznosti podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>
             <button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button>
           </div>
           <p id="ergo-calibration" class="hint" aria-live="polite"></p>
@@ -296,11 +297,18 @@
                 <label class="field" title="Hledá se víc řešení, ukáže se jen tolik nejpohodlnějších">Zobrazit nejlepších <input id="opt-results" type="number" min="1" max="500" value="15"></label>
                 <label class="field">Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
               </div>
+              <label id="opt-auf-row" class="check-row" title="Algoritmus smí začít i skončit natočením horní vrstvy (AUF); to se do délky ani hodnocení nepočítá"><input type="checkbox" id="opt-auf" checked> Povolit AUF – natočení U před a po algoritmu (nepočítá se)</label>
             </details>
             <p id="status" class="status"></p>
             <div id="search-bests" class="search-bests" aria-label="Nejlepší zatím" hidden></div>
             <div id="style-filter" class="segmented style-filter" role="group" aria-label="Pohled na výsledky" hidden></div>
             <p id="view-hint" class="hint view-hint"></p>
+            <label id="lambda-row" class="lambda-row" hidden><span>Kratší</span><input type="range" id="lambda" min="0" max="1" step="0.05" value="0.5" aria-label="Poměr všestranného pohledu: kratší nebo pohodlnější"><span>Pohodlnější</span></label>
+            <details id="pareto-box" class="pareto-box" hidden>
+              <summary>Graf: délka × pohodlí</summary>
+              <div id="pareto" class="pareto"></div>
+              <p class="hint">Každá tečka je jedno řešení. Zvýrazněné jsou ty, které nejde zlepšit v jednom bez zhoršení druhého – klepnutím je otevřeš.</p>
+            </details>
             <ol id="results" class="results"></ol>
             <p id="results-more" class="hint"></p>
           </article>

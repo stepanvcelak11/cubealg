@@ -48,6 +48,8 @@ export const DEFAULT_CONFIG = {
   gripChangePenalty: 0.6,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
   triggerBonusScale: 1,
+  // Levák: hodnotí se zrcadlový algoritmus (R ↔ L', …).
+  leftHanded: false,
   // Návaznost tahů – prstoklad (viz flow.js).
   ...FLOW_DEFAULTS,
 };

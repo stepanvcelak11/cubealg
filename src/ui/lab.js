@@ -17,7 +17,7 @@ import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomi
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 import { calibrate, featureLabel } from '../ergonomics/calibrate.js';
-import { VIEWS, styleMetrics, rankResults, ranksOf } from '../ergonomics/style.js';
+import { VIEWS, styleMetrics, rankResults, ranksOf, paretoFront, speedValue, DEFAULT_LAMBDA } from '../ergonomics/style.js';
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
@@ -115,7 +115,22 @@ function load() {
 const held = () => holdFor(model, ui.hold);
 const toModelSteps = (steps) => (ui.hold ? steps.map((m) => held().toModel([m])[0]) : steps);
 
-const score = (alg) => scoreFor(P(), alg, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
+// AUF: řešení smí začít a skončit natočením U v závorce – „(U) R U R' (U2)“. Do délky
+// ani hodnocení se nepočítá (závorky parser ignoruje, takže přehrávání funguje).
+const aufAllowed = () => P().ergonomics === 'cube';
+const AUF_TOKEN = /^U[2']?$/;
+function splitAuf(alg) {
+  let core = String(alg ?? '').trim(), pre = null, post = null;
+  if (!aufAllowed()) return { pre, core, post };
+  const a = core.match(/^\(\s*([^()]+?)\s*\)\s*/);
+  if (a && AUF_TOKEN.test(a[1])) { pre = a[1]; core = core.slice(a[0].length); }
+  const b = core.match(/\s*\(\s*([^()]+?)\s*\)$/);
+  if (b && AUF_TOKEN.test(b[1])) { post = b[1]; core = core.slice(0, core.length - b[0].length); }
+  return { pre, core, post };
+}
+const joinAuf = (pre, core, post) => [pre && `(${pre})`, core, post && `(${post})`].filter(Boolean).join(' ');
+
+const score = (alg) => scoreFor(P(), splitAuf(alg).core, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
 
 function snapshot() {
   ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B) });
@@ -498,6 +513,8 @@ function numberInput(value, step, onValue, ariaLabel) {
 
 function renderErgo() {
   const kind = P().ergonomics;
+  $('ergo-left-row').hidden = kind !== 'cube';
+  $('ergo-left').checked = !!ui.ergo.leftHanded;
   $('ergo-main').replaceChildren(...ERGO_FIELDS[kind].map(([key, label, step]) =>
     el('label', { className: 'field' }, label, numberInput(ui.ergo[key], step, (v) => { ui.ergo[key] = v; ergoChanged(); }))));
   const head = $('ergo-moves-head');
@@ -567,7 +584,10 @@ function startSearch() {
   if (model.kind === 'perm' && !moveSet.moves.length) { $('status').textContent = 'Nejsou povolené žádné tahy (Tahy a váhy).'; return; }
   clearResults();
   const shown = num('opt-results', 1, 500);
+  const useAuf = aufAllowed() && $('opt-auf').checked;
+  storage.set('ergocube.lab.auf', $('opt-auf').checked);
   const opts = {
+    lambda,
     maxLength: num('opt-max', 1, 20),
     extraDepth: num('opt-extra', 0, 6),
     // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejlepší v každém pohledu
@@ -583,28 +603,41 @@ function startSearch() {
     pending = true;
     requestAnimationFrame(() => { pending = false; renderResults(); });
   };
+  ui.proof = 0;
+  const aufMoves = useAuf ? toModelSteps([1, -1, 2].map((amount) => ({ base: 'U', amount }))) : null;
+  const toHeld = (alg) => (alg && ui.hold ? held().toHeldString(alg) : alg);
   client.start({
     puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.engineMoves, options: opts, ergonomics: ui.ergo,
+    held: model.kind === 'perm' ? moveSet.moves : undefined,
+    auf: aufMoves ? { pre: aufMoves, post: aufMoves } : null,
     sq1: { shape: ui.sq1.shape, top: ui.sq1.top, bottom: ui.sq1.bottom },
   }, {
     onProgress: (p) => {
+      if (p.phase === 'search' && p.cleared > ui.proof) { ui.proof = p.cleared; scheduleRender(); }
       $('status').textContent = p.phase === 'tables'
         ? `Připravuji heuristiku ${p.table}/${p.tables}…`
-        : `${searchPhaseText(p)} · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`;
+        : `${searchPhaseText(p)} · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s${p.workers > 1 ? ` · ${p.workers} vlákna` : ''}`;
     },
     onSolutions: (items) => {
-      for (const { alg } of items) { const a = ui.hold ? held().toHeldString(alg) : alg; ui.results.set(a, score(a)); }
+      for (const { alg, pre, post } of items) {
+        const a = joinAuf(toHeld(pre), toHeld(alg), toHeld(post));
+        ui.results.set(a, score(a));
+      }
       scheduleRender();
     },
     onDone: (d) => {
       searchUi(false);
+      ui.proof = Math.max(ui.proof, d.cleared ?? 0);
       const why = {
         done: 'Hotovo', time: 'Vypršel časový limit', results: 'Dosažen max. počet kandidátů',
         'not-found': `Do ${opts.maxLength} ${unit()} nic nenalezeno`,
         unsolvable: 'S povolenými tahy to vyřešit nejde',
         'already-solved': 'Výchozí stav už cíl splňuje',
       }[d.reason] ?? d.reason;
-      $('status').textContent = `${why} · ${d.found} řešení${d.optimal ? ` · nejkratší ${d.optimal} ${unit()}` : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
+      const shortest = d.optimal ?? null;
+      const proof = shortest && ui.proof >= shortest ? ` · ✓ kratší než ${shortest} ${unit()} není`
+        : ui.proof > 1 ? ` · ověřeno: pod ${ui.proof} ${unit()} řešení není` : '';
+      $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof} · ${(d.elapsed / 1000).toFixed(1)} s`;
       renderResults();
       if (!ui.chosen && ui.results.size) choose(sortedResults()[0].alg, false);
     },
@@ -615,24 +648,30 @@ function startSearch() {
 // Pohled na výsledky: všestranné / rychlost / efektivita – každý řadí všechna řešení
 // jinak (viz ergonomics/style.js). Pořadí v ostatních pohledech se ukazuje u řádků.
 let view = VIEWS[storage.get('ergocube.lab.view')] ? storage.get('ergocube.lab.view') : 'balanced';
+// Poměr všestranného pohledu (posuvník kratší ↔ pohodlnější).
+let lambda = Number.isFinite(storage.get('ergocube.lab.lambda')) ? storage.get('ergocube.lab.lambda') : DEFAULT_LAMBDA;
 let ranked = null; // { list, ranks } – zahodí se při každém vykreslení výsledků
 function rankedResults() {
   if (!ranked || ranked.size !== ui.results.size) {
     const cube = P().ergonomics === 'cube';
     const list = [...ui.results].map(([alg, s]) => ({ alg, score: s, m: styleMetrics(s, cube) }));
-    ranked = { size: ui.results.size, list, ranks: ranksOf(list) };
+    ranked = { size: ui.results.size, list, ranks: ranksOf(list, { lambda }) };
   }
   return ranked;
 }
 
 function sortedResults() {
   const { list, ranks } = rankedResults();
-  return rankResults(list, view).map((x) => ({ ...x, ranks: ranks.get(x) }));
+  return rankResults(list, view, { lambda }).map((x) => ({ ...x, ranks: ranks.get(x) }));
 }
+
+/** Je nejkratší nalezená délka ověřená (úplná sada prohledala všechny kratší)? */
+const provenShortest = (length) => ui.proof >= length;
 
 /** Co hledání právě dělá (úlohy viz search/worker.js: trojice tahů a úplná sada). */
 function searchPhaseText(p) {
   if (p.task === 'subset') return `Zlepšuji: prohledávám tahy ${p.label} do ${p.depth} ${unit()}`;
+  if (p.task === 'comfort') return `Zlepšuji pohodlí: hledám pohodlnější řešení na ${p.depth} ${unit()}`;
   if (p.task === 'full' && p.best && p.depth < p.best) return `Nejkratší zatím ${p.best} ${unit()} · zkouším všechny tahy: jde to za ${p.depth}?`;
   if (p.task === 'full') return `Zlepšuji: prohledávám všechny tahy do ${p.depth} ${unit()}`;
   return `Hloubka ${p.depth}`;
@@ -649,10 +688,11 @@ function renderBests() {
     const m = top.m;
     const facts = id === 'efficient' ? `${m.length} ${unit()}`
       : `${m.regrips + m.rotations ? `${m.regrips + m.rotations}× přehmat` : 'bez přehmatů'} · ${m.length} ${unit()}`;
+    const proven = id === 'efficient' && provenShortest(m.length);
     const b = el('button', { type: 'button', className: `best-chip view-${id}${top.alg === ui.chosen ? ' on' : ''}`, title: v.text },
       el('span', { className: 'best-head', textContent: `${v.icon} ${v.label}` }),
       el('code', { textContent: top.alg }),
-      el('small', { textContent: facts }));
+      el('small', {}, facts, proven ? el('span', { className: 'proof', title: 'Úplné hledání se všemi povolenými tahy prošlo všechny kratší délky a nic nenašlo', textContent: ' · ✓ nejkratší možné' }) : null));
     b.onclick = () => choose(top.alg, true);
     return b;
   }));
@@ -668,6 +708,58 @@ function renderStyleFilter() {
     return b;
   }));
   $('view-hint').textContent = ui.results.size ? VIEWS[view].text : '';
+  $('lambda-row').hidden = !ui.results.size || view !== 'balanced';
+  $('lambda').value = String(lambda);
+}
+
+/** Graf délka × pohodlí: všechna řešení a Paretova hranice (klepnutím se otevře). */
+function renderPareto() {
+  const box = $('pareto-box');
+  const { list } = rankedResults();
+  box.hidden = list.length < 2 || model.kind === 'sq1';
+  if (box.hidden || !box.open) return;
+  const W = 320, H = 180, L = 18, R = 12, T = 22, B = 26;
+  const xs = list.map((x) => x.m.length), ys = list.map((x) => speedValue(x.m));
+  const x0 = Math.min(...xs), x1 = Math.max(x0 + 1, ...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(y0 + 1, ...ys);
+  const sx = (v) => L + 8 + ((v - x0) / (x1 - x0)) * (W - L - R - 16);
+  const sy = (v) => T + ((v - y0) / (y1 - y0)) * (H - T - B); // nahoře pohodlnější (nižší hodnota)
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attrs, text) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Řešení podle délky a pohodlí' });
+  root.append(svg('line', { class: 'axis', x1: L, y1: H - B, x2: W - R, y2: H - B }), svg('line', { class: 'axis', x1: L, y1: T, x2: L, y2: H - B }));
+  const step = Math.max(1, Math.ceil((x1 - x0) / 8));
+  for (let v = x0; v <= x1; v += step) root.append(svg('text', { class: 'tick', x: sx(v), y: H - B + 12, 'text-anchor': 'middle' }, String(v)));
+  root.append(svg('text', { class: 'tick', x: (L + W - R) / 2, y: H - 2, 'text-anchor': 'middle' }, `${unit()} →`));
+  root.append(svg('text', { class: 'tick', x: 2, y: 2, 'dominant-baseline': 'hanging' }, '↑ pohodlnější'));
+  // ostatní řešení (stejná místa jen jednou)
+  const seen = new Set();
+  for (const x of list) {
+    const key = `${x.m.length}|${speedValue(x.m).toFixed(1)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    root.append(svg('circle', { class: 'dot', cx: sx(x.m.length), cy: sy(speedValue(x.m)), r: 2.5 }));
+  }
+  const front = paretoFront(list);
+  root.append(svg('polyline', { class: 'front-line', points: front.map((x) => `${sx(x.m.length)},${sy(speedValue(x.m))}`).join(' ') }));
+  for (const x of front) {
+    const cx = sx(x.m.length), cy = sy(speedValue(x.m));
+    const g = svg('g', {});
+    g.append(svg('circle', { class: 'front', cx, cy, r: 4.5 }));
+    if (x.alg === ui.chosen) g.append(svg('circle', { class: 'chosen', cx, cy, r: 8 }));
+    const hit = svg('circle', { class: 'hit', cx, cy, r: 11, tabindex: 0, role: 'button', 'aria-label': x.alg });
+    hit.append(svg('title', {}, `${x.alg}\n${x.m.length} ${unit()} · ${x.m.regrips + x.m.rotations ? `${x.m.regrips + x.m.rotations}× přehmat` : 'bez přehmatů'} · pohodlí ${speedValue(x.m).toFixed(1)}`));
+    hit.onclick = () => choose(x.alg, true);
+    hit.onkeydown = (e) => { if (e.key === 'Enter') choose(x.alg, true); };
+    g.append(hit);
+    root.append(g);
+  }
+  $('pareto').replaceChildren(root);
 }
 
 /** Údaj podstatný pro pohled (přehmaty a plynulost / počet tahů). */
@@ -692,14 +784,18 @@ function moveClass(token) {
 function movesView(alg, s, { current = -1, onStep, moveSet } = {}) {
   let steps;
   try { steps = model.steps(alg); } catch { steps = []; }
+  // AUF na začátku a na konci: hodnocení (perMove, triggery) je jen pro jádro
+  const { pre, post } = splitAuf(alg);
+  const off = pre ? 1 : 0, end = steps.length - (post ? 1 : 0);
   const trig = new Set();
-  for (const t of s.triggers) for (let i = t.start; i < t.start + t.length; i++) trig.add(i);
+  for (const t of s.triggers) for (let i = t.start; i < t.start + t.length; i++) trig.add(i + off);
   return el('div', { className: 'moves' }, ...steps.map((m, i) => {
-    const text = model.stepToString(m);
-    const bad = moveSet && !model.allows(moveSet, m);
-    const why = s.perMove?.[i]?.flowReason;
-    const cls = ['mv', moveClass(text), trig.has(i) && 'trig', why && 'flowbad', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
-    const title = why ? `Návaznost: ${why}` : undefined;
+    const auf = i < off || i >= end;
+    const text = auf ? `(${model.stepToString(m)})` : model.stepToString(m);
+    const bad = moveSet && !model.allows(moveSet, m) && !auf;
+    const why = auf ? null : s.perMove?.[i - off]?.flowReason;
+    const cls = ['mv', auf ? 'auf' : moveClass(text), trig.has(i) && 'trig', why && 'flowbad', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
+    const title = auf ? 'AUF – natočení horní vrstvy, do délky se nepočítá' : why ? `Návaznost: ${why}` : undefined;
     if (!onStep) return el('span', { className: cls, textContent: text, title });
     const b = el('button', { type: 'button', className: cls, textContent: text, title });
     b.onclick = () => onStep(i + 1);
@@ -738,6 +834,7 @@ function renderResults() {
   ranked = null;
   renderStyleFilter();
   renderBests();
+  renderPareto();
   const list = sortedResults();
   const shown = num('opt-results', 1, 500);
   $('results').replaceChildren(...list.slice(0, shown).map(({ alg, score: s, m, ranks }, i) => {
@@ -816,7 +913,9 @@ function renderPlayer() {
     detail.replaceChildren(el('p', { className: 'hint', textContent: 'Vyber řešení ze seznamu nebo napiš vlastní algoritmus.' }));
     return;
   }
-  const algText = model.algToString(steps);
+  const parts = splitAuf(ui.chosen);
+  let algText;
+  try { algText = joinAuf(parts.pre, model.algToString(parts.core), parts.post); } catch { algText = model.algToString(steps); }
   const isSaved = !!savedFor(algText);
   saveBtn.innerHTML = icon(isSaved ? 'bookmarked' : 'bookmark', { size: 20 });
   saveBtn.classList.toggle('on', isSaved);
@@ -825,7 +924,7 @@ function renderPlayer() {
   const goal = model.goal(ui.constraints, target, { shape: ui.sq1.shape });
   const exact = goal.test(end);
   const rotated = !exact && goal.rotated(end);
-  const illegal = steps.filter((m) => !model.allows(moveSet, m)).map((m) => model.stepToString(m));
+  const illegal = model.steps(splitAuf(algText).core).filter((m) => !model.allows(moveSet, m)).map((m) => model.stepToString(m));
   const s = score(algText);
   const b = s.breakdown;
   const row = (color, label, value) => el('tr', {},
@@ -911,6 +1010,7 @@ function selectPuzzle(id) {
   $('opt-max-label').textContent = model.kind === 'sq1' ? 'Max. řezů' : 'Max. tahů';
   $('opt-extra-label').textContent = model.kind === 'sq1' ? 'Řezů nad optimum' : 'Tahů nad optimum';
   if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '11'; $('opt-extra').value = '3'; }
+  $('opt-auf-row').hidden = !aufAllowed();
   $('a-scan').hidden = !model.scan;
   $('b-scan').hidden = !model.scan;
   renderSq1Pads();
@@ -982,6 +1082,15 @@ export function initLab({ onSub } = {}) {
     renderResults();
   };
   $('opt-results').onchange = () => renderResults();
+  $('opt-auf').checked = storage.get('ergocube.lab.auf') ?? true;
+  $('lambda').oninput = () => {
+    lambda = Number($('lambda').value);
+    storage.set('ergocube.lab.lambda', lambda);
+    renderResults();
+  };
+  $('pareto-box').open = storage.get('ergocube.lab.pareto') ?? false;
+  $('pareto-box').ontoggle = () => { storage.set('ergocube.lab.pareto', $('pareto-box').open); renderPareto(); };
+  $('ergo-left').onchange = () => { ui.ergo = { ...ui.ergo, leftHanded: $('ergo-left').checked }; ergoChanged(); };
   $('ergo-calibrate').onclick = () => {
     const mine = algs.list().filter((a) => (a.task.puzzle ?? '333') === model.id);
     const res = calibrate(P(), ui.ergo, mine);
