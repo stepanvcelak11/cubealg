@@ -297,3 +297,15 @@ test('držení kostky: po otočení pohledu se algoritmy píšou podle něj a ř
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('timer: 4×4 se míchá z náhodného stavu (jen tahy U D L R F B a Uw Rw Fw)', async () => {
+  const { p, ctx, errors } = await open('timer', { 'ergocube.timer': { event: '444' } });
+  await p.waitForFunction(() => /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent)
+    && !document.querySelector('#t-scramble').classList.contains('loading'), null, { timeout: 40000 });
+  const text = (await p.locator('#t-scramble').innerText()).trim();
+  const moves = text.split(/\s+/);
+  assert.ok(moves.length >= 35 && moves.length <= 80, `${moves.length} tahů`);
+  for (const m of moves) assert.match(m, /^(?:[UDLRFB]|[URF]w)[2']?$/, m);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

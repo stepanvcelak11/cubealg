@@ -1,7 +1,7 @@
 // Zamíchání pro disciplíny WCA.
 //
-// 2×2 a 3×3 jsou z náhodného stavu (2×2 viz scramble-worker, 3×3 two-phase),
-// ostatní jsou náhodné tahy v notaci WCA bez zbytečných kombinací tahů
+// 2×2, 3×3 a 4×4 jsou z náhodného stavu (2×2 a 4×4 viz scramble-worker,
+// 3×3 two-phase), ostatní jsou náhodné tahy v notaci WCA bez zbytečných kombinací tahů
 // (stejná vrstva po sobě, opakování na stejné ose).
 
 import { randomStateScramble } from './twophase.js';
@@ -56,6 +56,9 @@ const BLD_ORIENT_BIG = [['', 'x', 'x2', "x'", 'z', "z'"], ['', 'y', 'y2', "y'"]]
 function bldSuffix(table) {
   return table.map(pick).filter(Boolean).join(' ');
 }
+
+/** Orientace kostky před BLD zamícháním velkých kostek (x/z a y). */
+export const bigOrientation = () => bldSuffix(BLD_ORIENT_BIG);
 
 // --- Pyraminx, Skewb -------------------------------------------------------------
 

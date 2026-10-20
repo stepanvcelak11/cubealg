@@ -21,8 +21,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Timer** – zamíchání pro disciplíny WCA (2×2 až 7×7, OH, BLD, FMC, Multi-Blind,
   Clock, Megaminx, Pyraminx, Skewb, Square-1), stopky ve stylu speedcubingu
   (podržet mezerník/prst → pustit = start), volitelná inspekce 15 s (i s hlasovým
-  hlášením 8 a 12 s), +2, DNF a poznámky. 2×2 a 3×3 (vč. OH, BLD, FMC a Multi-Blind)
-  se míchají z náhodného stavu, ostatní náhodnými tahy. Každá disciplína může mít
+  hlášením 8 a 12 s), +2, DNF a poznámky. 2×2, 3×3 (vč. OH, BLD, FMC a Multi-Blind)
+  a 4×4 (i naslepo) se míchají z náhodného stavu (4×4 ~50 tahů, první zamíchání
+  chvíli trvá kvůli tabulkám), ostatní náhodnými tahy. Každá disciplína může mít
   vlastní skupiny složení (např. pro různé kostky).
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
   průměr, graf vývoje, rozložení časů, filtr období a seznam složení s úpravou
@@ -132,4 +133,4 @@ GitHub Actions (`.github/workflows/pages.yml`) při pushi do `main` spustí test
 - vlastní triggery a úchopy v UI, ergonomie pro levou ruku
 - hledání řízené přímo skóre (místo délky)
 - silnější heuristika pro dlouhé případy Square-1 (dvojice dílků)
-- zamíchání 4×4 a větších z náhodného stavu, Bluetooth kostky
+- zamíchání 5×5 a větších (WCA je míchá náhodnými tahy, takže to není nutné), Bluetooth kostky
