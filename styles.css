@@ -745,10 +745,13 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .stats-head .step-select { order: 5; flex: 1 1 100%; max-width: none; }
 
 /* Styl algoritmu (rychlostní / efektivní / všestranný) */
-.style-filter { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 4px 0 2px; }
+.style-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 4px 0 2px; }
+.view-hint { margin: 2px 2px 4px; font-size: 0.78rem; min-height: 0; }
+.view-hint:empty { display: none; }
+.view-ranks { display: flex; flex-wrap: wrap; gap: 4px; }
 .style-filter button { font-size: 0.78rem; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .style-filter .count { margin-left: 4px; }
-@media (max-width: 420px) { .style-filter button { font-size: 0.7rem; } .style-filter .count { display: none; } }
+@media (max-width: 420px) { .style-filter button { font-size: 0.74rem; } }
 .style-tag { padding: 1px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
 .style-tag.speed { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .style-tag.efficient { background: var(--accent-soft); color: var(--accent); }

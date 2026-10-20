@@ -17,7 +17,7 @@ import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomi
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 import { calibrate, featureLabel } from '../ergonomics/calibrate.js';
-import { STYLES as ALG_STYLES, styleMetrics, styleContext, classify } from '../ergonomics/style.js';
+import { VIEWS, styleMetrics, rankResults, ranksOf } from '../ergonomics/style.js';
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
@@ -570,8 +570,9 @@ function startSearch() {
   const opts = {
     maxLength: num('opt-max', 1, 20),
     extraDepth: num('opt-extra', 0, 6),
-    // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejpohodlnější
-    maxResults: Math.min(5000, Math.max(500, shown * 40)),
+    // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejlepší v každém pohledu
+    // (pro „Rychlost“ jsou potřeba i delší plynulé algoritmy, hledání jde od nejkratších)
+    maxResults: Math.min(5000, Math.max(3000, shown * 200)),
     timeLimit: num('opt-time', 1, 300) * 1000,
   };
   searchUi(true);
@@ -615,44 +616,46 @@ function startSearch() {
   });
 }
 
-// Styl výsledků (rychlostní / efektivní / všestranný) vůči ostatním nalezeným řešením.
-let styleFilter = 'all';
-function styledResults() {
-  const cube = P().ergonomics === 'cube';
-  const list = [...ui.results].map(([alg, s]) => ({ alg, score: s, m: styleMetrics(s, cube) }));
-  const ctx = styleContext(list.map((x) => x.m));
-  for (const x of list) x.style = classify(x.m, ctx);
-  return { list, ctx };
+// Pohled na výsledky: všestranné / rychlost / efektivita – každý řadí všechna řešení
+// jinak (viz ergonomics/style.js). Pořadí v ostatních pohledech se ukazuje u řádků.
+let view = VIEWS[storage.get('ergocube.lab.view')] ? storage.get('ergocube.lab.view') : 'balanced';
+let ranked = null; // { list, ranks } – zahodí se při každém vykreslení výsledků
+function rankedResults() {
+  if (!ranked || ranked.size !== ui.results.size) {
+    const cube = P().ergonomics === 'cube';
+    const list = [...ui.results].map(([alg, s]) => ({ alg, score: s, m: styleMetrics(s, cube) }));
+    ranked = { size: ui.results.size, list, ranks: ranksOf(list) };
+  }
+  return ranked;
 }
 
 function sortedResults() {
-  const { list } = styledResults();
-  const order = $('sort').value;
-  const filtered = styleFilter === 'all' ? list : list.filter((x) => x.style === styleFilter);
-  return filtered.sort((a, b) => (order === 'length'
-    ? a.score.metrics.htm - b.score.metrics.htm || a.score.total - b.score.total
-    : order === 'speed'
-    ? (a.m.regrips + a.m.rotations) - (b.m.regrips + b.m.rotations) || a.m.fluency - b.m.fluency || a.score.total - b.score.total
-    : a.score.total - b.score.total || a.score.metrics.htm - b.score.metrics.htm));
+  const { list, ranks } = rankedResults();
+  return rankResults(list, view).map((x) => ({ ...x, ranks: ranks.get(x) }));
 }
 
-/** Přepínač stylu nad výsledky (s počty). */
+/** Přepínač pohledu nad výsledky. */
 function renderStyleFilter() {
-  const { list } = styledResults();
   const box = $('style-filter');
-  box.hidden = !list.length;
-  const count = (id) => list.filter((x) => x.style === id).length;
-  if (styleFilter !== 'all' && !count(styleFilter)) styleFilter = 'all';
-  box.replaceChildren(...[['all', 'Vše', list.length], ...Object.entries(ALG_STYLES).map(([id, st]) => [id, `${st.icon} ${st.label}`, count(id)])]
-    .map(([id, label, n]) => {
-      const b = el('button', { type: 'button', className: `${id === styleFilter ? 'active' : ''} style-${id}`, title: id === 'all' ? 'Všechna řešení' : ALG_STYLES[id].text, disabled: !n },
-        label, el('b', { className: 'count', textContent: String(n) }));
-      b.onclick = () => { styleFilter = id; renderResults(); };
-      return b;
-    }));
+  box.hidden = !ui.results.size;
+  box.replaceChildren(...Object.entries(VIEWS).map(([id, v]) => {
+    const b = el('button', { type: 'button', className: `${id === view ? 'active' : ''} view-${id}`, title: v.text }, `${v.icon} ${v.label}`);
+    b.onclick = () => { view = id; storage.set('ergocube.lab.view', id); renderResults(); };
+    return b;
+  }));
+  $('view-hint').textContent = ui.results.size ? VIEWS[view].text : '';
 }
 
-const styleTag = (style) => (style ? el('span', { className: `style-tag ${style}`, title: ALG_STYLES[style].text, textContent: `${ALG_STYLES[style].icon} ${ALG_STYLES[style].label}` }) : null);
+/** Údaj podstatný pro pohled (přehmaty a plynulost / počet tahů). */
+function viewFacts(m) {
+  const grips = m.regrips + m.rotations;
+  const speed = `${grips ? `${grips}× přehmat${m.rotations ? '/rotace' : ''}` : 'bez přehmatů'} · ${m.fluency.toFixed(2)}/tah`;
+  return view === 'efficient' ? `${m.length} ${unit()}` : view === 'speed' ? speed : `${m.length} ${unit()} · ${speed}`;
+}
+
+/** Odznaky „1. v rychlosti“ apod. pro výsledky v první trojce jiného pohledu. */
+const rankBadges = (ranks) => Object.keys(VIEWS).filter((id) => id !== view && ranks?.[id] <= 3)
+  .map((id) => el('span', { className: `style-tag ${id}`, title: `${ranks[id]}. v pohledu ${VIEWS[id].label}`, textContent: `${VIEWS[id].icon} ${ranks[id]}.` }));
 
 const difficultyCache = new Map();
 function moveClass(token) {
@@ -708,19 +711,20 @@ function toggleSave(alg) {
 }
 
 function renderResults() {
+  ranked = null;
   renderStyleFilter();
   const list = sortedResults();
   const shown = num('opt-results', 1, 500);
-  $('results').replaceChildren(...list.slice(0, shown).map(({ alg, score: s, style }, i) => {
+  $('results').replaceChildren(...list.slice(0, shown).map(({ alg, score: s, m, ranks }, i) => {
     const isSaved = !!savedFor(alg);
     const row = el('div', { className: `result${alg === ui.chosen ? ' selected' : ''}`, role: 'button', tabIndex: 0 },
       el('span', { className: 'rank', textContent: `${i + 1}.` }),
       movesView(alg, s),
       el('span', { className: 'total', textContent: s.total.toFixed(1) }),
       el('span', { className: 'meta' },
-        `${s.metrics.htm} ${unit()}`,
+        viewFacts(m),
         bar(s.breakdown),
-        styleTag(style),
+        ...rankBadges(ranks),
         s.triggers.length ? `✦ ${s.triggers.map((t) => t.name).join(', ')}` : null,
         s.breakdown.rotations ? 'rotace' : null));
     const saveBtn = iconButton(icon(isSaved ? 'bookmarked' : 'bookmark', { size: 18 }), {
@@ -733,7 +737,7 @@ function renderResults() {
     row.onkeydown = (e) => { if (e.key === 'Enter') choose(alg, true); };
     return el('li', {}, row);
   }));
-  $('results-more').textContent = list.length > shown ? `Zobrazeno ${shown} nejlepších z ${list.length}${styleFilter === 'all' ? ' nalezených' : ` (${ALG_STYLES[styleFilter].label.toLowerCase()})`}.` : '';
+  $('results-more').textContent = list.length > shown ? `Zobrazeno ${shown} nejlepších (${VIEWS[view].label.toLowerCase()}) z ${list.length} nalezených.` : '';
   const count = $('results-count');
   count.hidden = !list.length;
   count.textContent = String(Math.min(list.length, shown));
@@ -831,20 +835,20 @@ function flowNotes(s) {
   return counts.size ? ` (${[...counts].map(([r, n]) => `${n}× ${r}`).join(', ')})` : '';
 }
 
-/** Styl algoritmu v detailu: pro koho se hodí a proč. */
+/** Pořadí algoritmu ve třech pohledech a údaje, ze kterých vychází. */
 function styleNote(alg, s) {
-  const cube = P().ergonomics === 'cube';
-  const m = styleMetrics(s, cube);
-  const { list, ctx } = styledResults();
-  const style = ui.results.has(alg) ? list.find((x) => x.alg === alg)?.style : classify(m, ctx);
+  const m = styleMetrics(s, P().ergonomics === 'cube');
+  const { list, ranks } = rankedResults();
+  const r = ranks.get(list.find((x) => x.alg === alg));
   const facts = [
-    m.ru !== null ? `R/U ${Math.round(m.ru * 100)} % tahů` : null,
+    `${m.length} ${unit()}`,
     m.regrips || m.rotations ? [m.regrips && `${m.regrips}× přehmat`, m.rotations && `${m.rotations}× rotace`].filter(Boolean).join(', ') : 'bez přehmatů',
     `nepohodlnost ${m.fluency.toFixed(2)} na tah`,
-    ctx ? `nejkratší nalezené ${ctx.minLength} ${unit()}` : null,
+    m.ru !== null ? `R/U ${Math.round(m.ru * 100)} % tahů` : null,
   ].filter(Boolean).join(' · ');
   return el('div', { className: 'style-note' },
-    style ? el('div', {}, styleTag(style), el('span', { textContent: ` ${ALG_STYLES[style].text}` })) : el('div', { className: 'hint', textContent: 'Bez štítku: není nejkratší a není plynulý (přehmaty, rotace nebo horší návaznost).' }),
+    r ? el('div', { className: 'view-ranks' }, ...Object.entries(VIEWS).map(([id, v]) =>
+      el('span', { className: `style-tag ${id}`, title: v.text, textContent: `${v.icon} ${v.label}: ${r[id]}. z ${list.length}` }))) : null,
     el('small', { className: 'hint', textContent: facts }));
 }
 
@@ -952,7 +956,6 @@ export function initLab({ onSub } = {}) {
     $('status').textContent += ' · zastaveno';
     renderResults();
   };
-  $('sort').onchange = () => renderResults();
   $('opt-results').onchange = () => renderResults();
   $('ergo-calibrate').onclick = () => {
     const mine = algs.list().filter((a) => (a.task.puzzle ?? '333') === model.id);

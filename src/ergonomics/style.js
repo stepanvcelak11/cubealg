@@ -1,69 +1,69 @@
-// Styl algoritmu: pro koho se spíš hodí. Hodnotí se vůči ostatním nalezeným
-// řešením téhož zadání.
+// Tři pohledy na nalezená řešení – každý řadí všechna řešení jinak:
 //
-//   efektivní   – nejkratší nalezený (nejmíň tahů), i když tahy nejsou nejpohodlnější;
-//                 pro přesné, pomalejší otáčení
-//   všestranný  – nejkratší nebo o tah delší a zároveň plynulý
-//   rychlostní  – delší, ale plynulý: bez přehmatů a rotací, s dobrou návazností
-//                 tahů a celkově pohodlný; pro agresivní otáčení s vysokým TPS
-//
-// „Plynulý“ = bez přehmatů zápěstí a rotací a s nepohodlností na tah (včetně
-// návaznosti tahů a bonusů za triggery) v lepší polovině výsledků bez přehmatů.
+//   rychlost    – příjemné skládání: nejdřív co nejméně přehmatů a rotací, pak
+//                 nejnižší nepohodlnost na tah (váhy tahů, návaznost, úchopy,
+//                 triggery); délka rozhoduje až nakonec
+//   efektivita  – co nejméně tahů; pohodlí rozhoduje jen mezi stejně dlouhými
+//   všestranné  – kombinace obou: součet percentilu délky a percentilu rychlosti
 
-export const STYLES = {
-  efficient: { label: 'Efektivní', icon: '◎', text: 'nejmíň tahů, tahy ale nejsou nejpohodlnější – pro přesné, pomalejší otáčení' },
-  balanced: { label: 'Všestranný', icon: '★', text: 'krátký a zároveň plynulý – sedne skoro každému' },
-  speed: { label: 'Rychlostní', icon: '⚡', text: 'víc tahů, ale plynulé bez přehmatů – pro agresivní otáčení s vysokým TPS' },
+export const VIEWS = {
+  balanced: { label: 'Všestranné', icon: '★', text: 'kombinace obou: málo tahů i příjemné skládání' },
+  speed: { label: 'Rychlost', icon: '⚡', text: 'příjemné skládání: co nejméně přehmatů a rotací, plynulé tahy a návaznost – délka skoro nehraje roli' },
+  efficient: { label: 'Efektivita', icon: '◎', text: 'co nejméně tahů – pohodlí rozhoduje jen mezi stejně dlouhými' },
 };
 
 const HOME = new Set(['R', 'U', 'r']);
 
 /**
  * Ukazatele algoritmu ze skóre: délka, podíl tahů R/U (jen kostky), počet přehmatů
- * a rotací a plynulost = nepohodlnost na tah (nižší = plynulejší).
+ * a rotací a nepohodlnost na tah (fluency, nižší = příjemnější).
  */
 export function styleMetrics(score, cube = true) {
   const n = score.metrics?.htm || score.perMove?.length || 1;
   const turns = (score.perMove ?? []).filter((m) => m.move && m.move !== '/');
   const home = turns.filter((m) => HOME.has(m.move[0])).length;
-  const b = score.breakdown ?? {};
   return {
     length: n,
     ru: cube && turns.length ? home / turns.length : null,
     regrips: (score.perMove ?? []).filter((m) => m.regrip > 0).length,
     rotations: (score.perMove ?? []).filter((m) => m.rotation > 0).length,
     fluency: score.total / n,
-    flow: b.flow ?? 0,
     total: score.total,
   };
 }
 
-const quantile = (xs, q) => {
-  if (!xs.length) return Infinity;
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.floor(q * (s.length - 1)))];
+/** Číslo „rychlosti“ (nižší = příjemnější): přehmat nebo rotace váží jako celá jednotka nepohodlnosti na tah. */
+export const speedValue = (m) => m.regrips + m.rotations + m.fluency;
+
+const COMPARE = {
+  speed: (a, b) => (a.m.regrips + a.m.rotations) - (b.m.regrips + b.m.rotations)
+    || a.m.fluency - b.m.fluency || a.m.length - b.m.length,
+  efficient: (a, b) => a.m.length - b.m.length || a.m.total - b.m.total,
 };
 
-/** Kontext pro zařazení: nejkratší délka, hranice plynulosti a medián celkového skóre. */
-export function styleContext(metricsList) {
-  if (!metricsList.length) return null;
-  const clean = metricsList.filter((m) => !m.regrips && !m.rotations);
-  return {
-    minLength: Math.min(...metricsList.map((m) => m.length)),
-    fluent: quantile((clean.length ? clean : metricsList).map((m) => m.fluency), 0.5),
-    medianTotal: quantile(metricsList.map((m) => m.total), 0.5),
+/**
+ * Seřadí výsledky podle pohledu.
+ * @param {{m: ReturnType<typeof styleMetrics>}[]} list
+ * @param {'balanced'|'speed'|'efficient'} view
+ */
+export function rankResults(list, view) {
+  if (view !== 'balanced') return [...list].sort(COMPARE[view] ?? COMPARE.speed);
+  // normuje se pořadím (percentil se shodami), takže jeden extrém nerozhodí škálu
+  const pct = (value) => {
+    const sorted = list.map(value).sort((a, b) => a - b);
+    const n = Math.max(1, sorted.length - 1);
+    const at = new Map();
+    sorted.forEach((v, i) => { const r = at.get(v); at.set(v, r ? { sum: r.sum + i, k: r.k + 1 } : { sum: i, k: 1 }); });
+    return (x) => { const r = at.get(value(x)); return r.sum / r.k / n; };
   };
+  const len = pct((x) => x.m.length), speed = pct((x) => speedValue(x.m));
+  const key = new Map(list.map((x) => [x, len(x) + speed(x)]));
+  return [...list].sort((a, b) => key.get(a) - key.get(b) || a.m.total - b.m.total);
 }
 
-/** Plynulý algoritmus: bez přehmatů a rotací, nepohodlnost na tah v lepší polovině. */
-export const isFluent = (m, ctx) => !m.regrips && !m.rotations && m.fluency <= ctx.fluent + 1e-9;
-
-/** Styl algoritmu ('efficient' | 'balanced' | 'speed' | null) vůči ostatním výsledkům. */
-export function classify(m, ctx) {
-  if (!ctx) return null;
-  const fluent = isFluent(m, ctx);
-  if (fluent && m.length <= ctx.minLength + 1) return 'balanced';
-  if (m.length === ctx.minLength) return 'efficient';
-  if (fluent && m.total <= ctx.medianTotal + 1e-9) return 'speed';
-  return null;
+/** Pořadí každého výsledku ve všech pohledech: Map(položka → {balanced, speed, efficient}) (od 1). */
+export function ranksOf(list) {
+  const out = new Map(list.map((x) => [x, {}]));
+  for (const view of Object.keys(VIEWS)) rankResults(list, view).forEach((x, i) => { out.get(x)[view] = i + 1; });
+  return out;
 }

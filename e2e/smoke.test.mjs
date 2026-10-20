@@ -97,10 +97,17 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await tapSticker(p, 'cube-a', 20);
   await p.locator('#go-search').tap();
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
-  // styl algoritmů: přepínač s počty a štítky u výsledků
+  // pohledy na výsledky: všestranné / rychlost / efektivita
   await p.waitForSelector('#style-filter:not([hidden])');
-  assert.ok(await p.locator('#results .style-tag').count() > 0);
-  assert.match(await p.locator('#detail .style-note').innerText(), /na tah/);
+  assert.match(await p.locator('#detail .style-note').innerText(), /Rychlost: \d+\. z \d+/);
+  await p.locator('#style-filter .view-efficient').tap();
+  assert.match(await p.locator('#view-hint').innerText(), /co nejméně tahů/);
+  const lens = await p.locator('#results .result .meta').allInnerTexts();
+  const nums = lens.map((t) => Number(t.match(/(\d+) tah/)[1]));
+  assert.deepEqual(nums, [...nums].sort((a, b) => a - b), 'efektivita řadí podle počtu tahů');
+  await p.locator('#style-filter .view-speed').tap();
+  assert.match(await p.locator('#results .result .meta').first().innerText(), /\/tah/);
+  await p.locator('#style-filter .view-balanced').tap();
   await p.locator('#results .result .save').first().tap();
   await p.locator('.tabbar [data-tab="trainer"]').tap();
   await p.waitForFunction(() => !document.querySelector('#tr-cube').hidden);

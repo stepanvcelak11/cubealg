@@ -286,11 +286,6 @@
             <div class="search-bar">
               <button type="button" id="search" class="primary" data-icon="search" data-icon-size="18"><span>Hledat</span></button>
               <button type="button" id="stop" class="secondary" data-icon="stop" data-icon-size="16" disabled><span>Zastavit</span></button>
-              <select id="sort" aria-label="Řazení">
-                <option value="score">Podle pohodlnosti</option>
-                <option value="length">Podle délky (přesné otáčení)</option>
-                <option value="speed">Pro rychlé otáčení (TPS)</option>
-              </select>
             </div>
             <label class="save-set">Ukládat do sady <select id="save-set" aria-label="Sada pro ukládání"></select></label>
             <details class="settings">
@@ -303,7 +298,8 @@
               </div>
             </details>
             <p id="status" class="status"></p>
-            <div id="style-filter" class="segmented style-filter" role="group" aria-label="Styl algoritmu" hidden></div>
+            <div id="style-filter" class="segmented style-filter" role="group" aria-label="Pohled na výsledky" hidden></div>
+            <p id="view-hint" class="hint view-hint"></p>
             <ol id="results" class="results"></ol>
             <p id="results-more" class="hint"></p>
           </article>

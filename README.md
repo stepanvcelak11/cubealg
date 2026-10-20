@@ -65,11 +65,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     prst dvakrát po sobě, dva prstové tahy jednou rukou, bonus za střídání rukou.
     Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
-    přehrávač a ukládání do zvolené sady trenažéru. Každé řešení má **styl**:
-    ◎ efektivní (nejmíň tahů ze všech nalezených – pro přesné, pomalejší otáčení),
-    ★ všestranné (nejkratší nebo o tah delší a zároveň plynulé),
-    ⚡ rychlostní (víc tahů, ale plynulé: bez přehmatů a rotací, s dobrou návazností
-    a celkově pohodlné – pro agresivní otáčení); výsledky jde podle stylu filtrovat a řadit.
+    přehrávač a ukládání do zvolené sady trenažéru. Tři **pohledy** řadí všechna
+    řešení jinak: ⚡ rychlost (nejdřív co nejméně přehmatů a rotací, pak co
+    nejpříjemnější tahy a návaznost, délka skoro nehraje roli), ◎ efektivita (co
+    nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (kombinace obou).
+    U řádků je pořadí v ostatních pohledech (např. ⚡ 1.), v detailu pořadí ve všech.
   - **Dlouhé algoritmy** (např. PLL s mnoha druhy tahů): hledání nejdřív rychle
     zkusí trojice R U x a za pár sekund ukáže první řešení, pak ve zbytku času
     hledá kratší a lepší verze. Odhad vzdálenosti zesiluje tabulka všech stavů
