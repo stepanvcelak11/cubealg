@@ -26,8 +26,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   chvíli trvá kvůli tabulkám), ostatní náhodnými tahy. Každá disciplína může mít
   vlastní skupiny složení (např. pro různé kostky).
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
-  průměr, graf vývoje, rozložení časů, filtr období a seznam složení s úpravou
-  trestů a poznámek – pro každou skupinu zvlášť.
+  průměr, graf vývoje, **osobní rekordy s historií zlepšení**, **porovnání dvou
+  skupin**, rozložení časů, filtr období, seznam složení s úpravou trestů a poznámek
+  a **export do CSV** (skupina nebo všechno) – pro každou skupinu zvlášť.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací

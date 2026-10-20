@@ -545,3 +545,21 @@ table.breakdown i { display: inline-block; width: 10px; height: 10px; border-rad
 .trainer-head select { flex: 1; min-width: 0; max-width: 360px; }
 .alg-set { min-height: 28px; padding: 2px 28px 2px 8px; font-size: 0.78rem; width: max-content; max-width: 100%; }
 #amounts label { font-family: inherit; font-size: 0.88rem; }
+
+/* Statistiky: rekordy a porovnání skupin */
+.pb { border-bottom: 1px solid var(--border); }
+.pb:last-child { border-bottom: 0; }
+.pb summary { display: grid; grid-template-columns: 4.5em auto 1fr; gap: 8px; align-items: baseline; padding: 8px 2px; cursor: pointer; list-style: none; }
+.pb summary::-webkit-details-marker { display: none; }
+.pb summary::after { content: "›"; color: var(--muted); justify-self: end; transition: transform 0.15s; }
+.pb[open] summary::after { transform: rotate(90deg); }
+.pb-value { font-size: 1.15rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.pb summary small, .pb-history small { color: var(--muted); font-size: 0.76rem; }
+.pb summary { grid-template-columns: 4.5em auto 1fr auto; }
+.pb-history { list-style: none; margin: 0 0 8px; padding: 0 0 0 4.5em; display: flex; flex-direction: column; gap: 4px; }
+.pb-history li { display: flex; gap: 10px; align-items: baseline; }
+.compare { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.compare th { text-align: right; font-size: 0.78rem; color: var(--muted); font-weight: 600; padding: 2px 6px 6px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare td { padding: 6px; text-align: right; border-top: 1px solid var(--border); }
+.compare td:first-child { text-align: left; color: var(--muted); }
+.compare td.win { color: var(--good); font-weight: 750; }

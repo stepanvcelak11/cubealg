@@ -85,12 +85,29 @@
         <h2>Vývoj</h2>
         <div id="s-chart" class="chart"></div>
       </article>
+      <article class="panel" id="s-records-panel">
+        <h2>Osobní rekordy</h2>
+        <div id="s-records"></div>
+      </article>
+      <article class="panel" id="s-compare-panel">
+        <div class="panel-head">
+          <h2>Porovnání skupin</h2>
+          <select id="s-compare" class="small-select" aria-label="Porovnat s"></select>
+        </div>
+        <div id="s-compare-table"></div>
+      </article>
       <article class="panel">
         <h2>Rozložení</h2>
         <div id="s-hist"></div>
       </article>
       <article class="panel">
-        <h2>Složení</h2>
+        <div class="panel-head">
+          <h2>Složení</h2>
+          <span class="row-btns">
+            <button type="button" id="s-csv" class="secondary small" data-icon="download" data-icon-size="16" title="Složení této skupiny jako CSV"><span>CSV</span></button>
+            <button type="button" id="s-csv-all" class="secondary small" data-icon="download" data-icon-size="16" title="Všechna složení všech disciplín a skupin jako CSV"><span>CSV vše</span></button>
+          </span>
+        </div>
         <ol id="s-list" class="solve-list"></ol>
       </article>
     </section>

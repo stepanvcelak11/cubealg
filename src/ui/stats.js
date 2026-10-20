@@ -1,7 +1,9 @@
 // Stránka Statistiky: souhrn, graf vývoje a seznam složení.
 
 import { EVENT_BY_ID } from '../timer/events.js';
-import { summary, value, currentAverage, formatValue, formatSolve, DNF } from '../timer/stats.js';
+import { summary, value, currentAverage, formatValue, formatSolve, recordHistory, compareRows, DNF } from '../timer/stats.js';
+import { solvesToCsv } from '../timer/csv.js';
+import { EVENTS } from '../timer/events.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups } from './store.js';
@@ -13,6 +15,7 @@ let range = 'all';
 
 let event = '333';
 let group = 'main';
+let compareWith = null; // skupina, se kterou se porovnává (stejná disciplína)
 const key = () => groups.key(event, group);
 
 function tiles(s, result) {
@@ -103,6 +106,71 @@ function histogram(list, result) {
     </div>`).join('')}</div>`;
 }
 
+const dateText = (d) => new Date(d).toLocaleDateString('cs', { day: 'numeric', month: 'numeric', year: '2-digit' });
+
+// Osobní rekordy: nejlepší hodnota a rozbalitelná historie zlepšení.
+function records(all, result) {
+  const panel = $('s-records-panel');
+  panel.hidden = result === 'multi';
+  if (result === 'multi') return;
+  const f = (v) => formatValue(v, result);
+  const rows = recordHistory(all, { mo3: result === 'moves' }).filter((m) => m.records.length);
+  if (!rows.length) { $('s-records').replaceChildren(el('p', { className: 'hint', textContent: 'Rekordy se objeví po prvních složeních.' })); return; }
+  $('s-records').replaceChildren(...rows.map((m) => {
+    const best = m.records.at(-1);
+    return el('details', { className: 'pb' },
+      el('summary', {}, el('b', { textContent: m.label }), el('span', { className: 'pb-value', textContent: f(best.value) }),
+        el('small', { textContent: `${dateText(best.d)} · složení č. ${best.i + 1}` })),
+      el('ol', { className: 'pb-history' }, ...[...m.records].reverse().slice(0, 12).map((r) => el('li', {},
+        el('b', { textContent: f(r.value) }),
+        el('small', { textContent: `${dateText(r.d)} · č. ${r.i + 1}${Number.isFinite(r.prev) ? ` · o ${f(r.prev - r.value)} lepší` : ''}` })))));
+  }));
+}
+
+// Porovnání dvou skupin téže disciplíny (za zvolené období).
+function compare(list, result) {
+  const panel = $('s-compare-panel');
+  panel.hidden = result === 'multi';
+  if (result === 'multi') return;
+  const others = groups.list(event).filter((g) => g.id !== group);
+  if (!others.some((g) => g.id === compareWith)) compareWith = others[0]?.id ?? null;
+  const select = $('s-compare');
+  select.hidden = !others.length;
+  select.replaceChildren(...others.map((g) => el('option', { value: g.id, textContent: g.name })));
+  if (!others.length) {
+    $('s-compare-table').replaceChildren(el('p', { className: 'hint', textContent: 'Další skupinu vytvoříš v Timeru nebo tady nahoře („+ Nová skupina…“), třeba pro jinou kostku.' }));
+    return;
+  }
+  select.value = compareWith;
+  const other = solves.list(groups.key(event, compareWith)).filter(inRange);
+  const f = (v) => formatValue(v, result);
+  const nameA = groups.get(event, group)?.name ?? 'Hlavní', nameB = groups.get(event, compareWith)?.name ?? '';
+  $('s-compare-table').replaceChildren(el('table', { className: 'compare' },
+    el('thead', {}, el('tr', {}, el('th'), el('th', { textContent: nameA }), el('th', { textContent: nameB }))),
+    el('tbody', {}, ...compareRows(list, other).map((r) => el('tr', {},
+      el('td', { textContent: r.label }),
+      el('td', { className: r.better === 'a' ? 'win' : '', textContent: r.plain ? String(r.a) : f(r.a) }),
+      el('td', { className: r.better === 'b' ? 'win' : '', textContent: r.plain ? String(r.b) : f(r.b) }))))));
+}
+
+function download(name, text) {
+  const a = el('a', { href: URL.createObjectURL(new Blob([`\uFEFF${text}`], { type: 'text/csv;charset=utf-8' })), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function exportCsv(everything) {
+  const sets = everything
+    ? EVENTS.flatMap((ev) => groups.list(ev.id).map((g) => ({ event: ev.id, group: g.name, solves: solves.list(groups.key(ev.id, g.id)) })))
+    : [{ event, group: groups.get(event, group)?.name ?? 'Hlavní', solves: solves.list(key()) }];
+  const rows = sets.filter((s) => s.solves.length);
+  if (!rows.length) { alert('Zatím tu nejsou žádná složení.'); return; }
+  const day = new Date().toISOString().slice(0, 10);
+  download(everything ? `ergocube-slozeni-${day}.csv` : `ergocube-${event}-${day}.csv`, solvesToCsv(rows, value));
+}
+
 function inRange(solve) {
   const r = RANGES.find(([id]) => id === range);
   if (!r || r[0] === 'all') return true;
@@ -129,6 +197,8 @@ function render() {
   const list = shown.map(({ solve }) => solve);
   $('s-tiles').replaceChildren(...tiles(summary(list), ev.result));
   chart(list, ev.result);
+  records(all, ev.result);
+  compare(list, ev.result);
   histogram(list, ev.result);
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   $('s-list').replaceChildren(...shown.map(({ solve, i }, n) => {
@@ -166,6 +236,9 @@ export function initStats() {
     const name = `${EVENT_BY_ID[event].name} – ${groups.get(event, group)?.name}`;
     if (solves.list(key()).length && confirm(`Smazat všechna složení ${name}?`)) solves.clear(key());
   };
+  $('s-compare').onchange = () => { compareWith = $('s-compare').value; render(); };
+  $('s-csv').onclick = () => exportCsv(false);
+  $('s-csv-all').onclick = () => exportCsv(true);
   solves.subscribe(render);
   render();
 }

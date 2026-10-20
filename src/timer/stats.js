@@ -88,6 +88,50 @@ export function summary(solves) {
   };
 }
 
+/**
+ * Historie osobních rekordů: pro single a průměry (mo3 u FMC, jinak ao5, ao12, ao50, ao100)
+ * všechna zlepšení v pořadí, jak přišla. Záznam: { i (index složení), d (datum), value, prev }.
+ */
+export function recordHistory(solves, { mo3 = false } = {}) {
+  const measures = [
+    { key: 'single', label: 'Single', n: 1 },
+    mo3 ? { key: 'mo3', label: 'mo3', n: 3, mean: true } : { key: 'ao5', label: 'ao5', n: 5 },
+    { key: 'ao12', label: 'ao12', n: 12 },
+    { key: 'ao50', label: 'ao50', n: 50 },
+    { key: 'ao100', label: 'ao100', n: 100 },
+  ];
+  const values = solves.map(value);
+  return measures.map((m) => {
+    const records = [];
+    let best = Infinity;
+    for (let i = m.n - 1; i < solves.length; i++) {
+      const v = m.n === 1 ? values[i] : averageOf(values.slice(i + 1 - m.n, i + 1), { mean: !!m.mean });
+      if (Number.isFinite(v) && v < best) {
+        records.push({ i, d: solves[i].d, value: v, prev: Number.isFinite(best) ? best : NaN });
+        best = v;
+      }
+    }
+    return { ...m, records };
+  });
+}
+
+/** Řádky srovnání dvou skupin: [{ label, a, b, better: 'a' | 'b' | null }] (nižší je lepší). */
+export function compareRows(listA, listB) {
+  const a = summary(listA), b = summary(listB);
+  const row = (label, x, y, lowerBetter = true) => ({
+    label, a: x, b: y,
+    better: !Number.isFinite(x) || !Number.isFinite(y) || x === y ? null : (x < y) === lowerBetter ? 'a' : 'b',
+  });
+  return [
+    { label: 'složení', a: a.count, b: b.count, better: null, plain: true },
+    row('nejlepší single', a.single.best, b.single.best),
+    row('průměr', a.mean, b.mean),
+    row('nejlepší ao5', a.ao5.best, b.ao5.best),
+    row('nejlepší ao12', a.ao12.best, b.ao12.best),
+    row('nejlepší ao100', a.ao100.best, b.ao100.best),
+  ];
+}
+
 /** 12.34 / 1:02.35 / DNF / – (čas v ms, zaokrouhleno dolů na setiny). */
 export function formatTime(ms) {
   if (ms === DNF) return 'DNF';

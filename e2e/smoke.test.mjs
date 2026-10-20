@@ -345,3 +345,37 @@ test('držení: Pyraminx a Skewb – výběr držení přepíše algoritmy a ře
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('statistiky: osobní rekordy, porovnání skupin a export CSV', async () => {
+  const mk = (times) => times.map((t, i) => ({ t, p: 0, s: `R U R' ${i}`, d: Date.UTC(2026, 0, 1 + i) }));
+  const { p, ctx, errors } = await open('stats', {
+    'ergocube.timer': { event: '333', inspection: false, groups: {} },
+    'ergocube.groups': { 333: [{ id: 'g1', name: 'Moje kostka' }] },
+    'ergocube.solves': {
+      333: mk([12000, 11000, 13000, 10500, 12500, 11500, 9000, 12000]),
+      '333/g1': mk([15000, 14000, 16000, 13500, 15500]),
+    },
+  });
+  // rekordy: single se rozbalí s historií zlepšení
+  await p.locator('.pb').first().locator('summary').tap();
+  assert.ok(await p.locator('.pb').first().locator('.pb-history li').count() >= 3);
+  assert.match(await p.locator('.pb').first().innerText(), /9\.00/);
+  // porovnání se skupinou „Moje kostka“: single je u hlavní skupiny lepší
+  const row = p.locator('.compare tbody tr', { hasText: 'nejlepší single' });
+  assert.match(await row.locator('td').nth(1).innerText(), /9\.00/);
+  assert.match(await row.locator('td').nth(2).innerText(), /13\.50/);
+  assert.equal(await row.locator('td.win').count(), 1);
+  // CSV
+  const [download] = await Promise.all([p.waitForEvent('download'), p.locator('#s-csv').tap()]);
+  const csv = Buffer.concat(await (await download.createReadStream()).toArray()).toString('utf8').replace(/^﻿/, '');
+  const lines = csv.trim().split('\r\n');
+  assert.equal(lines.length, 9);
+  assert.match(lines[0], /^disciplína,skupina/);
+  assert.match(lines[7], /,9000,,9000,/);
+  const [all] = await Promise.all([p.waitForEvent('download'), p.locator('#s-csv-all').tap()]);
+  const allCsv = Buffer.concat(await (await all.createReadStream()).toArray()).toString('utf8');
+  assert.equal(allCsv.trim().split('\r\n').length, 14);
+  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'bez vodorovného posouvání');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

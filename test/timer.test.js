@@ -99,3 +99,52 @@ test('Multi-Blind: body, DNF a pořadí', async () => {
   assert.equal(formatSolve(a, 'multi'), '5/6 50:00');
   assert.equal(bestSingle([b, a, c]), value(a));
 });
+
+import { recordHistory, compareRows } from '../src/timer/stats.js';
+import { solvesToCsv } from '../src/timer/csv.js';
+import { value } from '../src/timer/stats.js';
+
+const mk = (times, extra = {}) => times.map((t, i) => ({ t, p: 0, s: `S${i}`, d: 1000 + i, ...extra }));
+
+test('rekordy: zlepšení single a průměrů v pořadí', () => {
+  const list = mk([12000, 11000, 13000, 10500, 12500, 11500, 9000, 12000]);
+  const h = recordHistory(list);
+  const single = h.find((m) => m.key === 'single').records;
+  assert.deepEqual(single.map((r) => r.value), [12000, 11000, 10500, 9000]);
+  assert.equal(single[1].prev, 12000);
+  const ao5 = h.find((m) => m.key === 'ao5').records;
+  assert.ok(ao5.length >= 1);
+  assert.ok(ao5.every((r, i) => i === 0 || r.value < ao5[i - 1].value));
+  assert.equal(h.find((m) => m.key === 'ao12').records.length, 0);
+});
+
+test('rekordy: DNF se nepočítá, FMC má mo3', () => {
+  const list = mk([12000, 11000, 13000]);
+  list[1].p = -1;
+  assert.deepEqual(recordHistory(list)[0].records.map((r) => r.value), [12000]);
+  assert.equal(recordHistory(mk([30, 31, 29, 28]), { mo3: true })[1].key, 'mo3');
+});
+
+test('srovnání skupin: nižší je lepší', () => {
+  const rows = compareRows(mk([10000, 11000, 12000, 13000, 14000]), mk([9000, 15000, 16000, 17000, 18000, 19000]));
+  assert.equal(rows.find((r) => r.label === 'nejlepší single').better, 'b');
+  assert.equal(rows.find((r) => r.label === 'průměr').better, 'a');
+  assert.equal(rows.find((r) => r.label === 'složení').better, null);
+  assert.equal(rows.find((r) => r.label === 'nejlepší ao100').better, null);
+});
+
+test('CSV: hlavička, escapování, trest a DNF', () => {
+  const list = mk([12345, 20000, 15000]);
+  list[1].p = 2000;
+  list[2].p = -1;
+  list[0].n = 'poznámka, "s čárkou"';
+  const csv = solvesToCsv([{ event: '333', group: 'Hlavní', solves: list }], value);
+  const lines = csv.trim().split('\r\n');
+  assert.equal(lines.length, 4);
+  assert.match(lines[0], /^disciplína,skupina,pořadí,datum/);
+  assert.match(lines[1], /,12345,,12345,/);
+  assert.match(lines[1], /"poznámka, ""s čárkou"""$/);
+  assert.match(lines[2], /,20000,\+2,22000,/);
+  assert.match(lines[3], /,15000,DNF,DNF,/);
+  assert.match(lines[1], new RegExp(new Date(1000).toISOString()));
+});
