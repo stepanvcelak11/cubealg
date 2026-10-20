@@ -466,7 +466,7 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   assert.equal(data.guide.steps[0].title, 'Vložení rohu');
   assert.equal(data.algs.length, 1);
   assert.equal(data.algs[0].times, undefined);
-  await p.locator('.guide-head .icon-btn').tap();
+  await p.locator('.guide-close').tap();
   // import: vznikne nová metoda „Základní (2)“ s průvodcem i algoritmem
   const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.selectOption('#method', '+import')]);
   await chooser.setFiles({ name: 'metoda.json', mimeType: 'application/json', buffer: shared });
@@ -477,6 +477,61 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   await p.locator('.guide-set button').tap();
   await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden && !document.querySelector('#tr-cube').hidden);
   assert.match(await p.locator('#tr-count').innerText(), /1 z 1/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('metoda: nácvik kroku v timeru, ukázka algoritmu a tisk průvodce', async () => {
+  const { p, ctx, errors } = await open('timer');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { guides } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const cross = ['DF', 'DR', 'DB', 'DL', 'U', 'D', 'F', 'B', 'R', 'L'];
+    const home = m.home(cross);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, cross.includes(n) ? 'solved' : 'ignore']));
+    const pair = ['URF', 'U', 'F', 'R'];
+    const pairHome = m.home(pair);
+    const pc = Object.fromEntries(m.pieceNames.map((n) => [n, pair.includes(n) ? 'solved' : 'ignore']));
+    guides.set('default', { intro: 'Test', steps: [
+      { id: 'k1', title: 'Kříž', text: 'Postav kříž.', task: { constraints, colorsA: m.applyMoves(home, 'F R'), colorsB: home } },
+      { id: 'k2', title: 'Páry', text: 'Vlož páry.', task: { constraints: pc, colorsA: m.applyMoves(pairHome, "R U R'"), colorsB: pairHome, alg: "R U' R'" } },
+    ] });
+  });
+  // nácvik 2. kroku: zamíchání nechá kříž hotový
+  await p.waitForSelector('#t-step:not([hidden])');
+  await p.selectOption('#t-step', 'k2');
+  await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading')
+    && /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent), null, { timeout: 20000 });
+  const crossKept = await p.evaluate(async () => {
+    const { solved, applyAlg } = await import('./src/core/cube.js');
+    const { SLOTS } = await import('./src/core/geometry.js');
+    const loc = applyAlg(solved(), document.querySelector('#t-scramble').textContent);
+    return SLOTS.filter((s) => ['DF', 'DR', 'DB', 'DL'].includes(s.name)).every((s) => s.facelets.every((k) => loc[k] === k));
+  });
+  assert.equal(crossKept, true);
+  await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space');
+  await p.waitForTimeout(300);
+  await p.keyboard.press('KeyA');
+  await p.waitForFunction(() => document.querySelector('#t-mini > div:last-child b').textContent === '1');
+  const keys = await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ergocube.solves'))));
+  assert.deepEqual(keys, ['333~k2']);
+  await p.locator('.tabbar [data-tab="stats"]').tap();
+  assert.equal(await p.locator('#s-step').inputValue(), 'k2');
+  assert.equal(await p.locator('#s-list li.solve').count(), 1);
+  await p.selectOption('#s-step', '');
+  assert.equal(await p.locator('#s-list li.solve').count(), 0);
+  // průvodce: ukázka algoritmu se přehraje až do konce
+  await p.selectOption('#method', '+guide');
+  await p.waitForSelector('.guide-player');
+  assert.equal(await p.locator('.guide-player .mv').count(), 3);
+  await p.locator('.guide-player-head button', { hasText: 'Přehrát' }).tap();
+  await p.waitForFunction(() => document.querySelector('.guide-player-head').textContent.includes('Přehrát znovu'), null, { timeout: 10000 });
+  assert.equal(await p.locator('.guide-player .mv.current').innerText(), "R'");
+  // tisk: zavolá se tisk s tiskovým režimem
+  await p.evaluate(() => { window.print = () => { window.printed = document.body.classList.contains('printing-guide'); }; });
+  await p.locator('.guide-print').tap();
+  await p.waitForFunction(() => window.printed === true);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

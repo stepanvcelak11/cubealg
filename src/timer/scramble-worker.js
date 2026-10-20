@@ -14,9 +14,16 @@ async function scramble444(event) {
   }
 }
 
+// nácvik kroku metody: předchozí kroky hotové (3×3)
+async function practice(fixed) {
+  const { practiceScramble } = await import('./practice.js');
+  return practiceScramble(fixed) || scramble('333');
+}
+
 self.onmessage = async ({ data }) => {
   try {
-    const text = data.event === '222' ? scramble222()
+    const text = data.opts?.fixed ? await practice(data.opts.fixed)
+      : data.event === '222' ? scramble222()
       : data.event === '444' || data.event === '444bf' ? await scramble444(data.event)
         : scramble(data.event, data.opts);
     self.postMessage({ id: data.id, scramble: text });

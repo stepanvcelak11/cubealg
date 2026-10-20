@@ -4,14 +4,51 @@ import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
 import { summary, formatValue, formatSolve, formatClock } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { solves, groups } from './store.js';
+import { solves, groups, methods, guides } from './store.js';
 import { Stopwatch } from './stopwatch.js';
 import { renderPreview } from './preview.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
 const saveSettings = () => storage.set('ergocube.timer', settings);
-const key = () => groups.key(settings.event, timerGroup());
+const key = () => groups.key(settings.event, timerGroup()) + stepSuffix(timerPractice());
+
+// --- Nácvik kroku metody ------------------------------------------------------------
+// Kroky průvodce aktivní metody: timer zamíchá tak, že předchozí kroky (dílky, které
+// jejich obrázky z Labu řeší) jsou hotové. Časy nácviku se ukládají zvlášť.
+
+const PRACTICE_EVENTS = new Set(['333', '333oh']);
+export const stepSuffix = (step) => (step ? `~${step}` : '');
+
+/** Kroky průvodce aktivní metody (jen když jde nácvik pro disciplínu). */
+export function practiceSteps(event = settings.event) {
+  return PRACTICE_EVENTS.has(event) ? guides.get().steps : [];
+}
+
+/** Právě nacvičovaný krok (id) nebo null. */
+export function timerPractice() {
+  const id = settings.practice?.[methods.active()];
+  return id && practiceSteps().some((st) => st.id === id) ? id : null;
+}
+
+/** Dílky hotové před krokem: co řeší obrázky předchozích kroků (3×3). */
+export function stepFixed(stepId) {
+  const steps = guides.get().steps;
+  const names = new Set();
+  for (const st of steps.slice(0, Math.max(0, steps.findIndex((x) => x.id === stepId)))) {
+    if (!st.task || (st.task.puzzle ?? '333') !== '333') continue;
+    for (const [name, style] of Object.entries(st.task.constraints ?? {})) if (style && style !== 'ignore') names.add(name);
+  }
+  return [...names];
+}
+
+/** Naplní select kroků (celé složení + kroky). */
+export function stepOptions(select, value, steps) {
+  select.replaceChildren(el('option', { value: '', textContent: 'Celé složení' }),
+    ...steps.map((st, i) => el('option', { value: st.id, textContent: `Nácvik: ${i + 1}. ${st.title || `krok ${i + 1}`}` })));
+  select.value = value ?? '';
+  select.hidden = !steps.length;
+}
 
 let worker = null;
 let requestId = 0;
@@ -85,8 +122,9 @@ async function newScramble() {
   box.classList.add('loading');
   box.textContent = 'Míchám…';
   const event = settings.event;
-  const res = await requestScramble(event, { count: settings.mbfCount ?? 3 });
-  if (event !== settings.event) return;
+  const step = timerPractice();
+  const res = await requestScramble(event, { count: settings.mbfCount ?? 3, fixed: step ? stepFixed(step) : null });
+  if (event !== settings.event || step !== timerPractice()) return;
   box.classList.remove('loading');
   current = res.scramble ?? '';
   box.textContent = res.error ? `Chyba: ${res.error}` : current;
@@ -153,12 +191,30 @@ export function initTimer({ isActive }) {
   $('t-event').onchange = () => {
     settings.event = $('t-event').value;
     saveSettings();
+    renderSteps();
+    lastStep = timerPractice();
     groupOptions($('t-group'), settings.event, timerGroup());
     syncMode();
     render();
     newScramble();
     $('t-event').blur();
   };
+  const renderSteps = () => stepOptions($('t-step'), timerPractice(), practiceSteps());
+  renderSteps();
+  $('t-step').onchange = () => {
+    settings.practice = { ...settings.practice, [methods.active()]: $('t-step').value || null };
+    saveSettings();
+    render();
+    newScramble();
+    $('t-step').blur();
+  };
+  let lastStep = timerPractice();
+  const stepsChanged = () => {
+    renderSteps();
+    if (timerPractice() !== lastStep) { lastStep = timerPractice(); render(); newScramble(); }
+  };
+  guides.subscribe(stepsChanged);
+  methods.subscribe(stepsChanged);
   groupOptions($('t-group'), settings.event, timerGroup());
   $('t-group').onchange = () => {
     settings.groups[settings.event] = pickGroup($('t-group'), settings.event, timerGroup());

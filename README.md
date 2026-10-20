@@ -34,8 +34,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   k aktivní metodě. Ve statistikách jde metody (i skupiny) porovnat vedle sebe.
   **Průvodce metodou** (ve výběru metody): úvod a kroky se slovním popisem,
   obrázkem kostky „před → po“ převzatým z Labu a odkazem na sadu algoritmů
-  k tréninku. Metodu i s průvodcem a algoritmy jde **sdílet** jako soubor
-  a druhý ji naimportuje („Importovat metodu…“).
+  k tréninku, případně **ukázkou algoritmu**, která se dá přehrát tah po tahu.
+  Metodu i s průvodcem a algoritmy jde **sdílet** jako soubor (druhý ji
+  naimportuje přes „Importovat metodu…“) nebo **vytisknout / uložit jako PDF**.
+  **Nácvik kroku** v timeru (3×3): zamíchání nechá hotové všechno, co řeší
+  předchozí kroky průvodce, a časy nácviku se ukládají zvlášť.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací

@@ -43,7 +43,7 @@ export const methods = {
   remove(id) {
     if (id === 'default') return;
     methodsData.list = methodsData.list.filter((m) => m.id !== id);
-    for (const k of Object.keys(solvesData)) if (k.endsWith(`@${id}`)) delete solvesData[k];
+    for (const k of Object.keys(solvesData)) if (k.split('~')[0].endsWith(`@${id}`)) delete solvesData[k];
     const sets = new Set([defaultSetId(id), ...setsData.filter((x) => x.method === id).map((x) => x.id)]);
     for (let i = algsData.length - 1; i >= 0; i--) if (sets.has(algsData[i].set)) algsData.splice(i, 1);
     for (let i = setsData.length - 1; i >= 0; i--) if (setsData[i].method === id) setsData.splice(i, 1);
@@ -59,7 +59,7 @@ export const methods = {
   usage(id) {
     const suffix = `@${id}`;
     const solveCount = Object.entries(solvesData)
-      .filter(([k]) => (id === 'default' ? !k.includes('@') : k.endsWith(suffix)))
+      .filter(([k]) => (id === 'default' ? !k.includes('@') : k.split('~')[0].endsWith(suffix)))
       .reduce((n, [, list]) => n + list.length, 0);
     return { solves: solveCount, algs: algs.inMethod(id).length };
   },
@@ -129,7 +129,10 @@ export const groups = {
   remove(event, id) {
     if (id === 'main') return;
     groupsData[event] = (groupsData[event] ?? []).filter((g) => g.id !== id);
-    for (const m of methods.list()) delete solvesData[this.key(event, id, m.id)];
+    for (const m of methods.list()) {
+      const k = this.key(event, id, m.id);
+      for (const x of Object.keys(solvesData)) if (x === k || x.startsWith(`${k}~`)) delete solvesData[x];
+    }
     storage.set('ergocube.solves', solvesData);
     this.save();
   },

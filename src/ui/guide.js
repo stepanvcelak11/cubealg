@@ -8,6 +8,7 @@ import { methods, guides, algSets, algs, exportMethod } from './store.js';
 import { labModel } from './models.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
+import { holdFor } from './holds.js';
 
 let dialog = null;
 let editing = false;
@@ -48,6 +49,62 @@ function illustration(task) {
   return el('div', { className: 'guide-figs' }, a, el('span', { className: 'guide-arrow', textContent: '→' }), b);
 }
 
+/**
+ * Ukázka algoritmu kroku: kostka ve stavu „před“ a přehrání tah po tahu.
+ * Algoritmus je zapsaný v držení kroku (task.hold), pohled i tahy modelu se převedou.
+ */
+function examplePlayer(task) {
+  if (!task?.alg) return null;
+  let model, start, steps, shown;
+  try {
+    model = labModel(task.puzzle ?? '333');
+    const side = model.deserialize(task.colorsA);
+    start = side && model.build(side, task.constraints ?? {}).loc;
+    if (!start) return null;
+    shown = model.steps(task.alg);
+    steps = task.hold ? holdFor(model, task.hold).toModel(shown) : shown;
+  } catch { return null; }
+  const host = el('div', { className: 'guide-cube guide-player-cube' });
+  const moves = el('div', { className: 'moves guide-moves' });
+  const play = el('button', { type: 'button', className: 'secondary small' });
+  const reset = Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Znovu od začátku', ariaLabel: 'Znovu od začátku' }),
+    { innerHTML: icon('first', { size: 18 }) });
+  let view, loc = start, at = 0, playing = false;
+  const draw = () => {
+    view.render(model.stateStickers(loc, task.constraints ?? {}));
+    moves.replaceChildren(...shown.map((m, i) => el('span', { className: `mv${i === at - 1 ? ' current' : ''}`, textContent: model.stepToString(m) })));
+    play.innerHTML = `${icon(playing ? 'pause' : 'play', { size: 16 })}<span>${playing ? 'Pauza' : at >= steps.length ? 'Přehrát znovu' : 'Přehrát'}</span>`;
+  };
+  const toStart = () => { loc = start; at = 0; draw(); };
+  play.onclick = async () => {
+    if (playing) { playing = false; draw(); return; }
+    if (at >= steps.length) { toStart(); await new Promise((r) => setTimeout(r, 300)); }
+    playing = true;
+    while (playing && at < steps.length) {
+      draw();
+      await (view.animate ? view.animate(steps[at]) : Promise.resolve());
+      loc = model.applySteps(loc, [steps[at]]);
+      at += 1;
+      draw();
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    playing = false;
+    draw();
+  };
+  reset.onclick = () => { playing = false; toStart(); };
+  queueMicrotask(() => {
+    const v = model.view;
+    view = v.type === 'cube3d'
+      ? new Cube3D(host, { label: 'Ukázka algoritmu', facelets: v.facelets, scale: v.scale })
+      : new NetView(host, { label: 'Ukázka algoritmu', viewBox: v.viewBox, polys: v.polys });
+    view.setHold?.(task.hold ?? '');
+    draw();
+  });
+  return el('div', { className: 'guide-player' },
+    el('div', { className: 'guide-player-head' }, el('b', { textContent: 'Ukázka' }), reset, play),
+    host, moves);
+}
+
 function render() {
   const method = methods.active();
   const name = methods.get(method).name;
@@ -70,6 +127,7 @@ function render() {
           el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`),
           st.text?.trim() ? richText(st.text) : null,
           illustration(st.task),
+          examplePlayer(st.task),
           set ? el('div', { className: 'guide-set' },
             el('span', { textContent: `Algoritmy: ${set.name} (${algs.inSet(set.id).length})` }),
             Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
@@ -93,12 +151,15 @@ function render() {
     const text = el('textarea', { className: 'guide-input', rows: 4, value: st.text ?? '', placeholder: 'Co se v kroku dělá, na co se dívat, tipy…' });
     text.oninput = () => { st.text = text.value; save(); };
     const set = el('select', { ariaLabel: 'Sada algoritmů kroku' }, ...setOptions(st.set));
+    const alg = el('input', { className: 'guide-input', value: st.task?.alg ?? '', placeholder: 'Ukázkový algoritmus (např. R U R\' U\')', disabled: !st.task,
+      title: st.task ? 'Algoritmus, který převede obrázek „před“ na „po“' : 'Nejdřív přidej obrázek z Labu' });
+    alg.onchange = () => { if (st.task) { st.task.alg = alg.value.trim() || undefined; save(); } };
     set.onchange = () => { st.set = set.value || undefined; save(); };
     const btn = (ic, label, fn, cls = 'icon-btn') => Object.assign(el('button', { type: 'button', className: cls, title: label, ariaLabel: label }),
       { innerHTML: icon(ic, { size: 18 }), onclick: () => { fn(); save(); render(); } });
     const take = Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
       innerHTML: `${icon('lab', { size: 16 })}<span>${st.task ? 'Nahradit obrázkem z Labu' : 'Obrázek z Labu'}</span>`,
-      title: 'Vezme současné zadání z Labu (výchozí stav a cíl)',
+      title: 'Vezme současné zadání z Labu (výchozí stav a cíl) a algoritmus vybraný v přehrávači',
       onclick: () => { st.task = deps.labTask(); save(); render(); },
     });
     return el('section', { className: 'guide-step editing' },
@@ -109,6 +170,7 @@ function render() {
         btn('trash', 'Smazat krok', () => { if (confirm(`Smazat krok „${st.title || i + 1}“?`)) guide.steps.splice(i, 1); })),
       text,
       illustration(st.task),
+      alg,
       el('div', { className: 'row-btns guide-tools' }, take,
         st.task ? btn('close', 'Odebrat obrázek', () => { delete st.task; }, 'secondary small') : null, set));
   });
@@ -119,7 +181,7 @@ function render() {
   body.replaceChildren(
     el('label', { className: 'guide-label', textContent: 'Úvod' }), intro,
     ...steps, add,
-    el('p', { className: 'hint', textContent: 'Obrázek kroku: v Labu nastav výchozí stav a cíl (třeba jen dílky, o které v kroku jde), pak tady klepni na „Obrázek z Labu“.' }));
+    el('p', { className: 'hint', textContent: 'Obrázek kroku: v Labu nastav výchozí stav a cíl (třeba jen dílky, o které v kroku jde), případně vyber řešení v přehrávači, a tady klepni na „Obrázek z Labu“. Vybraný algoritmus se v kroku dá přehrát.' }));
 }
 
 async function share() {
@@ -141,18 +203,26 @@ export function openGuide(opts = {}) {
   deps = { ...deps, ...opts };
   editing = false;
   if (!dialog) {
-    const close = Object.assign(el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
+    const close = Object.assign(el('button', { type: 'button', className: 'icon-btn guide-close', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
     const edit = el('button', { type: 'button', className: 'secondary small guide-edit' });
     const shareBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-share', title: 'Poslat metodu i s algoritmy jako soubor' }),
       { innerHTML: `${icon('share', { size: 16 })}<span>Sdílet</span>` });
+    const printBtn = Object.assign(el('button', { type: 'button', className: 'icon-btn guide-print', title: 'Vytisknout nebo uložit jako PDF', ariaLabel: 'Vytisknout nebo uložit jako PDF' }),
+      { innerHTML: icon('print', { size: 20 }) });
     dialog = el('dialog', { className: 'help-dialog guide-dialog' },
       el('div', { className: 'guide-head' },
         el('div', {}, el('small', { className: 'hint', textContent: 'Průvodce metodou' }), el('h2', { className: 'guide-title' })),
-        edit, shareBtn, close),
+        edit, shareBtn, printBtn, close),
       el('div', { className: 'guide-body' }));
     close.onclick = () => dialog.close();
     edit.onclick = () => { editing = !editing; render(); };
     shareBtn.onclick = share;
+    printBtn.onclick = () => {
+      if (editing) { editing = false; render(); }
+      document.body.classList.add('printing-guide');
+      // 3D kostky potřebují chvilku na vykreslení
+      setTimeout(() => { window.print(); document.body.classList.remove('printing-guide'); }, 150);
+    };
     document.body.append(dialog);
   }
   render();

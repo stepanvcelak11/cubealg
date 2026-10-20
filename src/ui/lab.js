@@ -942,7 +942,7 @@ export function initLab({ onSub } = {}) {
 
 /** Současné zadání Labu (pro obrázek kroku v průvodci metodou). */
 export function labTask() {
-  return { ...taskSnapshot(), puzzle: model.id };
+  return { ...taskSnapshot(), puzzle: model.id, ...(ui.chosen ? { alg: ui.chosen } : {}) };
 }
 
 export function showLab() {

@@ -7,7 +7,7 @@ import { EVENTS } from '../timer/events.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups, methods } from './store.js';
-import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup } from './timer.js';
+import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup, timerPractice, practiceSteps, stepOptions, stepSuffix } from './timer.js';
 
 // Období, ze kterého se počítají statistiky (ms zpět, 0 = vše).
 const RANGES = [['all', 'Vše', 0], ['day', 'Dnes', 0], ['week', '7 dní', 7 * 864e5], ['month', '30 dní', 30 * 864e5]];
@@ -16,7 +16,8 @@ let range = 'all';
 let event = '333';
 let group = 'main';
 let compareWith = null; // 'metoda|skupina', se kterou se porovnává (stejná disciplína)
-const key = () => groups.key(event, group);
+let step = null; // nácvik kroku metody (časy nácviku jsou zvlášť)
+const key = () => groups.key(event, group) + stepSuffix(step);
 
 function tiles(s, result) {
   const f = (v) => formatValue(v, result);
@@ -140,11 +141,11 @@ function compare(list, result) {
   const active = methods.active();
   // nejdřív stejná skupina v jiných metodách, pak ostatní skupiny
   const combos = methods.list().flatMap((m) => groups.list(event).map((g) => ({ m: m.id, g: g.id })))
-    .filter(({ m, g }) => !(m === active && g === group))
+    .filter(({ m, g }) => !(m === active && g === group) && (!step || m === active))
     .sort((x, y) => (y.g === group) - (x.g === group));
   const value = ({ m, g }) => `${m}|${g}`;
   if (!combos.some((c) => value(c) === compareWith)) {
-    const withData = combos.find((c) => solves.list(groups.key(event, c.g, c.m)).length);
+    const withData = combos.find((c) => solves.list(groups.key(event, c.g, c.m) + stepSuffix(step)).length);
     compareWith = combos.length ? value(withData ?? combos[0]) : null;
   }
   const select = $('s-compare');
@@ -156,7 +157,7 @@ function compare(list, result) {
   }
   select.value = compareWith;
   const [m, g] = compareWith.split('|');
-  const other = solves.list(groups.key(event, g, m)).filter(inRange);
+  const other = solves.list(groups.key(event, g, m) + stepSuffix(step)).filter(inRange);
   const f = (v) => formatValue(v, result);
   $('s-compare-table').replaceChildren(el('table', { className: 'compare' },
     el('thead', {}, el('tr', {}, el('th'), el('th', { textContent: comboName(active, group) }), el('th', { textContent: comboName(m, g) }))),
@@ -205,6 +206,9 @@ function render() {
   const ev = EVENT_BY_ID[event];
   if (!groups.get(event, group)) group = 'main';
   groupOptions($('s-group'), event, group);
+  const steps = practiceSteps(event);
+  if (!steps.some((st) => st.id === step)) step = null;
+  stepOptions($('s-step'), step, steps);
   renderRanges();
   const all = solves.list(key());
   // indexy do celého seznamu (kvůli úpravám), statistiky jen ze zvoleného období
@@ -247,6 +251,7 @@ export function initStats() {
   eventOptions($('s-event'), event);
   $('s-event').onchange = () => { event = $('s-event').value; group = 'main'; render(); };
   $('s-group').onchange = () => { group = pickGroup($('s-group'), event, group); render(); };
+  $('s-step').onchange = () => { step = $('s-step').value || null; render(); };
   $('s-clear').onclick = () => {
     const name = `${EVENT_BY_ID[event].name} – ${groups.get(event, group)?.name}`;
     if (solves.list(key()).length && confirm(`Smazat všechna složení ${name}?`)) solves.clear(key());
@@ -262,6 +267,7 @@ export function initStats() {
 export function showStats() {
   event = timerEvent();
   group = timerGroup();
+  step = timerPractice();
   $('s-event').value = event;
   render();
 }
