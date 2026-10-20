@@ -19,7 +19,7 @@ import { calibrate, featureLabel } from '../ergonomics/calibrate.js';
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { algs } from './store.js';
+import { algs, algSets, defaultSetId } from './store.js';
 import { setOptions, pickSet } from './sets.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
@@ -922,7 +922,11 @@ export function initLab({ onSub } = {}) {
     while (ui.playing && await step(1)) { /* další tah */ }
     stopPlaying();
   };
-  const renderSaveSet = () => setOptions($('save-set'), saveSet);
+  const renderSaveSet = () => {
+    // sada patří k aktivní metodě; po přepnutí metody se ukládá do její výchozí sady
+    if (!algSets.list().some((x) => x.id === saveSet)) saveSet = defaultSetId();
+    setOptions($('save-set'), saveSet);
+  };
   $('save-set').onchange = () => {
     saveSet = pickSet($('save-set'), saveSet);
     storage.set('ergocube.lab.saveSet', saveSet);

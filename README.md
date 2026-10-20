@@ -29,6 +29,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   průměr, graf vývoje, **osobní rekordy s historií zlepšení**, **porovnání dvou
   skupin**, rozložení časů, filtr období, seznam složení s úpravou trestů a poznámek
   a **export do CSV** (skupina nebo všechno) – pro každou skupinu zvlášť.
+- **Metody** – výběr metody v horní liště (např. CFOP a tvoje vlastní) přepne celou
+  aplikaci: složení v timeru, statistiky i sady algoritmů z Labu a Trenažéru patří
+  k aktivní metodě. Ve statistikách jde metody (i skupiny) porovnat vedle sebe.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací

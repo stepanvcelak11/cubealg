@@ -4,7 +4,7 @@
 import { averageOf, formatTime } from '../timer/stats.js';
 import { $, el, iconButton, storage } from './dom.js';
 import { icon } from './icons.js';
-import { algs, algSets } from './store.js';
+import { algs, algSets, defaultSetId, methods } from './store.js';
 import { setOptions, pickSet } from './sets.js';
 import { Stopwatch } from './stopwatch.js';
 import { Cube3D } from './cube3d.js';
@@ -15,7 +15,9 @@ import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from
 
 // Trénovaná sada ('all' = všechny).
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
-const inTraining = () => (trainSet === 'all' ? algs.list() : algs.inSet(trainSet));
+const inTraining = () => (trainSet === 'all' ? algs.inMethod() : algs.inSet(trainSet));
+// sada musí patřit k aktivní metodě (po přepnutí metody se vrátí na všechny sady)
+const checkSet = () => { if (trainSet !== 'all' && !algSets.list().some((x) => x.id === trainSet)) trainSet = 'all'; };
 
 let trials = storage.get('ergocube.trainer.n') ?? 0; // počet pokusů celkem (čas plánu)
 let sortKey = storage.get('ergocube.trainer.sort') ?? 'order';
@@ -124,7 +126,7 @@ function next() {
 
 function renderList() {
   const list = [...inTraining()].sort(SORTS[sortKey].cmp);
-  $('tr-sheet-title').textContent = trainSet === 'all' ? 'Všechny algoritmy' : algSets.get(trainSet).name;
+  $('tr-sheet-title').textContent = trainSet === 'all' ? `Všechny algoritmy · ${methods.get(methods.active()).name}` : algSets.get(trainSet).name;
   $('tr-count').textContent = `v tréninku ${list.filter((x) => x.enabled).length} z ${list.length}`;
   $('tr-list').replaceChildren(...list.map((a) => {
     const st = algStats(a);
@@ -143,7 +145,7 @@ function renderList() {
     // přesun do jiné sady
     const move = el('select', { className: 'alg-set', ariaLabel: 'Sada' },
       ...algSets.list().map((st) => el('option', { value: st.id, textContent: st.name })));
-    move.value = a.set ?? 'default';
+    move.value = algSets.list().some((x) => x.id === a.set) ? a.set : defaultSetId();
     move.onchange = () => algs.update(a.id, { set: move.value });
     return el('li', { className: 'alg-item' },
       cb,
@@ -200,7 +202,7 @@ export function initTrainer({ isActive }) {
   };
   $('tr-set').onchange = () => {
     trainSet = pickSet($('tr-set'), trainSet);
-    if (trainSet !== 'all' && !algSets.list().some((x) => x.id === trainSet)) trainSet = 'all';
+    checkSet();
     storage.set('ergocube.trainer.set', trainSet);
     $('tr-set').blur();
     currentId = pickNext();
@@ -209,6 +211,7 @@ export function initTrainer({ isActive }) {
     if (!$('tr-sheet').hidden) renderList();
   };
   algs.subscribe(() => {
+    checkSet();
     if (!$('tr-sheet').hidden) renderList();
     if (currentId && (!algs.get(currentId) || !inTraining().includes(algs.get(currentId)))) currentId = null;
     if (!currentId) currentId = pickNext();

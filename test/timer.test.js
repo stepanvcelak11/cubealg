@@ -138,10 +138,11 @@ test('CSV: hlavička, escapování, trest a DNF', () => {
   list[1].p = 2000;
   list[2].p = -1;
   list[0].n = 'poznámka, "s čárkou"';
-  const csv = solvesToCsv([{ event: '333', group: 'Hlavní', solves: list }], value);
+  const csv = solvesToCsv([{ method: 'CFOP', event: '333', group: 'Hlavní', solves: list }], value);
   const lines = csv.trim().split('\r\n');
   assert.equal(lines.length, 4);
-  assert.match(lines[0], /^disciplína,skupina,pořadí,datum/);
+  assert.match(lines[0], /^metoda,disciplína,skupina,pořadí,datum/);
+  assert.match(lines[1], /^CFOP,333,Hlavní,1,/);
   assert.match(lines[1], /,12345,,12345,/);
   assert.match(lines[1], /"poznámka, ""s čárkou"""$/);
   assert.match(lines[2], /,20000,\+2,22000,/);

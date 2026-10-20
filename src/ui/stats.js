@@ -6,7 +6,7 @@ import { solvesToCsv } from '../timer/csv.js';
 import { EVENTS } from '../timer/events.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { solves, groups } from './store.js';
+import { solves, groups, methods } from './store.js';
 import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup } from './timer.js';
 
 // Období, ze kterého se počítají statistiky (ms zpět, 0 = vše).
@@ -15,7 +15,7 @@ let range = 'all';
 
 let event = '333';
 let group = 'main';
-let compareWith = null; // skupina, se kterou se porovnává (stejná disciplína)
+let compareWith = null; // 'metoda|skupina', se kterou se porovnává (stejná disciplína)
 const key = () => groups.key(event, group);
 
 function tiles(s, result) {
@@ -127,26 +127,39 @@ function records(all, result) {
   }));
 }
 
-// Porovnání dvou skupin téže disciplíny (za zvolené období).
+// Porovnání s jinou metodou nebo skupinou téže disciplíny (za zvolené období).
+const comboName = (m, g) => {
+  const group = groups.get(event, g)?.name ?? 'Hlavní';
+  return g === 'main' ? methods.get(m)?.name : `${methods.get(m)?.name} · ${group}`;
+};
+
 function compare(list, result) {
   const panel = $('s-compare-panel');
   panel.hidden = result === 'multi';
   if (result === 'multi') return;
-  const others = groups.list(event).filter((g) => g.id !== group);
-  if (!others.some((g) => g.id === compareWith)) compareWith = others[0]?.id ?? null;
+  const active = methods.active();
+  // nejdřív stejná skupina v jiných metodách, pak ostatní skupiny
+  const combos = methods.list().flatMap((m) => groups.list(event).map((g) => ({ m: m.id, g: g.id })))
+    .filter(({ m, g }) => !(m === active && g === group))
+    .sort((x, y) => (y.g === group) - (x.g === group));
+  const value = ({ m, g }) => `${m}|${g}`;
+  if (!combos.some((c) => value(c) === compareWith)) {
+    const withData = combos.find((c) => solves.list(groups.key(event, c.g, c.m)).length);
+    compareWith = combos.length ? value(withData ?? combos[0]) : null;
+  }
   const select = $('s-compare');
-  select.hidden = !others.length;
-  select.replaceChildren(...others.map((g) => el('option', { value: g.id, textContent: g.name })));
-  if (!others.length) {
-    $('s-compare-table').replaceChildren(el('p', { className: 'hint', textContent: 'Další skupinu vytvoříš v Timeru nebo tady nahoře („+ Nová skupina…“), třeba pro jinou kostku.' }));
+  select.hidden = !combos.length;
+  select.replaceChildren(...combos.map((c) => el('option', { value: value(c), textContent: comboName(c.m, c.g) })));
+  if (!combos.length) {
+    $('s-compare-table').replaceChildren(el('p', { className: 'hint', textContent: 'Porovnat můžeš metody (nahoře „+ Nová metoda…“) nebo skupiny, třeba pro jinou kostku.' }));
     return;
   }
   select.value = compareWith;
-  const other = solves.list(groups.key(event, compareWith)).filter(inRange);
+  const [m, g] = compareWith.split('|');
+  const other = solves.list(groups.key(event, g, m)).filter(inRange);
   const f = (v) => formatValue(v, result);
-  const nameA = groups.get(event, group)?.name ?? 'Hlavní', nameB = groups.get(event, compareWith)?.name ?? '';
   $('s-compare-table').replaceChildren(el('table', { className: 'compare' },
-    el('thead', {}, el('tr', {}, el('th'), el('th', { textContent: nameA }), el('th', { textContent: nameB }))),
+    el('thead', {}, el('tr', {}, el('th'), el('th', { textContent: comboName(active, group) }), el('th', { textContent: comboName(m, g) }))),
     el('tbody', {}, ...compareRows(list, other).map((r) => el('tr', {},
       el('td', { textContent: r.label }),
       el('td', { className: r.better === 'a' ? 'win' : '', textContent: r.plain ? String(r.a) : f(r.a) }),
@@ -163,8 +176,10 @@ function download(name, text) {
 
 function exportCsv(everything) {
   const sets = everything
-    ? EVENTS.flatMap((ev) => groups.list(ev.id).map((g) => ({ event: ev.id, group: g.name, solves: solves.list(groups.key(ev.id, g.id)) })))
-    : [{ event, group: groups.get(event, group)?.name ?? 'Hlavní', solves: solves.list(key()) }];
+    ? methods.list().flatMap((m) => EVENTS.flatMap((ev) => groups.list(ev.id).map((g) => ({
+      method: m.name, event: ev.id, group: g.name, solves: solves.list(groups.key(ev.id, g.id, m.id)),
+    }))))
+    : [{ method: methods.get(methods.active()).name, event, group: groups.get(event, group)?.name ?? 'Hlavní', solves: solves.list(key()) }];
   const rows = sets.filter((s) => s.solves.length);
   if (!rows.length) { alert('Zatím tu nejsou žádná složení.'); return; }
   const day = new Date().toISOString().slice(0, 10);

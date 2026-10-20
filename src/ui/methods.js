@@ -1,0 +1,47 @@
+// Výběr metody v horní liště: přepne celou aplikaci (timer, statistiky, sady
+// algoritmů v Labu i trenažér) do režimu zvolené metody.
+
+import { $, el } from './dom.js';
+import { methods } from './store.js';
+
+function render() {
+  const select = $('method');
+  const active = methods.active();
+  select.replaceChildren(
+    ...methods.list().map((m) => el('option', { value: m.id, textContent: m.name })),
+    el('option', { value: '+new', textContent: '+ Nová metoda…' }),
+    el('option', { value: '+rename', textContent: 'Přejmenovat metodu…' }),
+    active !== 'default' ? el('option', { value: '+delete', textContent: 'Smazat metodu…' }) : null,
+  );
+  select.value = active;
+  select.title = `Metoda: ${methods.get(active).name} – složení i algoritmy se ukládají k ní`;
+  document.body.dataset.method = active;
+}
+
+function pick() {
+  const select = $('method');
+  const v = select.value;
+  const active = methods.active();
+  if (v === '+new') {
+    const name = prompt('Název metody (např. Roux, ZZ nebo tvoje vlastní):', '')?.trim();
+    if (name) methods.setActive(methods.add(name));
+  } else if (v === '+rename') {
+    const name = prompt('Nový název metody:', methods.get(active).name)?.trim();
+    if (name) methods.rename(active, name);
+  } else if (v === '+delete') {
+    const m = methods.get(active);
+    const { solves, algs } = methods.usage(active);
+    const what = [solves && `${solves} složení`, algs && `${algs} algoritmů`].filter(Boolean).join(' a ');
+    if (confirm(`Smazat metodu „${m.name}“${what ? ` i s ${what}` : ''}? Tohle nejde vrátit.`)) methods.remove(active);
+  } else {
+    methods.setActive(v);
+  }
+  render();
+  select.blur();
+}
+
+export function initMethods() {
+  $('method').onchange = pick;
+  methods.subscribe(render);
+  render();
+}

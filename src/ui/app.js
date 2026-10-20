@@ -7,6 +7,7 @@ import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer } from './trainer.js';
 import { initLab, showLab, labSub } from './lab.js';
 import { initSettings } from './settings.js';
+import { initMethods } from './methods.js';
 
 let page = storage.get('ergocube.page') ?? 'timer';
 
@@ -36,6 +37,7 @@ function showPage(name) {
 hydrateIcons();
 for (const b of document.querySelectorAll('.tabbar button')) b.onclick = () => { showPage(b.dataset.tab); b.blur(); };
 
+initMethods();
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });

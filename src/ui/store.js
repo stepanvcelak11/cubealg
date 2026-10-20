@@ -10,12 +10,70 @@ function emitter() {
   };
 }
 
-// --- Složení ---------------------------------------------------------------------
+// --- Metody -----------------------------------------------------------------------
+// Metoda (např. CFOP nebo vlastní) je režim celé aplikace: složení v timeru i sady
+// algoritmů patří k aktivní metodě, takže jdou metody mezi sebou porovnávat.
+// Výchozí metoda má id 'default' (data bez přípony, jako před zavedením metod).
 
 const solvesData = storage.get('ergocube.solves') ?? {};
 const solvesEvents = emitter();
+const methodsData = { active: 'default', defaultName: null, list: [], ...(storage.get('ergocube.methods') ?? {}) };
+const methodEvents = emitter();
 
-// "event" je klíč skupiny z groups.key(disciplína, skupina).
+export const methods = {
+  list() { return [{ id: 'default', name: methodsData.defaultName ?? 'Základní' }, ...methodsData.list]; },
+  get(id) { return this.list().find((m) => m.id === id) ?? null; },
+  active() { return this.get(methodsData.active) ? methodsData.active : 'default'; },
+  setActive(id) {
+    methodsData.active = this.get(id) ? id : 'default';
+    this.save();
+  },
+  add(name) {
+    const id = `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    methodsData.list.push({ id, name });
+    this.save();
+    return id;
+  },
+  rename(id, name) {
+    if (id === 'default') methodsData.defaultName = name;
+    else { const m = methodsData.list.find((x) => x.id === id); if (m) m.name = name; }
+    this.save();
+  },
+  /** Smaže metodu i s jejími složeními, sadami a algoritmy. */
+  remove(id) {
+    if (id === 'default') return;
+    methodsData.list = methodsData.list.filter((m) => m.id !== id);
+    for (const k of Object.keys(solvesData)) if (k.endsWith(`@${id}`)) delete solvesData[k];
+    const sets = new Set([defaultSetId(id), ...setsData.filter((x) => x.method === id).map((x) => x.id)]);
+    for (let i = algsData.length - 1; i >= 0; i--) if (sets.has(algsData[i].set)) algsData.splice(i, 1);
+    for (let i = setsData.length - 1; i >= 0; i--) if (setsData[i].method === id) setsData.splice(i, 1);
+    if (methodsData.active === id) methodsData.active = 'default';
+    storage.set('ergocube.solves', solvesData);
+    storage.set('ergocube.algsets', setsData);
+    storage.set('ergocube.algs', algsData);
+    this.save();
+  },
+  /** Kolik složení a algoritmů metoda má (pro potvrzení smazání). */
+  usage(id) {
+    const suffix = `@${id}`;
+    const solveCount = Object.entries(solvesData)
+      .filter(([k]) => (id === 'default' ? !k.includes('@') : k.endsWith(suffix)))
+      .reduce((n, [, list]) => n + list.length, 0);
+    return { solves: solveCount, algs: algs.inMethod(id).length };
+  },
+  save() {
+    storage.set('ergocube.methods', methodsData);
+    methodEvents.emit();
+    solvesEvents.emit();
+    algsEvents.emit();
+  },
+  subscribe: (fn) => methodEvents.subscribe(fn),
+};
+
+// --- Složení ---------------------------------------------------------------------
+
+
+// "event" je klíč skupiny z groups.key(disciplína, skupina[, metoda]).
 export const solves = {
   list(event) { return solvesData[event] ?? []; },
   add(event, solve) {
@@ -51,7 +109,11 @@ const MAIN = { id: 'main', name: 'Hlavní' };
 export const groups = {
   list(event) { return [MAIN, ...(groupsData[event] ?? [])]; },
   get(event, id) { return this.list(event).find((g) => g.id === id) ?? null; },
-  key(event, id) { return !id || id === 'main' ? event : `${event}/${id}`; },
+  /** Klíč složení: disciplína, skupina a metoda (výchozí = aktivní). */
+  key(event, id, method = methods.active()) {
+    const base = !id || id === 'main' ? event : `${event}/${id}`;
+    return method === 'default' ? base : `${base}@${method}`;
+  },
   add(event, name) {
     const id = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     (groupsData[event] ??= []).push({ id, name });
@@ -65,7 +127,7 @@ export const groups = {
   remove(event, id) {
     if (id === 'main') return;
     groupsData[event] = (groupsData[event] ?? []).filter((g) => g.id !== id);
-    delete solvesData[this.key(event, id)];
+    for (const m of methods.list()) delete solvesData[this.key(event, id, m.id)];
     storage.set('ergocube.solves', solvesData);
     this.save();
   },
@@ -76,20 +138,36 @@ export const groups = {
 };
 
 // --- Vlastní algoritmy ---------------------------------------------------------------
-// Každý algoritmus patří do sady (např. podle situace nebo metody); trenažér
-// trénuje vybranou sadu. Výchozí sada má id 'default'.
+// Každý algoritmus patří do sady (např. podle situace) a sada k metodě; trenažér
+// trénuje vybranou sadu. Výchozí sada metody má id 'default' (výchozí metoda)
+// nebo 'default@<metoda>'.
 
 const algsData = storage.get('ergocube.algs') ?? [];
 const algsEvents = emitter();
 const setsData = storage.get('ergocube.algsets') ?? [];
-const DEFAULT_SET = { id: 'default', name: 'Moje algoritmy' };
+
+/** Id výchozí sady metody. */
+export const defaultSetId = (method = methods.active()) => (method === 'default' ? 'default' : `default@${method}`);
+const defaultSet = (method) => ({ id: defaultSetId(method), name: 'Moje algoritmy', method });
+const setMethod = (id) => {
+  if (!id || id === 'default') return 'default';
+  if (id.startsWith('default@')) return id.slice(8);
+  return setsData.find((x) => x.id === id)?.method ?? 'default';
+};
 
 export const algSets = {
-  list() { return [DEFAULT_SET, ...setsData]; },
-  get(id) { return this.list().find((s) => s.id === id) ?? DEFAULT_SET; },
+  /** Sady metody (výchozí = aktivní), výchozí sada první. */
+  list(method = methods.active()) {
+    return [defaultSet(method), ...setsData.filter((x) => (x.method ?? 'default') === method)];
+  },
+  get(id) {
+    if (id === 'default' || id?.startsWith('default@')) return defaultSet(setMethod(id));
+    return setsData.find((x) => x.id === id) ?? defaultSet(methods.active());
+  },
+  methodOf: setMethod,
   add(name) {
     const id = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
-    setsData.push({ id, name });
+    setsData.push({ id, name, method: methods.active() });
     this.save();
     return id;
   },
@@ -101,8 +179,9 @@ export const algSets = {
   remove(id) {
     const i = setsData.findIndex((x) => x.id === id);
     if (i < 0) return;
+    const fallback = defaultSetId(setsData[i].method ?? 'default');
     setsData.splice(i, 1);
-    for (const a of algsData) if (a.set === id) a.set = 'default';
+    for (const a of algsData) if (a.set === id) a.set = fallback;
     storage.set('ergocube.algs', algsData);
     this.save();
   },
@@ -122,8 +201,10 @@ export const algs = {
   },
   /** Algoritmy v sadě (bez sady = výchozí). */
   inSet(set) { return algsData.filter((a) => (a.set ?? 'default') === set); },
+  /** Algoritmy všech sad metody (výchozí = aktivní). */
+  inMethod(method = methods.active()) { return algsData.filter((a) => setMethod(a.set) === method); },
   /** @param {{alg:string, task:object, name?:string, set?:string}} entry */
-  add({ alg, task, name, set = 'default' }) {
+  add({ alg, task, name, set = defaultSetId() }) {
     const id = `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const count = this.inSet(set).length;
     algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now() });

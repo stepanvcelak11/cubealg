@@ -70,6 +70,13 @@ body.lock { overflow: hidden; overscroll-behavior: none; height: 100dvh; }
 }
 .topbar h1 { margin: 0; font-size: 1.1rem; font-weight: 750; display: flex; align-items: center; gap: 10px; letter-spacing: -0.01em; }
 .brand-lab { color: var(--accent); font-weight: 750; }
+.method-pick { margin-left: auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.method-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.method-pick select { min-height: 34px; padding: 2px 28px 2px 10px; font-size: 0.85rem; font-weight: 650; max-width: 38vw; background-color: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.topbar h1 > span:last-child { white-space: nowrap; }
+.topbar { gap: 8px; }
+@media (max-width: 420px) { .method-label { display: none; } }
+@media (max-width: 360px) { .topbar h1 { font-size: 0.95rem; gap: 6px; } .topbar .logo { width: 24px; height: 24px; } .method-pick select { max-width: 34vw; } }
 .logo {
   width: 20px; height: 20px; border-radius: 5px; background:
     linear-gradient(90deg, transparent 31%, var(--plastic) 31% 36%, transparent 36% 64%, var(--plastic) 64% 69%, transparent 69%),

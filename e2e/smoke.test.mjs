@@ -370,12 +370,59 @@ test('statistiky: osobní rekordy, porovnání skupin a export CSV', async () =>
   const csv = Buffer.concat(await (await download.createReadStream()).toArray()).toString('utf8').replace(/^﻿/, '');
   const lines = csv.trim().split('\r\n');
   assert.equal(lines.length, 9);
-  assert.match(lines[0], /^disciplína,skupina/);
+  assert.match(lines[0], /^metoda,disciplína,skupina/);
   assert.match(lines[7], /,9000,,9000,/);
   const [all] = await Promise.all([p.waitForEvent('download'), p.locator('#s-csv-all').tap()]);
   const allCsv = Buffer.concat(await (await all.createReadStream()).toArray()).toString('utf8');
   assert.equal(allCsv.trim().split('\r\n').length, 14);
   assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'bez vodorovného posouvání');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('metody: přepnutí metody odděluje složení i algoritmy a jde je porovnat', async () => {
+  const { p, ctx, errors } = await open('timer');
+  p.on('dialog', (d) => d.accept('Moje metoda'));
+  const solve = async () => {
+    await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading')
+      && /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent), null, { timeout: 15000 });
+    await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space');
+    await p.waitForTimeout(300);
+    await p.keyboard.press('KeyA');
+  };
+  const count = () => p.locator('#t-mini > div').last().locator('b').innerText();
+  await solve();
+  await p.waitForFunction(() => document.querySelector('#t-mini > div:last-child b').textContent === '1');
+  // nová metoda: timer začne od nuly
+  await p.selectOption('#method', '+new');
+  assert.equal(await p.locator('#method option:checked').innerText(), 'Moje metoda');
+  assert.equal(await count(), '0');
+  await solve();
+  await solve();
+  await p.waitForFunction(() => document.querySelector('#t-mini > div:last-child b').textContent === '2');
+  // algoritmus uložený v této metodě patří do její výchozí sady
+  await p.evaluate(async () => {
+    const { algs } = await import('./src/ui/store.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const home = m.home(['URF']);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, n === 'URF' ? 'solved' : 'ignore']));
+    algs.add({ alg: "R U R'", task: { constraints, colorsA: m.applyMoves(home, "R U' R'"), colorsB: home } });
+  });
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  await p.waitForFunction(() => !document.querySelector('#tr-cube').hidden);
+  // zpět na výchozí metodu: její složení a žádný algoritmus
+  const base = await p.locator('#method option').first().getAttribute('value');
+  await p.selectOption('#method', base);
+  assert.equal(await p.locator('#tr-empty').isVisible(), true);
+  await p.locator('.tabbar [data-tab="timer"]').tap();
+  assert.equal(await count(), '1');
+  // statistiky: porovnání s druhou metodou
+  await p.locator('.tabbar [data-tab="stats"]').tap();
+  const row = p.locator('.compare tbody tr', { hasText: 'složení' }).first();
+  assert.equal(await row.locator('td').nth(1).innerText(), '1');
+  assert.equal(await row.locator('td').nth(2).innerText(), '2');
+  assert.match(await p.locator('.compare thead').innerText(), /Moje metoda/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
