@@ -308,6 +308,8 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .panel-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* výchozí pohled 3D kostky – malé tlačítko v rohu kostky */
 .cube-panel #a-view, .cube-panel #b-view { position: absolute; right: 8px; top: 46px; z-index: 2; }
+.cube-panel #a-hold, .cube-panel #b-hold { position: absolute; right: 8px; top: 84px; z-index: 2; color: var(--muted); }
+.hold-note { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 6px 12px; margin-top: 6px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 0.85rem; font-weight: 600; }
 .head-actions .icon-btn:hover { color: var(--text); }
 .sq1-pad { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; flex: none; }
 .sq1-pad .chip { font-family: ui-monospace, monospace; min-height: 30px; padding: 2px 10px; }

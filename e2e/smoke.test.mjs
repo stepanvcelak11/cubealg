@@ -250,3 +250,50 @@ test('focení: Pyraminx a Skewb – obrys stěny a rozpoznání nahrané fotky',
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('držení kostky: po otočení pohledu se algoritmy píšou podle něj a řeší zadání', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const names = ['URF', 'U', 'F', 'R'];
+    const home = m.home(names);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+    localStorage.setItem('ergocube.v3', JSON.stringify({ constraints, bases: ['R', 'L', 'U', 'D', 'F', 'B'], colorsA: m.applyMoves(home, "R U R'"), colorsB: home }));
+  });
+  await p.reload();
+  // táhnutím otočit kostku (jinak než výchozí natočení)
+  await p.evaluate(() => {
+    const scene = document.querySelector('#cube-a .cube3d-scene');
+    const r = scene.getBoundingClientRect();
+    const fire = (type, x, y) => scene.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, bubbles: true, pointerType: 'mouse' }));
+    scene.setPointerCapture = () => {};
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    fire('pointerdown', cx, cy);
+    for (let i = 1; i <= 20; i++) fire('pointermove', cx, cy - i * 6);   // svisle nahoru
+    fire('pointerup', cx, cy - 120);
+  });
+  await p.locator('#a-hold').tap();
+  assert.equal(await p.locator('#hold-note').isVisible(), true);
+  const note = await p.locator('#hold-note span').innerText();
+  assert.match(note, /nahoře/);
+  assert.doesNotMatch(note, /bílá nahoře, zelená vpředu/);
+  // hledání v držení: řešení zapsané podle držení musí v přehrávači splnit zadání
+  await p.locator('#go-search').tap();
+  await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 })
+    .catch(async (e) => { throw new Error(`${e.message}: ${await p.locator('#status').innerText()}`); });
+  await p.waitForSelector('#detail .verdict');
+  const verdict = await p.locator('#detail .verdict').innerText();
+  assert.match(verdict, /řeší zadání/);
+  assert.doesNotMatch(verdict, /nepovolené/);
+  // uložený algoritmus nese držení
+  await p.locator('#p-save').tap();
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs'))[0].task.hold);
+  assert.ok(saved && saved.length > 0);
+  // zrušení držení vrátí výchozí pohled i zápis
+  await p.locator('.segmented button[data-sub="task"]').tap();
+  await p.locator('#hold-reset').tap();
+  assert.equal(await p.locator('#hold-note').isVisible(), false);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

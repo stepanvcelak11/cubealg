@@ -25,6 +25,7 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { STYLE_OF } from './cubeview.js';
 import { labModel } from './models.js';
+import { holdOf, HOLDS } from '../core/hold.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -61,6 +62,7 @@ const ui = {
   step: 0,
   playing: false,
   ergo: null,
+  hold: '',         // držení kostky (core/hold.js): algoritmy jsou psané podle natočení
   sub: 'task',
 };
 const triggers = buildTriggers();
@@ -75,9 +77,9 @@ const unit = () => (model.kind === 'sq1' ? 'řezů' : 'tahů');
 // --- Uložení a načtení zadání ----------------------------------------------------------
 
 function save() {
-  const { constraints, bases, amounts, sq1 } = ui;
+  const { constraints, bases, amounts, sq1, hold } = ui;
   storage.set(storageKey(model.id), {
-    constraints, bases, amounts, sq1, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
+    constraints, bases, amounts, sq1, hold, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
   });
 }
 
@@ -93,6 +95,7 @@ function load() {
     ui.amounts = saved.amounts ?? AMOUNTS;
   }
   ui.sq1 = { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true, ...(saved.sq1 ?? {}) };
+  ui.hold = model.holdable && HOLDS.includes(saved.hold) ? saved.hold : '';
   ui.memory = {};
   ui.autoA = new Set();
   ui.undo = [];
@@ -105,11 +108,35 @@ function load() {
     : P().ergonomics === 'sq1' ? { ...def, ...e } : { weights: { ...def.weights, ...(e?.weights ?? {}) } };
 }
 
+// Držení: algoritmy v rozhraní jsou ve tvém rámci (U = stěna nahoře), model a hledání
+// pracují v rámci modelu.
+const held = () => holdOf(ui.hold);
+const toModelSteps = (steps) => (ui.hold ? steps.map((m) => held().toModel([m])[0]) : steps);
+
 const score = (alg) => scoreFor(P(), alg, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
 
 function snapshot() {
   ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B) });
   if (ui.undo.length > 60) ui.undo.shift();
+}
+
+// --- Držení kostky ----------------------------------------------------------------------
+
+function renderHoldNote() {
+  const note = $('hold-note');
+  note.hidden = !ui.hold;
+  if (ui.hold) note.firstElementChild.textContent = `Držení: ${held().describe()} · algoritmy jsou psané podle něj`;
+}
+
+/** Nastaví držení (z natočení kostky nebo zrušení), přepíše výsledky a pohledy. */
+function setHold(rot) {
+  if (rot === ui.hold) { for (const c of [cubeA, cubeB, cubeP]) c.setHold?.(rot); return; }
+  ui.hold = rot;
+  save();
+  for (const c of [cubeA, cubeB, cubeP]) c.setHold?.(rot);
+  renderHoldNote();
+  clearResults();
+  renderPlayer();
 }
 
 // --- Pohledy -------------------------------------------------------------------------
@@ -130,6 +157,9 @@ function buildViews() {
   cubeB = makeView($('cube-b'), { label: 'Cíl', onSticker: tapB, fill: true });
   cubeP = makeView($('cube-p'), { label: 'Přehrávač' });
   const is3d = currentView().type === 'cube3d';
+  for (const c of [cubeA, cubeB, cubeP]) c.setHold?.(ui.hold);
+  $('a-hold').hidden = !is3d || !model.holdable;
+  $('b-hold').hidden = !is3d || !model.holdable;
   $('a-view').hidden = !is3d;
   $('b-view').hidden = !is3d;
   $('flat').hidden = !model.flatView;
@@ -408,7 +438,7 @@ function renderMoveSet() {
 function currentMoveSet() {
   if (model.kind === 'sq1') return { top: ui.sq1.top, bottom: ui.sq1.bottom, moves: [] };
   const moves = ui.bases.flatMap((base) => P().amountsOf(base).filter((a) => ui.amounts.includes(a)).map((amount) => ({ base, amount })));
-  return { moves, allowedNames: new Set(moves.map((m) => P().moveToString(m))) };
+  return { moves, engineMoves: toModelSteps(moves), allowedNames: new Set(moves.map((m) => P().moveToString(m))) };
 }
 
 function moveSetChanged(read = true) {
@@ -535,7 +565,7 @@ function startSearch() {
     requestAnimationFrame(() => { pending = false; renderResults(); });
   };
   client.start({
-    puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.moves, options: opts, ergonomics: ui.ergo,
+    puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.engineMoves, options: opts, ergonomics: ui.ergo,
     sq1: { shape: ui.sq1.shape, top: ui.sq1.top, bottom: ui.sq1.bottom },
   }, {
     onProgress: (p) => {
@@ -544,7 +574,7 @@ function startSearch() {
         : `Hloubka ${p.depth} · ${p.nodes.toLocaleString('cs')} uzlů · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`;
     },
     onSolutions: (items) => {
-      for (const { alg } of items) ui.results.set(alg, score(alg));
+      for (const { alg } of items) { const a = ui.hold ? held().toHeldString(alg) : alg; ui.results.set(a, score(a)); }
       scheduleRender();
     },
     onDone: (d) => {
@@ -608,6 +638,7 @@ function bar(b) {
 
 const taskSnapshot = () => ({
   ...(model.id !== '333' ? { puzzle: model.id } : {}),
+  ...(ui.hold ? { hold: ui.hold } : {}),
   colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
   ...(model.kind === 'sq1' ? { shape: ui.sq1.shape } : {}),
 });
@@ -686,8 +717,9 @@ function renderPlayer() {
   ui.step = Math.min(Math.max(0, ui.step), steps.length);
   let current, end;
   try {
-    current = model.applySteps(loc, steps.slice(0, ui.step));
-    end = model.applySteps(loc, steps);
+    const real = toModelSteps(steps);
+    current = model.applySteps(loc, real.slice(0, ui.step));
+    end = model.applySteps(loc, real);
   } catch (e) {
     renderView(cubeP, model.stateStickers(loc, ui.constraints), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: `Algoritmus nejde provést: ${e.message}` }));
@@ -739,7 +771,7 @@ async function step(delta) {
   const target = ui.step + delta;
   if (target < 0 || target > steps.length) return false;
   if (currentView().type === 'cube3d') {
-    const m = delta > 0 ? steps[ui.step] : model.invertStep(steps[ui.step - 1]);
+    const m = toModelSteps([delta > 0 ? steps[ui.step] : model.invertStep(steps[ui.step - 1])])[0];
     await cubeP.animate(m);
   } else {
     await cubeP.animate();
@@ -770,6 +802,7 @@ function selectPuzzle(id) {
   $('a-scan').hidden = !model.scan;
   $('b-scan').hidden = !model.scan;
   renderSq1Pads();
+  renderHoldNote();
   syncTarget();
   stopPlaying();
   renderPalette('A');
@@ -791,6 +824,9 @@ export function initLab({ onSub } = {}) {
   $('lab-puzzle').onchange = () => { selectPuzzle($('lab-puzzle').value); $('lab-puzzle').blur(); };
 
   for (const b of document.querySelectorAll('.segmented button[data-sub]')) b.onclick = () => showSub(b.dataset.sub);
+  $('a-hold').onclick = () => setHold(cubeA.nearestHold());
+  $('b-hold').onclick = () => setHold(cubeB.nearestHold());
+  $('hold-reset').onclick = () => setHold('');
   $('a-view').onclick = () => cubeA.resetView();
   $('b-view').onclick = () => cubeB.resetView();
 

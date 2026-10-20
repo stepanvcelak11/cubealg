@@ -29,15 +29,18 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   trestů a poznámek – pro každou skupinu zvlášť.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
-  (častěji ty pomalejší a méně trénované), nastavovací tahy, stopky, odhalení
-  algoritmu a statistiky.
+  podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací
+  tahy, stopky, odhalení algoritmu, řazení nejslabších a statistiky.
 - **Lab** – vlastní případy a hledání ergonomických algoritmů pro **3×3, 2×2,
   Pyraminx, Skewb a Square-1**:
   - **Zadání:** výchozí stav i cíl se vybarvují po nálepkách paletou barev (dílek
-    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné); 3×3 a 2×2 jde
+    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné); 3×3, 2×2, Pyraminx a Skewb jde
     i nafotit stěnu po stěně. Tvar Square-1 se nastavuje tlačítky. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
     i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
     ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.
+  - **Držení kostky** (3×3, 2×2): kostku v 3D natočíš, jak ji držíš v ruce, a zámkem
+    v rohu pohled „zafixuješ“. Povolené tahy, ergonomika, nalezené i uložené
+    algoritmy se pak píšou podle toho, jak kostku držíš (U = stěna nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,

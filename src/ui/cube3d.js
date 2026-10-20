@@ -3,6 +3,7 @@
 
 import { FACELETS } from '../core/geometry.js';
 import { MOVE_DEFS } from '../core/notation.js';
+import { holdOf, holdFromFaces } from '../core/hold.js';
 
 // Otočení nálepky tak, aby mířila ve směru normály své stěny.
 const FACE_ROT = {
@@ -15,6 +16,10 @@ const AXIS_ROT = [(q) => `rotateX(${90 * q}deg)`, (q) => `rotateY(${-90 * q}deg)
 
 const DEFAULT_VIEW = { rx: -28, ry: -38 };
 const defaultMatrix = () => new DOMMatrix().rotateSelf(DEFAULT_VIEW.rx, 0, 0).rotateSelf(0, DEFAULT_VIEW.ry, 0);
+// Normály stěn modelu v souřadnicích CSS (x doprava, y dolů, z k divákovi).
+const CSS_NORMAL = { U: [0, -1, 0], D: [0, 1, 0], R: [1, 0, 0], L: [-1, 0, 0], F: [0, 0, 1], B: [0, 0, -1] };
+const dotv = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const apply = (m, v) => { const p = m.transformPoint(new DOMPoint(v[0], v[1], v[2], 1)); return [p.x, p.y, p.z]; };
 
 export class Cube3D {
   /**
@@ -32,7 +37,8 @@ export class Cube3D {
     this.container = container;
     // Natočení kostky jako matice: tažení otáčí kolem os obrazovky (trackball),
     // takže jde kostku volně otočit do libovolné polohy.
-    this.view = defaultMatrix();
+    this.hold = '';              // držení (viz core/hold.js): výchozí pohled je kostka tak, jak ji držíš
+    this.view = this.homeMatrix();
     this.size = 40;
     this.scene = document.createElement('div');
     this.scene.className = 'cube3d-scene';
@@ -84,8 +90,32 @@ export class Cube3D {
     this.cube.style.transform = this.view.toString();
   }
 
+  /** Výchozí pohled: obvyklé natočení + držení (sloupce = obrazy os x, y, z). */
+  homeMatrix() {
+    const [c1, c2, c3] = holdOf(this.hold).linear();
+    const M = new DOMMatrix([...c1, 0, ...c2, 0, ...c3, 0, 0, 0, 0, 1]);
+    return defaultMatrix().multiply(M);
+  }
+
+  /** Nastaví držení a vrátí pohled do něj. */
+  setHold(rot) {
+    this.hold = rot;
+    this.resetView();
+  }
+
+  /** Držení nejblíže současnému natočení: která stěna je nahoře a která vpředu. */
+  nearestHold() {
+    const D = defaultMatrix();
+    const up = apply(D, CSS_NORMAL.U), front = apply(D, CSS_NORMAL.F);
+    const best = (target, skip) => Object.keys(CSS_NORMAL).filter((f) => !skip?.includes(f))
+      .reduce((a, b) => (dotv(apply(this.view, CSS_NORMAL[b]), target) > dotv(apply(this.view, CSS_NORMAL[a]), target) ? b : a));
+    const upFace = best(up);
+    const axis = ['UD', 'RL', 'FB'].find((p) => p.includes(upFace));
+    return holdFromFaces(upFace, best(front, [...axis]));
+  }
+
   resetView() {
-    this.view = defaultMatrix();
+    this.view = this.homeMatrix();
     this.cube.style.transition = 'transform 250ms ease-out';
     this.applyView();
     setTimeout(() => { this.cube.style.transition = ''; }, 260);

@@ -64,6 +64,8 @@ function showCase() {
       : new NetView($('tr-cube'), { label: 'Případ', fill: true, viewBox: v.viewBox, polys: v.polys });
     cubePuzzle = model.id;
   }
+  // případ se ukáže tak, jak byla kostka držená při hledání algoritmu
+  if (cube.setHold && cube.hold !== (a.task.hold ?? '')) cube.setHold(a.task.hold ?? '');
   const side = model.deserialize(a.task.colorsA);
   const { loc } = side ? model.build(side, a.task.constraints) : { loc: null };
   if (loc) {
