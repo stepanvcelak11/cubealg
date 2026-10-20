@@ -56,3 +56,31 @@ test('držení: matice natočení', () => {
   const lin = holdOf('').linear();
   assert.deepEqual(lin, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
 });
+
+import { PYRAMINX } from '../src/puzzles/pyraminx.js';
+import { SKEWB } from '../src/puzzles/skewb.js';
+import { holdsOf } from '../src/puzzles/holds.js';
+
+const PUZ = [[PYRAMINX, "R U' L B u l' r b' U"], [SKEWB, "R U' L B R' U L'"]];
+
+test('držení: Pyraminx má 12 držení, Skewb 3; první je výchozí', () => {
+  assert.equal(holdsOf(PYRAMINX).length, 12);
+  assert.equal(holdsOf(SKEWB).length, 3);
+  for (const [P] of PUZ) {
+    const list = holdsOf(P);
+    assert.equal(list[0].id, '');
+    assert.equal(new Set(list.map((h) => h.id)).size, list.length);
+    assert.equal(new Set(list.map((h) => h.label)).size, list.length);
+  }
+});
+
+test('držení: tah v ruce = tah modelu u Pyraminxu a Skewbu', () => {
+  for (const [P, alg] of PUZ) {
+    for (const h of holdsOf(P)) {
+      const viaHold = P.applyAlg(h.rho, alg);
+      const viaModel = Uint8Array.from(P.applyAlg(P.solved(), h.toModelString(alg)), (k) => h.rho[k]);
+      assert.ok(eq(viaHold, viaModel), `${P.name} ${h.label}`);
+      assert.equal(h.toHeldString(h.toModelString(alg)), P.algToString(alg));
+    }
+  }
+});

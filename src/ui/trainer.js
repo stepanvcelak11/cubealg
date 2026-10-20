@@ -149,9 +149,10 @@ function renderList() {
       cb,
       el('div', { className: 'alg-main' }, name,
         el('code', { textContent: `${a.task.puzzle && a.task.puzzle !== '333' ? `[${labModel(a.task.puzzle).P.name}] ` : ''}${a.alg}` }),
-        el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' },
-          el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
-        move),
+        el('div', { className: 'alg-meta' },
+          el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' },
+            el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
+          move)),
       el('div', { className: 'alg-actions' }, train, del));
   }));
   if (!list.length) $('tr-list').replaceChildren(el('li', { className: 'hint', textContent: 'Žádné uložené algoritmy.' }));

@@ -54,6 +54,8 @@ export const SKEWB = makePuzzle({
   defaultBases: ['R', 'U', 'L', 'B'],
   ergonomics: 'simple',
   defaultWeights: { R: 1, U: 1.1, L: 1.2, B: 1.4 },
+  // držení: otočení celého Skewbu, které zachová sadu tahů R U L B
+  holdAxes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((axis) => ({ axis, order: 4 })),
   view: 'net',
   net: { viewBox: cubeNetBox(), polys },
 });

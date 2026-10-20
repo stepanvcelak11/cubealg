@@ -275,7 +275,7 @@ test('držení kostky: po otočení pohledu se algoritmy píšou podle něj a ř
   });
   await p.locator('#a-hold').tap();
   assert.equal(await p.locator('#hold-note').isVisible(), true);
-  const note = await p.locator('#hold-note span').innerText();
+  const note = await p.locator('#hold-select option:checked').innerText();
   assert.match(note, /nahoře/);
   assert.doesNotMatch(note, /bílá nahoře, zelená vpředu/);
   // hledání v držení: řešení zapsané podle držení musí v přehrávači splnit zadání
@@ -306,6 +306,42 @@ test('timer: 4×4 se míchá z náhodného stavu (jen tahy U D L R F B a Uw Rw F
   const moves = text.split(/\s+/);
   assert.ok(moves.length >= 35 && moves.length <= 80, `${moves.length} tahů`);
   for (const m of moves) assert.match(m, /^(?:[UDLRFB]|[URF]w)[2']?$/, m);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('držení: Pyraminx a Skewb – výběr držení přepíše algoritmy a řeší zadání', async () => {
+  const { p, ctx, errors } = await open('lab');
+  const scrambles = { pyram: "R U' L", skewb: "R U' L" };
+  await p.evaluate(async (scr) => {
+    const { labModel } = await import('./src/ui/models.js');
+    for (const [id, alg] of Object.entries(scr)) {
+      const m = labModel(id);
+      const names = m.pieceNames.slice(0, 4);
+      const home = m.home(names);
+      const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+      localStorage.setItem(`ergocube.lab.${id}`, JSON.stringify({
+        constraints, colorsA: m.serialize(m.applyMoves(home, alg)), colorsB: m.serialize(home),
+      }));
+    }
+  }, scrambles);
+  await p.reload();
+  for (const id of ['pyram', 'skewb']) {
+    await p.selectOption('#lab-puzzle', id);
+    assert.equal(await p.locator('#hold-note').isVisible(), true, id);
+    // druhé držení v nabídce (první je výchozí)
+    const value = await p.locator('#hold-select option').nth(1).getAttribute('value');
+    await p.selectOption('#hold-select', value);
+    assert.equal(await p.locator('#hold-reset').isVisible(), true);
+    await p.locator('#go-search').tap();
+    await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 60000 });
+    const verdict = await p.locator('#detail .verdict').innerText();
+    assert.match(verdict, /řeší zadání/, `${id}: ${await p.locator('#status').innerText()}`);
+    assert.doesNotMatch(verdict, /nepovolené/);
+    await p.locator('.segmented button[data-sub="task"]').tap();
+    await p.locator('#hold-reset').tap();
+    assert.equal(await p.locator('#hold-select').inputValue(), '');
+  }
   assert.deepEqual(errors, []);
   await ctx.close();
 });

@@ -39,9 +39,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     i nafotit stěnu po stěně. Tvar Square-1 se nastavuje tlačítky. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
     i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
     ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.
-  - **Držení kostky** (3×3, 2×2): kostku v 3D natočíš, jak ji držíš v ruce, a zámkem
-    v rohu pohled „zafixuješ“. Povolené tahy, ergonomika, nalezené i uložené
-    algoritmy se pak píšou podle toho, jak kostku držíš (U = stěna nahoře).
+  - **Držení kostky:** u 3×3 a 2×2 kostku v 3D natočíš, jak ji držíš v ruce, a zámkem
+    pohled „zafixuješ“; u Pyraminxu a Skewbu (a v plošné síti) držení vybereš
+    z nabídky. Povolené tahy, ergonomika, nalezené i uložené algoritmy se pak píšou
+    podle toho, jak hlavolam držíš (U = stěna nebo špička nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,

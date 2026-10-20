@@ -96,6 +96,17 @@ export const PYRAMINX = makePuzzle({
   defaultBases: ['R', 'U', 'L', 'B'],
   ergonomics: 'simple',
   defaultWeights: { U: 1, R: 1, L: 1.1, B: 1.5, u: 0.6, r: 0.6, l: 0.6, b: 0.8 },
+  // držení: osy otáčení (vrcholy) a popis držení pro výběr v Labu
+  holdAxes: Object.values(V).map((axis) => ({ axis, order: 3 })),
+  describeHold: ({ slotMap, faceMap }) => {
+    const top = Object.keys(V).find((v) => slotMap[v.toLowerCase()] === 'u');
+    const front = Object.keys(faceMap).find((f) => faceMap[f] === 'F');
+    const LACKS = { U: 'D', L: 'R', R: 'L', B: 'F' };
+    const NAME = { F: 'zelená', L: 'červená', R: 'modrá', D: 'žlutá' };
+    const OF = { F: 'zelené', L: 'červené', R: 'modré', D: 'žluté' };
+    return top === 'U' && front === 'F' ? 'výchozí (špička U nahoře, vpředu zelená)'
+      : `nahoře špička bez ${OF[LACKS[top]]} nálepky, vpředu ${NAME[front]} stěna`;
+  },
   view: 'net',
   net: { viewBox: `-1.7 -0.15 6.4 ${(2 * h + 0.3).toFixed(3)}`, polys },
 });

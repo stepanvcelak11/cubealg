@@ -31,8 +31,6 @@ function permModel(P) {
   const homeOf = (name) => P.slotByName(name).facelets;
   return {
     P, id: P.id, kind: 'perm', EMPTY,
-    // držení kostky (algoritmy podle natočení) jen u kostek s tahy v notaci 3×3
-    holdable: P.id === '333' || P.id === '222',
     pieceNames: slotNames,
     centers: P.slots.filter((s) => s.facelets.length === 1 && s.type === 'center' && P.id === '333').map((s) => s.name),
     blank: () => ops.blankColors(),

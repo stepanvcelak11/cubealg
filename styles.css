@@ -191,6 +191,7 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .timer-hint { color: var(--muted); font-size: 0.85rem; margin-top: 10px; min-height: 1.3em; }
 .preview { order: 3; margin-top: 16px; width: min(170px, 40vw); opacity: 0.95; }
 .preview svg { display: block; width: 100%; }
+.preview .netview { width: 100%; height: min(22vh, 190px); }
 .preview .face-bg { fill: var(--plastic); }
 .fm-entry { display: flex; gap: 8px; }
 .fm-entry input { width: 140px; text-align: center; font-size: 1.2rem; }
@@ -284,7 +285,9 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .alg-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .alg-main code { font-size: 0.85rem; overflow-wrap: anywhere; }
 .alg-main small { color: var(--muted); font-size: 0.75rem; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
-.alg-name { padding: 3px 6px; font-family: inherit; font-weight: 600; background: transparent; border-color: transparent; }
+.alg-name { min-height: 30px; padding: 2px 6px; font-family: inherit; font-size: 0.95rem; font-weight: 600; background: transparent; border-color: transparent; }
+.alg-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.alg-meta small { flex: 1 1 auto; }
 .alg-name:focus { border-color: var(--border); background: var(--panel-2); }
 .alg-actions { display: flex; }
 
@@ -307,8 +310,10 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 .head-actions .icon-btn { min-width: 30px; min-height: 30px; padding: 4px; color: var(--muted); }
 .panel-head h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* výchozí pohled 3D kostky – malé tlačítko v rohu kostky */
-.cube-panel #a-view, .cube-panel #b-view { position: absolute; right: 8px; top: 46px; z-index: 2; }
-.cube-panel #a-hold, .cube-panel #b-hold { position: absolute; right: 8px; top: 84px; z-index: 2; color: var(--muted); }
+.cube-panel #a-view, .cube-panel #b-view { position: absolute; left: 8px; top: 46px; z-index: 2; }
+.cube-panel #a-hold, .cube-panel #b-hold { position: absolute; left: 44px; top: 46px; z-index: 2; color: var(--muted); }
+.hold-note select { flex: 1; min-width: 0; min-height: 34px; font-size: 0.82rem; }
+.hold-note label { flex: none; }
 .hold-note { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 6px 12px; margin-top: 6px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 0.85rem; font-weight: 600; }
 .head-actions .icon-btn:hover { color: var(--text); }
 .sq1-pad { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; flex: none; }
@@ -538,5 +543,5 @@ table.breakdown i { display: inline-block; width: 10px; height: 10px; border-rad
 .save-set { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.82rem; color: var(--muted); }
 .save-set select { flex: 1; max-width: 260px; }
 .trainer-head select { flex: 1; min-width: 0; max-width: 360px; }
-.alg-set { margin-top: 4px; min-height: 30px; padding: 2px 28px 2px 8px; font-size: 0.78rem; width: max-content; max-width: 100%; }
+.alg-set { min-height: 28px; padding: 2px 28px 2px 8px; font-size: 0.78rem; width: max-content; max-width: 100%; }
 #amounts label { font-family: inherit; font-size: 0.88rem; }

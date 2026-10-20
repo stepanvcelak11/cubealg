@@ -25,7 +25,7 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { STYLE_OF } from './cubeview.js';
 import { labModel } from './models.js';
-import { holdOf, HOLDS } from '../core/hold.js';
+import { holdList, holdFor } from './holds.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -95,7 +95,7 @@ function load() {
     ui.amounts = saved.amounts ?? AMOUNTS;
   }
   ui.sq1 = { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true, ...(saved.sq1 ?? {}) };
-  ui.hold = model.holdable && HOLDS.includes(saved.hold) ? saved.hold : '';
+  ui.hold = holdList(model).some((h) => h.id === saved.hold) ? saved.hold : '';
   ui.memory = {};
   ui.autoA = new Set();
   ui.undo = [];
@@ -110,7 +110,7 @@ function load() {
 
 // Držení: algoritmy v rozhraní jsou ve tvém rámci (U = stěna nahoře), model a hledání
 // pracují v rámci modelu.
-const held = () => holdOf(ui.hold);
+const held = () => holdFor(model, ui.hold);
 const toModelSteps = (steps) => (ui.hold ? steps.map((m) => held().toModel([m])[0]) : steps);
 
 const score = (alg) => scoreFor(P(), alg, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
@@ -124,8 +124,13 @@ function snapshot() {
 
 function renderHoldNote() {
   const note = $('hold-note');
-  note.hidden = !ui.hold;
-  if (ui.hold) note.firstElementChild.textContent = `Držení: ${held().describe()} · algoritmy jsou psané podle něj`;
+  const list = holdList(model);
+  // 3D kostka se drží zámkem v rohu; ostatní hlavolamy (a plošná síť) výběrem z nabídky
+  note.hidden = list.length < 2 || (!ui.hold && currentView().type === 'cube3d');
+  const select = $('hold-select');
+  select.replaceChildren(...list.map((h) => el('option', { value: h.id, textContent: h.label })));
+  select.value = ui.hold;
+  $('hold-reset').hidden = !ui.hold;
 }
 
 /** Nastaví držení (z natočení kostky nebo zrušení), přepíše výsledky a pohledy. */
@@ -158,13 +163,14 @@ function buildViews() {
   cubeP = makeView($('cube-p'), { label: 'Přehrávač' });
   const is3d = currentView().type === 'cube3d';
   for (const c of [cubeA, cubeB, cubeP]) c.setHold?.(ui.hold);
-  $('a-hold').hidden = !is3d || !model.holdable;
-  $('b-hold').hidden = !is3d || !model.holdable;
+  $('a-hold').hidden = !is3d || holdList(model).length < 2;
+  $('b-hold').hidden = !is3d || holdList(model).length < 2;
   $('a-view').hidden = !is3d;
   $('b-view').hidden = !is3d;
   $('flat').hidden = !model.flatView;
   $('flat').setAttribute('aria-pressed', String(flat));
   $('flat').innerHTML = icon(flat ? 'cube3d' : 'net', { size: 22 });
+  renderHoldNote();
 }
 
 function renderView(view, stickers, state) {
@@ -827,6 +833,7 @@ export function initLab({ onSub } = {}) {
   $('a-hold').onclick = () => setHold(cubeA.nearestHold());
   $('b-hold').onclick = () => setHold(cubeB.nearestHold());
   $('hold-reset').onclick = () => setHold('');
+  $('hold-select').onchange = () => { setHold($('hold-select').value); $('hold-select').blur(); };
   $('a-view').onclick = () => cubeA.resetView();
   $('b-view').onclick = () => cubeB.resetView();
 

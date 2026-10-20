@@ -196,5 +196,5 @@ export function fromGeometry({ stickers, pieceOf, typeOf, nameOf = (faces) => fa
     });
     out[base] = { perm, order: mv.order };
   }
-  return { stickerFace: stickers.map((s) => s.face), slots, moves: out };
+  return { stickerFace: stickers.map((s) => s.face), stickers, slots, moves: out };
 }

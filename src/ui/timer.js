@@ -1,12 +1,12 @@
 // Stránka Timer: zamíchání pro disciplínu WCA, stopky, rychlé statistiky.
 
-import { solved, applyAlg, toFacelets } from '../core/cube.js';
 import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
 import { summary, formatValue, formatSolve, formatClock } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups } from './store.js';
 import { Stopwatch } from './stopwatch.js';
+import { renderPreview } from './preview.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
@@ -90,27 +90,11 @@ async function newScramble() {
   current = res.scramble ?? '';
   box.textContent = res.error ? `Chyba: ${res.error}` : current;
   box.dataset.size = current.length > 300 ? 'xs' : current.length > 120 ? 's' : 'm';
-  renderPreview();
+  updatePreview();
 }
 
-// Náhled zamíchání 3×3 jako malá síť.
-function renderPreview() {
-  const box = $('t-preview');
-  if (!EVENT_BY_ID[settings.event].preview || !current) { box.replaceChildren(); return; }
-  let colors;
-  try { colors = toFacelets(applyAlg(solved(), current)); } catch { box.replaceChildren(); return; }
-  const NET = { U: [3, 0], L: [0, 3], F: [3, 3], R: [6, 3], B: [9, 3], D: [3, 6] };
-  const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
-  let rects = '';
-  for (const [cx, cy] of Object.values(NET)) rects += `<rect x="${cx * 10 - 0.5}" y="${cy * 10 - 0.5}" width="31" height="31" rx="2.5" class="face-bg"/>`;
-  faces.forEach((f, fi) => {
-    const [cx, cy] = NET[f];
-    for (let i = 0; i < 9; i++) {
-      const x = cx + (i % 3), y = cy + Math.floor(i / 3);
-      rects += `<rect x="${x * 10 + 0.5}" y="${y * 10 + 0.5}" width="9" height="9" rx="1.5" style="fill:var(--c-${colors[fi * 9 + i]})"/>`;
-    }
-  });
-  box.innerHTML = `<svg viewBox="0 0 120 90" role="img" aria-label="Náhled zamíchání">${rects}</svg>`;
+function updatePreview() {
+  renderPreview($('t-preview'), settings.event, current);
 }
 
 function render() {
