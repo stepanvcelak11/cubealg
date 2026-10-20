@@ -43,3 +43,37 @@ test('nácvik: zamíchání vede do stavu s hotovým křížem / F2L', () => {
     }
   }
 });
+
+test('nácvik: dílky jen na místě / jen natočené (EO, CO, permutace)', async () => {
+  const { SLOT_OF, ORI_AT } = await import('../src/core/geometry.js');
+  const rand = seeded(11);
+  const edges = SLOTS.filter((s) => s.type === 'edge').map((s) => s.name);
+  const corners = SLOTS.filter((s) => s.type === 'corner').map((s) => s.name);
+  const cases = [
+    Object.fromEntries(edges.map((n) => [n, 'orientation'])),
+    { ...Object.fromEntries(CROSS.map((n) => [n, 'solved'])), ...Object.fromEntries(corners.map((n) => [n, 'orientation'])) },
+    Object.fromEntries([...edges, ...corners].map((n) => [n, 'permutation'])),
+    { ...Object.fromEntries(F2L.map((n) => [n, 'solved'])), UF: 'permutation', UR: 'orientation', UFL: 'ignore' },
+  ];
+  for (const fixed of cases) {
+    for (let i = 0; i < 40; i++) {
+      const loc = practiceState(fixed, rand);
+      assert.ok(loc, JSON.stringify(fixed));
+      assert.ok(!permutationParity(loc));
+      for (const s of SLOTS) {
+        const st = fixed[s.name];
+        if (st === 'solved' || st === 'permutation') assert.equal(SLOT_OF[loc[s.facelets[0]]], s.id);
+        if (st === 'solved' || st === 'orientation') assert.equal(ORI_AT[loc[s.facelets[0]]], 0);
+      }
+    }
+    // stav jde složit (řešič ho přijme) a zamíchání do něj vede
+    const scr = practiceScramble(fixed, rand);
+    assert.ok(scr.split(' ').length >= 2);
+    const loc = applyAlg(solved(), scr);
+    for (const s of SLOTS) {
+      const st = fixed[s.name];
+      if (st === 'solved' || st === 'permutation') assert.equal(SLOT_OF[loc[s.facelets[0]]], s.id, scr);
+      if (st === 'solved' || st === 'orientation') assert.equal(ORI_AT[loc[s.facelets[0]]], 0, scr);
+    }
+  }
+});

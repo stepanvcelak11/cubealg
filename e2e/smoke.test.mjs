@@ -83,12 +83,18 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await tapSticker(p, 'cube-b', 8);
   await p.locator('#palette-b [title="Zelená"]').tap();
   await tapSticker(p, 'cube-b', 20);
-  assert.match(await p.locator('#task-status').innerText(), /1 dílků: URF/);
-  // výchozí: roh natočený (U červená, R zelená → třetí se doplní)
+  // obarví se jen klepnuté nálepky (bez chytrého vybarvování se nic nedoplní)
+  assert.doesNotMatch(await p.locator('#task-status').innerText(), /URF/);
+  await p.locator('#palette-b [title="Červená"]').tap();
+  await tapSticker(p, 'cube-b', 9);
+  assert.match(await p.locator('#task-status').innerText(), /URF/);
+  // výchozí: roh natočený (U červená, R zelená, F bílá)
   await p.locator('#palette-a [title="Červená"]').tap();
   await tapSticker(p, 'cube-a', 8);
   await p.locator('#palette-a [title="Zelená"]').tap();
   await tapSticker(p, 'cube-a', 9);
+  await p.locator('#palette-a [title="Bílá"]').tap();
+  await tapSticker(p, 'cube-a', 20);
   await p.locator('#go-search').tap();
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
   await p.locator('#results .result .save').first().tap();
@@ -451,12 +457,12 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   await p.locator('.guide-step textarea').fill('Roh nad slotem vložíš trojicí tahů.\nDívej se na bílou nálepku.');
   await p.locator('.guide-step button', { hasText: 'Obrázek z Labu' }).tap();
   assert.equal(await p.locator('.guide-step .guide-fig').count(), 2);
-  await p.locator('.guide-step select').selectOption('default');
+  await p.locator('.guide-step select[aria-label="Sada algoritmů kroku"]').selectOption('default');
   await p.locator('.guide-edit').tap();   // hotovo
   assert.match(await p.locator('.guide-step h3').innerText(), /Vložení rohu/);
   assert.doesNotMatch(await p.locator('.guide-body').innerText(), /null|undefined/);
   assert.equal(await p.locator('.guide-step .guide-text br').count(), 1);
-  assert.match(await p.locator('.guide-set').innerText(), /Moje algoritmy \(1\)/);
+  assert.match(await p.locator('.guide-set', { hasText: 'Algoritmy' }).innerText(), /Moje algoritmy \(1\)/);
   await p.waitForFunction(() => document.querySelectorAll('.guide-step .sticker3d').length === 108);
   // sdílení: soubor s průvodcem a algoritmy
   const [download] = await Promise.all([p.waitForEvent('download'), p.locator('.guide-share').tap()]);
@@ -474,7 +480,7 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   assert.equal(await p.locator('#method option:checked').innerText(), 'Základní (2)');
   assert.match(await p.locator('.guide-step h3').innerText(), /Vložení rohu/);
   // Trénovat → trenažér se sadou kroku
-  await p.locator('.guide-set button').tap();
+  await p.locator('.guide-set button', { hasText: 'Trénovat' }).tap();
   await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden && !document.querySelector('#tr-cube').hidden);
   assert.match(await p.locator('#tr-count').innerText(), /1 z 1/);
   assert.deepEqual(errors, []);
@@ -532,6 +538,44 @@ test('metoda: nácvik kroku v timeru, ukázka algoritmu a tisk průvodce', async
   await p.evaluate(() => { window.print = () => { window.printed = document.body.classList.contains('printing-guide'); }; });
   await p.locator('.guide-print').tap();
   await p.waitForFunction(() => window.printed === true);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('vlastní metoda: části bez Labu (předvolba), nácvik z průvodce a zastavení dotykem kdekoli', async () => {
+  const { p, ctx, errors } = await open('timer', {
+    'ergocube.methods': { active: 'mr', list: [{ id: 'mr', name: 'Roux' }] },
+    'ergocube.guides': { mr: { intro: '', steps: [{ id: 'b1', title: 'První blok', text: '' }, { id: 'b2', title: 'Druhý blok', text: '' }] } },
+  });
+  await p.waitForSelector('#t-practice:not([hidden])');
+  await p.evaluate(async () => (await import('./src/ui/methods.js')).showGuide({ edit: true }));
+  // první krok: levý blok Roux (bílá dole, zelená vpředu)
+  await p.locator('.guide-step').first().locator('select[aria-label="Přidat předvolbu"]').selectOption('roux1');
+  assert.match(await p.locator('.guide-step').first().locator('.parts-head').innerText(), /5 hotových/);
+  assert.equal(await p.locator('.guide-step').first().locator('.part-chip.solved').count(), 5);
+  await p.locator('.guide-edit').tap();
+  await p.locator('.guide-practice').nth(1).tap();
+  assert.equal(await p.locator('#t-step').inputValue(), 'b2');
+  assert.match(await p.locator('#t-step-info').innerText(), /5 hotových/);
+  await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading')
+    && /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent), null, { timeout: 20000 });
+  const kept = await p.evaluate(async () => {
+    const { solved, applyAlg } = await import('./src/core/cube.js');
+    const { SLOTS } = await import('./src/core/geometry.js');
+    const { presetParts } = await import('./src/ui/parts.js');
+    const names = Object.keys(presetParts('roux1', { down: 'U', front: 'F' }));
+    const loc = applyAlg(solved(), document.querySelector('#t-scramble').textContent);
+    return names.length === 5 && SLOTS.filter((s) => names.includes(s.name)).every((s) => s.facelets.every((k) => loc[k] === k));
+  });
+  assert.equal(kept, true);
+  // start mezerníkem, zastavení dotykem na místě výběru kroku (je schovaný)
+  await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space');
+  await p.waitForTimeout(300);
+  const bb = await p.locator('#t-practice').boundingBox();
+  await p.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  await p.waitForFunction(() => document.querySelector('#t-mini > div:last-child b').textContent === '1');
+  const keys = await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('ergocube.solves'))));
+  assert.deepEqual(keys, ['333@mr~b2']);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

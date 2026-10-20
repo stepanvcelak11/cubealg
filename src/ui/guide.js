@@ -9,10 +9,11 @@ import { labModel } from './models.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { holdFor } from './holds.js';
+import { stepParts, partsBefore, partsCube, partsEditor, frameEditor, describeParts, remapParts } from './parts.js';
 
 let dialog = null;
 let editing = false;
-let deps = { labTask: () => null, train: () => {} };
+let deps = { labTask: () => null, train: () => {}, practice: null };
 
 /** Text s odstavci (prázdný řádek) a zalomeními – bez HTML (data můžou být cizí). */
 function richText(text) {
@@ -106,6 +107,13 @@ function examplePlayer(task) {
 }
 
 function render() {
+  const body = dialog.querySelector('.guide-body');
+  const top = body.scrollTop;
+  draw();
+  body.scrollTop = top;
+}
+
+function draw() {
   const method = methods.active();
   const name = methods.get(method).name;
   const guide = guides.get(method);
@@ -127,7 +135,16 @@ function render() {
           el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`),
           st.text?.trim() ? richText(st.text) : null,
           illustration(st.task),
+          !st.task && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
+            partsCube(partsBefore(guide.steps, st.id), stepParts(st), guide.frame, `Po kroku ${i + 1}`),
+            el('figcaption', { textContent: `po kroku: ${describeParts(stepParts(st))}` })) : null,
           examplePlayer(st.task),
+          deps.practice ? el('div', { className: 'guide-set guide-practice-row' },
+            el('span', { textContent: i ? 'Nácvik v timeru – předchozí kroky budou složené' : 'Nácvik v timeru od zamíchané kostky' }),
+            Object.assign(el('button', { type: 'button', className: 'secondary small guide-practice' }), {
+              innerHTML: `${icon('timer', { size: 16 })}<span>Nacvičit</span>`,
+              onclick: () => { dialog.close(); deps.practice(st.id); },
+            })) : null,
           set ? el('div', { className: 'guide-set' },
             el('span', { textContent: `Algoritmy: ${set.name} (${algs.inSet(set.id).length})` }),
             Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
@@ -169,6 +186,7 @@ function render() {
         btn('down', 'Posunout dolů', () => { if (i < guide.steps.length - 1) [guide.steps[i + 1], guide.steps[i]] = [guide.steps[i], guide.steps[i + 1]]; }),
         btn('trash', 'Smazat krok', () => { if (confirm(`Smazat krok „${st.title || i + 1}“?`)) guide.steps.splice(i, 1); })),
       text,
+      partsEditor(st, partsBefore(guide.steps, st.id), guide.frame, () => { save(); render(); }),
       illustration(st.task),
       alg,
       el('div', { className: 'row-btns guide-tools' }, take,
@@ -180,7 +198,9 @@ function render() {
   });
   body.replaceChildren(
     el('label', { className: 'guide-label', textContent: 'Úvod' }), intro,
+    frameEditor(guide.frame, (frame) => { remapParts(guide.steps, guide.frame, frame); guide.frame = frame; save(); render(); }),
     ...steps, add,
+    el('p', { className: 'hint', textContent: 'Po kroku je hotovo: vyber dílky, které krok složí (předvolba nebo klepnutím na dílky). Timer pak v nácviku dalšího kroku zamíchá kostku tak, že tyhle dílky budou hotové. Bez výběru se použije cíl obrázku z Labu.' }),
     el('p', { className: 'hint', textContent: 'Obrázek kroku: v Labu nastav výchozí stav a cíl (třeba jen dílky, o které v kroku jde), případně vyber řešení v přehrávači, a tady klepni na „Obrázek z Labu“. Vybraný algoritmus se v kroku dá přehrát.' }));
 }
 
@@ -198,10 +218,11 @@ async function share() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/** Otevře průvodce aktivní metodou. */
+/** Otevře průvodce aktivní metodou (edit: rovnou v úpravách). */
 export function openGuide(opts = {}) {
-  deps = { ...deps, ...opts };
-  editing = false;
+  const { edit = false, ...rest } = opts;
+  deps = { ...deps, ...rest };
+  editing = edit;
   if (!dialog) {
     const close = Object.assign(el('button', { type: 'button', className: 'icon-btn guide-close', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
     const edit = el('button', { type: 'button', className: 'secondary small guide-edit' });

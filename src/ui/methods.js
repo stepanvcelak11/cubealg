@@ -64,9 +64,15 @@ function importFile() {
   input.click();
 }
 
+/** Otevře průvodce aktivní metodou (edit: rovnou v úpravách). */
+export function showGuide(opts = {}) {
+  openGuide({ ...guideDeps, ...opts });
+}
+
 /**
- * @param {{labTask: () => object, train: (setId: string) => void}} deps
- *   labTask – současné zadání Labu (obrázek kroku), train – trénovat sadu
+ * @param {{labTask: () => object, train: (setId: string) => void, practice: (stepId: string) => void}} deps
+ *   labTask – současné zadání Labu (obrázek kroku), train – trénovat sadu,
+ *   practice – nacvičit krok v timeru
  */
 export function initMethods(deps = {}) {
   guideDeps = deps;

@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="description" content="Speedcubing timer, statistiky, trenažér algoritmů a generátor ergonomických algoritmů">
   <meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0c0f14" media="(prefers-color-scheme: dark)">
@@ -30,6 +30,11 @@
       <label class="check-row"><input type="checkbox" id="set-voice"> Hlásit 8 a 12 s v inspekci (hlasem)</label>
     </section>
     <section>
+      <h3>Lab</h3>
+      <label class="check-row"><input type="checkbox" id="set-smart-paint"> Chytré vybarvování</label>
+      <p class="hint">Doplní dílku poslední nálepku, když je jasná, a celý vybarvený dílek přenese i na druhou stranu. Vypnuté = obarví se jen nálepka, na kterou klepneš.</p>
+    </section>
+    <section>
       <h3>Záloha</h3>
       <p class="hint">Data jsou uložená jen v tomto prohlížeči. Zálohu si stáhni do souboru a obnovíš ji tady i na jiném zařízení.</p>
       <div class="row-btns">
@@ -55,7 +60,11 @@
         <button type="button" id="t-inspection" class="toggle" data-icon="inspect" aria-pressed="false" title="Inspekce 15 s"><span>Inspekce</span></button>
         <button type="button" id="t-new" class="icon-btn" data-icon="refresh" title="Nové zamíchání" aria-label="Nové zamíchání"></button>
       </div>
-      <select id="t-step" class="step-select" aria-label="Nácvik kroku metody" hidden></select>
+      <div id="t-practice" class="practice-bar" hidden>
+        <select id="t-step" class="step-select" aria-label="Nácvik kroku metody" hidden></select>
+        <button type="button" id="t-step-info" class="practice-info" title="Upravit části metody" hidden></button>
+        <button type="button" id="t-parts-new" class="practice-new" data-icon="plus" data-icon-size="16" title="Rozdělit metodu na části a nacvičovat je zvlášť"><span>Nácvik částí metody</span></button>
+      </div>
       <div id="t-scramble" class="scramble" aria-live="polite"></div>
       <div id="t-pad" class="timer-pad" tabindex="0" aria-label="Timer – podrž mezerník nebo prst">
         <div id="t-preview" class="preview"></div>
@@ -211,9 +220,9 @@
           <h2>Jak zadat případ</h2>
           <ol>
             <li>Nahoře vyber hlavolam (3×3, 2×2, Pyraminx, Skewb, Square-1) – každý má své zadání.</li>
-            <li><b>Obě strany</b> vybarvuješ po nálepkách: vyber barvu z palety a klepej. Stejnou barvou
-              nebo gumou nálepku smažeš. Když dílku chybí jediná nálepka a je jasné, jaká, doplní se sama
-              (např. třetí barva rohu).</li>
+            <li><b>Obě strany</b> vybarvuješ po nálepkách: vyber barvu z palety a klepej – obarví se jen
+              nálepka, na kterou klepneš. Stejnou barvou nebo gumou nálepku smažeš. V Nastavení jde zapnout
+              chytré vybarvování (doplní třetí barvu rohu, přenese dílek na druhou stranu).</li>
             <li><b>Výchozí stav</b> = jak dílky leží teď, <b>cíl</b> = kde a jak mají skončit.</li>
             <li>Styl dílku v cíli:
               <span class="legend"><i class="sw solid"></i>plná = místo i natočení</span>

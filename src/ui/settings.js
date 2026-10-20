@@ -1,6 +1,6 @@
 // Nastavení a záloha dat: export / import všech dat aplikace do souboru JSON.
 
-import { $ } from './dom.js';
+import { $, storage } from './dom.js';
 import { timerOptions } from './timer.js';
 
 const PREFIX = 'ergocube.';
@@ -48,10 +48,12 @@ export function initSettings() {
   const dialog = $('settings-dialog');
   $('settings-btn').onclick = () => {
     $('set-voice').checked = timerOptions().voice;
+    $('set-smart-paint').checked = storage.get('ergocube.lab.smartPaint') === true;
     $('set-status').textContent = '';
     dialog.showModal();
   };
   $('set-voice').onchange = () => timerOptions({ voice: $('set-voice').checked });
+  $('set-smart-paint').onchange = () => storage.set('ergocube.lab.smartPaint', $('set-smart-paint').checked);
   $('set-export').onclick = download;
   $('set-import').onclick = () => $('set-file').click();
   $('set-file').onchange = async () => {

@@ -242,13 +242,16 @@ const guideEvents = emitter();
 const newId = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export const guides = {
-  /** Průvodce metody: { intro, steps: [{ id, title, text, task?, set? }] }. */
+  /**
+   * Průvodce metody: { intro, frame?, steps: [{ id, title, text, task?, set?, parts? }] }.
+   * frame = držení metody {down, front}, parts = dílky hotové po kroku (viz parts.js).
+   */
   get(method = methods.active()) {
     const g = guidesData[method] ?? {};
-    return { intro: g.intro ?? '', steps: (g.steps ?? []).map((st) => ({ ...st })) };
+    return { intro: g.intro ?? '', frame: g.frame, steps: (g.steps ?? []).map((st) => ({ ...st })) };
   },
   set(method, guide) {
-    guidesData[method] = { intro: guide.intro ?? '', steps: guide.steps ?? [] };
+    guidesData[method] = { intro: guide.intro ?? '', frame: guide.frame, steps: guide.steps ?? [] };
     storage.set('ergocube.guides', guidesData);
     guideEvents.emit();
   },
@@ -297,6 +300,8 @@ export function importMethod(data) {
   const guide = data.guide ?? {};
   guidesData[id] = {
     intro: String(guide.intro ?? ''),
+    frame: guide.frame && typeof guide.frame.down === 'string' && typeof guide.frame.front === 'string'
+      ? { down: guide.frame.down, front: guide.frame.front } : undefined,
     steps: (guide.steps ?? []).map((st) => ({ ...st, id: newId('k'), set: st.set ? setMap.get(st.set) : undefined })),
   };
   storage.set('ergocube.algsets', setsData);

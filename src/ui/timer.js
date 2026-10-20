@@ -7,6 +7,8 @@ import { icon } from './icons.js';
 import { solves, groups, methods, guides } from './store.js';
 import { Stopwatch } from './stopwatch.js';
 import { renderPreview } from './preview.js';
+import { partsBefore, describeParts } from './parts.js';
+import { showGuide } from './methods.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
@@ -14,8 +16,9 @@ const saveSettings = () => storage.set('ergocube.timer', settings);
 const key = () => groups.key(settings.event, timerGroup()) + stepSuffix(timerPractice());
 
 // --- Nácvik kroku metody ------------------------------------------------------------
-// Kroky průvodce aktivní metody: timer zamíchá tak, že předchozí kroky (dílky, které
-// jejich obrázky z Labu řeší) jsou hotové. Časy nácviku se ukládají zvlášť.
+// Kroky průvodce aktivní metody (CFOP i vlastní): timer zamíchá tak, že dílky, které
+// složí předchozí kroky (výběr „Po kroku je hotovo“ v průvodci, jinak cíl obrázku
+// z Labu), jsou hotové. Časy nácviku se ukládají zvlášť.
 
 const PRACTICE_EVENTS = new Set(['333', '333oh']);
 export const stepSuffix = (step) => (step ? `~${step}` : '');
@@ -31,15 +34,19 @@ export function timerPractice() {
   return id && practiceSteps().some((st) => st.id === id) ? id : null;
 }
 
-/** Dílky hotové před krokem: co řeší obrázky předchozích kroků (3×3). */
+/** Dílky hotové před krokem (název → styl): co složí předchozí kroky. */
 export function stepFixed(stepId) {
-  const steps = guides.get().steps;
-  const names = new Set();
-  for (const st of steps.slice(0, Math.max(0, steps.findIndex((x) => x.id === stepId)))) {
-    if (!st.task || (st.task.puzzle ?? '333') !== '333') continue;
-    for (const [name, style] of Object.entries(st.task.constraints ?? {})) if (style && style !== 'ignore') names.add(name);
-  }
-  return [...names];
+  return partsBefore(guides.get().steps, stepId);
+}
+
+let refreshPractice = () => {};
+
+/** Přepne timer na nácvik kroku aktivní metody (z průvodce). */
+export function practiceStep(stepId) {
+  if (!PRACTICE_EVENTS.has(settings.event)) settings.event = '333';
+  settings.practice = { ...settings.practice, [methods.active()]: stepId };
+  saveSettings();
+  refreshPractice();
 }
 
 /** Naplní select kroků (celé složení + kroky). */
@@ -199,8 +206,34 @@ export function initTimer({ isActive }) {
     newScramble();
     $('t-event').blur();
   };
-  const renderSteps = () => stepOptions($('t-step'), timerPractice(), practiceSteps());
+  const renderSteps = () => {
+    const steps = practiceSteps();
+    stepOptions($('t-step'), timerPractice(), steps);
+    $('t-practice').hidden = !PRACTICE_EVENTS.has(settings.event);
+    $('t-parts-new').hidden = !!steps.length;
+    const step = timerPractice();
+    const i = steps.findIndex((x) => x.id === step);
+    const info = $('t-step-info');
+    info.hidden = !step;
+    document.body.toggleAttribute('data-practice', !!step);
+    if (step) {
+      const before = describeParts(stepFixed(step));
+      info.textContent = i === 0 ? 'od zamíchané kostky' : before === 'nic' ? 'nastav dílky předchozích kroků' : `předem: ${before}`;
+      info.classList.toggle('warn', i > 0 && before === 'nic');
+    }
+  };
   renderSteps();
+  $('t-parts-new').onclick = () => showGuide({ edit: true });
+  $('t-step-info').onclick = () => showGuide({ edit: true });
+  refreshPractice = () => {
+    eventOptions($('t-event'), settings.event);
+    groupOptions($('t-group'), settings.event, timerGroup());
+    renderSteps();
+    lastStep = timerPractice();
+    syncMode();
+    render();
+    newScramble();
+  };
   $('t-step').onchange = () => {
     settings.practice = { ...settings.practice, [methods.active()]: $('t-step').value || null };
     saveSettings();
@@ -209,9 +242,14 @@ export function initTimer({ isActive }) {
     $('t-step').blur();
   };
   let lastStep = timerPractice();
+  let lastFixed = JSON.stringify(lastStep ? stepFixed(lastStep) : null);
   const stepsChanged = () => {
     renderSteps();
-    if (timerPractice() !== lastStep) { lastStep = timerPractice(); render(); newScramble(); }
+    const fixed = JSON.stringify(timerPractice() ? stepFixed(timerPractice()) : null);
+    if (timerPractice() !== lastStep) { lastStep = timerPractice(); render(); }
+    else if (fixed === lastFixed) return;
+    lastFixed = fixed;
+    newScramble();
   };
   guides.subscribe(stepsChanged);
   methods.subscribe(stepsChanged);

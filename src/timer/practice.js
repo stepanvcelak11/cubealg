@@ -19,32 +19,46 @@ function shuffled(list, rand) {
 }
 
 /**
- * Náhodný stav (pole poloh nálepek) s dílky `fixed` na místě.
- * @param {Iterable<string>} fixed názvy dílků (URF, UF, …), středy jsou na místě vždy
+ * Náhodný stav (pole poloh nálepek) s dílky `fixed` hotovými.
+ * @param {Iterable<string>|Object<string,string>} fixed názvy dílků (URF, UF, …) – ty jsou
+ *   na místě a natočené; nebo mapa název → 'solved' | 'permutation' (jen na místě) |
+ *   'orientation' (jen natočený, místo libovolné). Středy jsou na místě vždy.
  */
 export function practiceState(fixed, rand = randomInt) {
-  const keep = new Set(fixed);
+  const style = fixed && !(Symbol.iterator in Object(fixed))
+    ? new Map(Object.entries(fixed).filter(([, s]) => s && s !== 'ignore'))
+    : new Map([...(fixed ?? [])].map((name) => [name, 'solved']));
   const plan = ['corner', 'edge'].map((type) => {
-    const free = SLOTS.filter((s) => s.type === type && !keep.has(s.name));
-    return { free, targets: shuffled(free, rand), n: type === 'corner' ? 3 : 2 };
+    const pieces = SLOTS.filter((s) => s.type === type);
+    // dílky bez pevného místa se náhodně rozmístí po volných místech
+    const moving = pieces.filter((s) => !['solved', 'permutation'].includes(style.get(s.name)));
+    // dílky bez pevného natočení dostanou náhodné natočení
+    const twisting = pieces.filter((s) => !['solved', 'orientation'].includes(style.get(s.name)));
+    return { pieces, moving, twisting, targets: shuffled(moving, rand), n: type === 'corner' ? 3 : 2 };
   });
   const build = () => {
     const loc = solved();
-    for (const { free, targets, n } of plan) {
+    for (const { pieces, moving, twisting, targets, n } of plan) {
       let sum = 0;
-      free.forEach((piece, i) => {
+      const twist = new Map(twisting.map((piece, i) => {
         // natočení: náhodné, poslední dopočtené (součet ≡ 0)
-        const twist = i === free.length - 1 ? (n - (sum % n)) % n : rand(n);
-        sum += twist;
-        piece.facelets.forEach((k, j) => { loc[k] = targets[i].facelets[(j + twist) % n]; });
-      });
+        const t = i === twisting.length - 1 ? (n - (sum % n)) % n : rand(n);
+        sum += t;
+        return [piece, t];
+      }));
+      for (const piece of pieces) {
+        const i = moving.indexOf(piece);
+        const target = i < 0 ? piece : targets[i];
+        const t = twist.get(piece) ?? 0;
+        piece.facelets.forEach((k, j) => { loc[k] = target.facelets[(j + t) % n]; });
+      }
     }
     return loc;
   };
   let loc = build();
   if (permutationParity(loc)) {
     // parita rohů a hran musí souhlasit: prohodit dva volné dílky
-    const p = plan.find((x) => x.free.length >= 2);
+    const p = plan.find((x) => x.moving.length >= 2);
     if (!p) return null;
     [p.targets[0], p.targets[1]] = [p.targets[1], p.targets[0]];
     loc = build();

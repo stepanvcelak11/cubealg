@@ -213,16 +213,16 @@ function makeOps(P) {
   }
 
   /**
-   * Vybarví jednu nálepku (stejná barva podruhé = smazat). Vznikne-li přebarvením
-   * nemožný dílek, zbylé nálepky slotu se smažou (kromě nálepky lastPos, vybarvené
-   * těsně předtím), aby šel dílek rovnou přebarvit; dílek s jednou chybějící
-   * nálepkou se doplní, je-li to jednoznačné.
+   * Vybarví jednu nálepku (stejná barva podruhé = smazat). Jen s `smart`: vznikne-li
+   * přebarvením nemožný dílek, zbylé nálepky slotu se smažou (kromě nálepky lastPos,
+   * vybarvené těsně předtím), aby šel dílek rovnou přebarvit; dílek s jednou
+   * chybějící nálepkou se doplní, je-li to jednoznačné.
    */
-  function paintSticker(colors, pos, color, lastPos = -1) {
+  function paintSticker(colors, pos, color, lastPos = -1, smart = true) {
     const slot = slots[SLOT_OF[pos]];
     let out = [...colors];
     out[pos] = out[pos] === color ? EMPTY : color;
-    if (out[pos] === EMPTY) return out;
+    if (out[pos] === EMPTY || !smart) return out;
     const complete = slot.facelets.every((f) => out[f] !== EMPTY);
     if (complete && slot.facelets.length > 1 && !pieceAt(out, slot.name)) {
       for (const f of slot.facelets) if (f !== pos && f !== lastPos) out[f] = EMPTY;

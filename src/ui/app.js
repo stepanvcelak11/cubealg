@@ -2,7 +2,7 @@
 
 import { hydrateIcons } from './icons.js';
 import { storage } from './dom.js';
-import { initTimer } from './timer.js';
+import { initTimer, practiceStep } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
 import { initLab, showLab, labSub, labTask } from './lab.js';
@@ -37,7 +37,11 @@ function showPage(name) {
 hydrateIcons();
 for (const b of document.querySelectorAll('.tabbar button')) b.onclick = () => { showPage(b.dataset.tab); b.blur(); };
 
-initMethods({ labTask, train: (id) => { trainSetTo(id); showPage('trainer'); } });
+initMethods({
+  labTask,
+  train: (id) => { trainSetTo(id); showPage('trainer'); },
+  practice: (id) => { practiceStep(id); showPage('timer'); },
+});
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });

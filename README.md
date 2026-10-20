@@ -37,8 +37,12 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   k tréninku, případně **ukázkou algoritmu**, která se dá přehrát tah po tahu.
   Metodu i s průvodcem a algoritmy jde **sdílet** jako soubor (druhý ji
   naimportuje přes „Importovat metodu…“) nebo **vytisknout / uložit jako PDF**.
-  **Nácvik kroku** v timeru (3×3): zamíchání nechá hotové všechno, co řeší
-  předchozí kroky průvodce, a časy nácviku se ukládají zvlášť.
+  **Nácvik kroku** v timeru (3×3) pro CFOP i vlastní metody: u každého kroku průvodce
+  se vybere, co je po něm hotové (předvolby kříž, X-cross, F2L, bloky 2×2×2/2×2×3,
+  bloky Roux, EO, CO, OLL… nebo klepáním na dílky; dílek hotový, jen na místě nebo
+  jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
+  z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
+  z průvodce tlačítkem „Nacvičit“.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací
@@ -46,7 +50,8 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Lab** – vlastní případy a hledání ergonomických algoritmů pro **3×3, 2×2,
   Pyraminx, Skewb a Square-1**:
   - **Zadání:** výchozí stav i cíl se vybarvují po nálepkách paletou barev (dílek
-    s jedinou chybějící nálepkou se doplní, je-li to jednoznačné); 3×3, 2×2, Pyraminx a Skewb jde
+    obarví se jen klepnutá nálepka; chytré vybarvování v Nastavení navíc doplní
+    jednoznačnou nálepku a přenese dílek na druhou stranu); 3×3, 2×2, Pyraminx a Skewb jde
     i nafotit stěnu po stěně. Tvar Square-1 se nastavuje tlačítky. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
     i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
     ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.

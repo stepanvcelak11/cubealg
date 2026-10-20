@@ -1,5 +1,5 @@
 // Stopky ve stylu speedcubingu: podržet (mezerník nebo prst) → zelená → pustit
-// = start, libovolná klávesa nebo dotyk = stop. Volitelně inspekce 15 s
+// = start, libovolná klávesa nebo dotyk kdekoli = stop. Volitelně inspekce 15 s
 // (WCA: 15–17 s = +2, nad 17 s = DNF).
 
 import { formatTime } from '../timer/stats.js';
@@ -57,6 +57,18 @@ export class Stopwatch {
       e.preventDefault();
       this.release();
     });
+    // běžící stopky zastaví dotyk kdekoli na obrazovce (i na liště nebo výběru nad plochou)
+    window.addEventListener('pointerdown', (e) => {
+      if (this.state !== 'running' || !this.isActive()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.stoppedAt = performance.now();
+      this.stop();
+    }, { capture: true });
+    window.addEventListener('click', (e) => {
+      // klepnutí, které stopky zastavilo, nesmí nic otevřít
+      if (performance.now() - (this.stoppedAt ?? -Infinity) < 400) { e.preventDefault(); e.stopPropagation(); }
+    }, { capture: true });
     this.pad.addEventListener('pointerdown', (e) => {
       if (!this.isActive() || e.target.closest('button, input, select, form')) return;
       e.preventDefault();

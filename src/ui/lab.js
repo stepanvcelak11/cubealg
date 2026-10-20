@@ -3,8 +3,9 @@
 // Hlavolamy: 3×3, 2×2, Pyraminx, Skewb, Square-1 (každý má své uložené zadání).
 //
 // Zadání:
-//   Obě strany se vybarvují po nálepkách barvou z palety (dílek s jednou
-//   chybějící nálepkou se doplní, je-li to jednoznačné). Cíl navíc určuje styl
+//   Obě strany se vybarvují po nálepkách barvou z palety – obarví se jen nálepka,
+//   na kterou se klepne. Chytré vybarvování (Nastavení) navíc doplní dílek s jednou
+//   chybějící nálepkou a přenáší celé dílky mezi stranami. Cíl navíc určuje styl
 //   každého dílku: plná = místo i natočení, čárkovaná = jen místo, tečkovaná =
 //   jen natočení. Se zvoleným stylem (bez barvy) klepnutí na dílek změní jeho
 //   styl, prázdné místo vyplní dílkem, který tam patří.
@@ -203,30 +204,36 @@ export function labSub() {
  */
 function syncTarget() {
   const inB = model.identify(ui.B).pieces;
+  const smart = smartPaint();
   for (const name of model.pieceNames) {
     if (inB.has(name)) {
       if (!isMarked(name)) ui.constraints[name] = ui.memory[name] ?? ui.style;
-      if (!model.findPiece(ui.A, name) && model.homeEmpty(ui.A, name)) {
+      if (smart && !model.findPiece(ui.A, name) && model.homeEmpty(ui.A, name)) {
         ui.A = model.placeHome(ui.A, name);
         ui.autoA.add(name);
       }
     } else if (isMarked(name)) {
       ui.memory[name] = ui.constraints[name];
       ui.constraints[name] = 'ignore';
-      if (ui.autoA.has(name) && model.homeIs(ui.A, name)) ui.A = model.removePiece(ui.A, name);
+      if (smart && ui.autoA.has(name) && model.homeIs(ui.A, name)) ui.A = model.removePiece(ui.A, name);
       ui.autoA.delete(name);
     }
   }
 }
 
+/** Chytré vybarvování (doplňování dílků a přenos mezi stranami) – v Nastavení, výchozí vypnuto. */
+export const smartPaint = () => storage.get('ergocube.lab.smartPaint') === true;
+
 function paint(side, pos) {
   const key = side === 'B' ? pos + 1000 : pos;
   const last = (ui.lastPaint >= 1000) === (side === 'B') ? ui.lastPaint % 1000 : -1;
   ui.lastPaint = key;
-  if (side === 'B') { ui.B = model.paint(ui.B, pos, ui.paint.B, last); return; }
+  const smart = smartPaint();
+  if (side === 'B') { ui.B = model.paint(ui.B, pos, ui.paint.B, last, smart); return; }
   const before = model.pieceAtSticker(ui.A, pos);
-  ui.A = model.paint(ui.A, pos, ui.paint.A, last);
+  ui.A = model.paint(ui.A, pos, ui.paint.A, last, smart);
   ui.autoA.delete(before);
+  if (!smart) return;
   // Dokončený dílek ve výchozí straně, který v cíli není, se v cíli objeví na svém místě.
   const after = model.pieceAtSticker(ui.A, pos);
   ui.autoA.delete(after);

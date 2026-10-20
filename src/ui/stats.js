@@ -202,6 +202,8 @@ function renderRanges() {
   }));
 }
 
+let listLimit = 25;
+
 function render() {
   const ev = EVENT_BY_ID[event];
   if (!groups.get(event, group)) group = 'main';
@@ -220,7 +222,10 @@ function render() {
   compare(list, ev.result);
   histogram(list, ev.result);
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
-  $('s-list').replaceChildren(...shown.map(({ solve, i }, n) => {
+  // nejlepší složení období (bez DNF) se zvýrazní
+  const value = (x) => (x.p === -1 ? Infinity : x.t + (x.p > 0 ? x.p : 0));
+  const best = shown.reduce((b, x) => (value(x.solve) < (b ? value(b.solve) : Infinity) ? x : b), null);
+  const rows = shown.map(({ solve, i }, n) => {
     const penalty = (p, text) => {
       const b = el('button', { type: 'button', className: `chip${solve.p === p ? ' on' : ''}`, textContent: text });
       b.onclick = () => solves.update(key(), i, { p: solve.p === p ? 0 : p });
@@ -230,7 +235,7 @@ function render() {
       const text = prompt('Poznámka ke složení:', solve.n ?? '');
       if (text !== null) solves.update(key(), i, { n: text.trim() || undefined });
     };
-    return el('li', { className: 'solve' },
+    return el('li', { className: `solve${best?.i === i ? ' best' : ''}` },
       el('span', { className: 'solve-n', textContent: `${n + 1}.` }),
       el('b', { className: 'solve-time', textContent: formatSolve(solve, ev.result) }),
       el('button', { type: 'button', className: 'solve-meta', title: 'Poznámka ke složení', onclick: note },
@@ -241,7 +246,13 @@ function render() {
         ev.result === 'time' ? penalty(2000, '+2') : null,
         penalty(-1, 'DNF'),
         iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(key(), i) })));
-  }).reverse());
+  }).reverse();
+  // dlouhý seznam po částech
+  const more = rows.length > listLimit
+    ? el('li', { className: 'solve-more' }, Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: `Zobrazit další (${rows.length - listLimit})` }),
+      { onclick: () => { listLimit += 50; render(); } }))
+    : null;
+  $('s-list').replaceChildren(...rows.slice(0, listLimit), ...(more ? [more] : []));
   if (!list.length) $('s-list').replaceChildren(el('li', { className: 'hint', textContent: all.length ? 'V tomto období žádná složení.' : 'Zatím žádná složení.' }));
 }
 

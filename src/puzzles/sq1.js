@@ -312,7 +312,7 @@ export function sq1Ops() {
    * smažou (kromě té vybarvené těsně předtím); roh se dvěma známými barvami
    * se doplní (třetí je jednoznačná).
    */
-  function paint(side, pos, color, lastPos = -1) {
+  function paint(side, pos, color, lastPos = -1, smart = true) {
     const layer = pos >= 24 ? 1 : 0, k = (pos % 24) >> 1, kind = pos & 1;
     const colors = [...side.colors];
     const group = groupOf(side, layer, k);
@@ -322,7 +322,7 @@ export function sq1Ops() {
     const erase = colors[pos] === color;
     for (const t of targets) colors[t] = erase ? EMPTY : color;
     const out = { state: side.state, colors };
-    if (erase) return out;
+    if (erase || !smart) return out;
     const all = [...faceIdx, ...sideIdx];
     if (all.every((t) => colors[t] !== EMPTY) && !pieceAtSticker(out, pos)) {
       const keep = new Set(targets);
