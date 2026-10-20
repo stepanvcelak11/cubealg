@@ -303,6 +303,7 @@ export function encode(problem, loc) {
  * @param {Uint8Array} start výchozí stav A (loc)
  * @param {object} [opts]
  * @param {number} [opts.maxLength] maximální počet tahů
+ * @param {number} [opts.minLength] hledat až od této délky (kratší už jsou známé)
  * @param {number} [opts.extraDepth] kolik tahů nad optimum ještě hledat
  * @param {number} [opts.maxResults] po kolika výsledcích skončit
  * @param {number} [opts.timeLimit] časový limit v ms
@@ -310,7 +311,7 @@ export function encode(problem, loc) {
  * @param {(info:{depth:number, nodes:number, found:number}) => void} [opts.onProgress]
  */
 export function search(problem, start, {
-  maxLength = 12, extraDepth = 2, maxResults = 500, timeLimit = 15000, onSolution, onProgress,
+  maxLength = 12, minLength = 1, extraDepth = 2, maxResults = 500, timeLimit = 15000, onSolution, onProgress,
 } = {}) {
   const { pieces, tables, near, trans, moveCount, redundant, names, pieceIndex } = problem;
   const nearRadius = near ? near.radius : 0;
@@ -396,7 +397,7 @@ export function search(problem, start, {
   };
 
   let optimal = null;
-  for (bound = Math.max(1, h0); bound <= maxLength; bound++) {
+  for (bound = Math.max(1, h0, minLength); bound <= maxLength; bound++) {
     stack[0].set(root);
     dfs(0, -1);
     if (optimal === null && solutions.length) optimal = bound;

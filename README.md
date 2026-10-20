@@ -70,10 +70,13 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     nejpříjemnější tahy a návaznost, délka skoro nehraje roli), ◎ efektivita (co
     nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (kombinace obou).
     U řádků je pořadí v ostatních pohledech (např. ⚡ 1.), v detailu pořadí ve všech.
-  - **Dlouhé algoritmy** (např. PLL s mnoha druhy tahů): hledání nejdřív rychle
-    zkusí trojice R U x a za pár sekund ukáže první řešení, pak ve zbytku času
-    hledá kratší a lepší verze. Odhad vzdálenosti zesiluje tabulka všech stavů
-    do ~5 tahů od cíle.
+  - **Postupné zlepšování:** hledání nejdřív rychle najde nějaké řešení (u mnoha
+    druhů tahů přes trojice R U x) a pak ho v kolech zlepšuje – každá sada tahů se
+    prohloubí o tah, přibývají delší a různorodější řešení a nejlepší řešení každého
+    pohledu se dolaďuje výměnou úseků za rovnocenné sekvence (stejný účinek na kostku,
+    nalezené setkáním uprostřed). Nad výsledky jsou tři „nejlepší zatím“ (rychlost,
+    efektivita, všestranné), které se během hledání mění; klepnutím se otevřou.
+    Odhad vzdálenosti zesiluje tabulka všech stavů do ~5 tahů od cíle.
 
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají
 v prohlížeči (localStorage); zálohu jde stáhnout a obnovit v nastavení.

@@ -1,14 +1,14 @@
 // Tři pohledy na nalezená řešení – každý řadí všechna řešení jinak:
 //
 //   rychlost    – příjemné skládání: nejdřív co nejméně přehmatů a rotací, pak
-//                 nejnižší nepohodlnost na tah (váhy tahů, návaznost, úchopy,
-//                 triggery); délka rozhoduje až nakonec
+//                 co nejméně míst se špatnou návazností nebo změnou úchopu, pak
+//                 celková nepohodlnost (váhy tahů, návaznost, triggery)
 //   efektivita  – co nejméně tahů; pohodlí rozhoduje jen mezi stejně dlouhými
 //   všestranné  – kombinace obou: součet percentilu délky a percentilu rychlosti
 
 export const VIEWS = {
   balanced: { label: 'Všestranné', icon: '★', text: 'kombinace obou: málo tahů i příjemné skládání' },
-  speed: { label: 'Rychlost', icon: '⚡', text: 'příjemné skládání: co nejméně přehmatů a rotací, plynulé tahy a návaznost – délka skoro nehraje roli' },
+  speed: { label: 'Rychlost', icon: '⚡', text: 'příjemné skládání: co nejméně přehmatů a rotací, pak co nejméně nešikovných návazností a úchopů' },
   efficient: { label: 'Efektivita', icon: '◎', text: 'co nejméně tahů – pohodlí rozhoduje jen mezi stejně dlouhými' },
 };
 
@@ -27,17 +27,25 @@ export function styleMetrics(score, cube = true) {
     ru: cube && turns.length ? home / turns.length : null,
     regrips: (score.perMove ?? []).filter((m) => m.regrip > 0).length,
     rotations: (score.perMove ?? []).filter((m) => m.rotation > 0).length,
+    // nepříjemná místa: špatná návaznost tahů nebo změna úchopu
+    rough: (score.perMove ?? []).filter((m) => m.flowReason || m.gripChange > 0).length,
     fluency: score.total / n,
     total: score.total,
   };
 }
 
-/** Číslo „rychlosti“ (nižší = příjemnější): přehmat nebo rotace váží jako celá jednotka nepohodlnosti na tah. */
-export const speedValue = (m) => m.regrips + m.rotations + m.fluency;
+/**
+ * Hodnota pro rychlost (lexikograficky, nižší = lepší): přehmaty a rotace, pak
+ * nepříjemná místa (špatná návaznost, změna úchopu), pak celková nepohodlnost.
+ * Celková (ne na tah), aby se nevyplatilo algoritmus natahovat levnými tahy.
+ */
+export const speedKey = (m) => [m.regrips + m.rotations, m.rough, m.total];
+/** Jedno číslo rychlosti pro kombinaci ve všestranném pohledu. */
+export const speedValue = (m) => 2 * (m.regrips + m.rotations) + 0.5 * m.rough + m.total;
 
+const lex = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
 const COMPARE = {
-  speed: (a, b) => (a.m.regrips + a.m.rotations) - (b.m.regrips + b.m.rotations)
-    || a.m.fluency - b.m.fluency || a.m.length - b.m.length,
+  speed: (a, b) => lex(speedKey(a.m), speedKey(b.m)) || a.m.length - b.m.length,
   efficient: (a, b) => a.m.length - b.m.length || a.m.total - b.m.total,
 };
 

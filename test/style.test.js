@@ -18,8 +18,11 @@ test('pohledy: efektivita = nejmíň tahů, rychlost = bez přehmatů a plynulé
   assert.equal(eff[0].m.length, 6);
   assert.equal(eff[1].m.length, 6);
   const speed = rankResults(list, 'speed');
-  // přehmaty jsou v rychlosti až na konci, nejvýš je dlouhý, ale plynulý sexy move
-  assert.equal(speed[0].alg, "R U R' U' R U R' U' R U R'");
+  // přehmaty jsou v rychlosti až na konci; plynulé R/U (i delší) jsou před algoritmy
+  // s nešikovnou návazností (F), prodlužování se ale nevyplácí
+  assert.equal(speed[0].alg, "R U R' U R U2 R'");
+  const at = (alg) => speed.findIndex((x) => x.alg === alg);
+  assert.ok(at("R U R' U' R U R' U' R U R'") < at("F R U R' U' F'"));
   assert.ok(speed.slice(-2).every((x) => x.m.regrips > 0));
 });
 

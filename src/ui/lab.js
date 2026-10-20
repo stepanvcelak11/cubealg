@@ -590,11 +590,7 @@ function startSearch() {
     onProgress: (p) => {
       $('status').textContent = p.phase === 'tables'
         ? `Připravuji heuristiku ${p.table}/${p.tables}…`
-        : p.phase === 'quick'
-        ? `Rychlé hledání s tahy ${p.label} (${p.step}/${p.steps}) · nalezeno ${ui.results.size}${p.best ? ` · nejkratší ${p.best} ${unit()}` : ''}…`
-        : p.best && p.depth < p.best
-        ? `Nejlepší zatím ${p.best} ${unit()} · hledám kratší (zkouším ${p.depth}) · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`
-        : `Hloubka ${p.depth} · ${p.nodes.toLocaleString('cs')} uzlů · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`;
+        : `${searchPhaseText(p)} · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`;
     },
     onSolutions: (items) => {
       for (const { alg } of items) { const a = ui.hold ? held().toHeldString(alg) : alg; ui.results.set(a, score(a)); }
@@ -632,6 +628,34 @@ function rankedResults() {
 function sortedResults() {
   const { list, ranks } = rankedResults();
   return rankResults(list, view).map((x) => ({ ...x, ranks: ranks.get(x) }));
+}
+
+/** Co hledání právě dělá (úlohy viz search/worker.js: trojice tahů a úplná sada). */
+function searchPhaseText(p) {
+  if (p.task === 'subset') return `Zlepšuji: prohledávám tahy ${p.label} do ${p.depth} ${unit()}`;
+  if (p.task === 'full' && p.best && p.depth < p.best) return `Nejkratší zatím ${p.best} ${unit()} · zkouším všechny tahy: jde to za ${p.depth}?`;
+  if (p.task === 'full') return `Zlepšuji: prohledávám všechny tahy do ${p.depth} ${unit()}`;
+  return `Hloubka ${p.depth}`;
+}
+
+/** Nejlepší zatím v každém pohledu – klepnutím se algoritmus otevře v přehrávači. */
+function renderBests() {
+  const box = $('search-bests');
+  const { list, ranks } = rankedResults();
+  box.hidden = !list.length;
+  if (!list.length) { box.replaceChildren(); return; }
+  box.replaceChildren(...Object.entries(VIEWS).map(([id, v]) => {
+    const top = list.find((x) => ranks.get(x)[id] === 1);
+    const m = top.m;
+    const facts = id === 'efficient' ? `${m.length} ${unit()}`
+      : `${m.regrips + m.rotations ? `${m.regrips + m.rotations}× přehmat` : 'bez přehmatů'} · ${m.length} ${unit()}`;
+    const b = el('button', { type: 'button', className: `best-chip view-${id}${top.alg === ui.chosen ? ' on' : ''}`, title: v.text },
+      el('span', { className: 'best-head', textContent: `${v.icon} ${v.label}` }),
+      el('code', { textContent: top.alg }),
+      el('small', { textContent: facts }));
+    b.onclick = () => choose(top.alg, true);
+    return b;
+  }));
 }
 
 /** Přepínač pohledu nad výsledky. */
@@ -713,6 +737,7 @@ function toggleSave(alg) {
 function renderResults() {
   ranked = null;
   renderStyleFilter();
+  renderBests();
   const list = sortedResults();
   const shown = num('opt-results', 1, 500);
   $('results').replaceChildren(...list.slice(0, shown).map(({ alg, score: s, m, ranks }, i) => {
