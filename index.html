@@ -292,10 +292,10 @@
             <details class="settings">
               <summary>Nastavení hledání</summary>
               <div class="grid-fields">
-                <label class="field"><span id="opt-max-label">Max. tahů</span> <input id="opt-max" type="number" min="1" max="20" value="11"></label>
+                <label class="field" title="Jen pro úplné prohledávání (nejkratší řešení); první řešení a zlepšování můžou být delší"><span id="opt-max-label">Max. tahů</span> <input id="opt-max" type="number" min="1" max="30" value="20"></label>
                 <label class="field"><span id="opt-extra-label">Tahů nad optimum</span> <input id="opt-extra" type="number" min="0" max="6" value="3"></label>
                 <label class="field" title="Hledá se víc řešení, ukáže se jen tolik nejpohodlnějších">Zobrazit nejlepších <input id="opt-results" type="number" min="1" max="500" value="15"></label>
-                <label class="field">Limit (s) <input id="opt-time" type="number" min="1" max="300" value="20"></label>
+                <label class="field" title="Až 3600 s (60 min). Nalezená řešení se průběžně ukládají a další hledání na ně naváže.">Limit (s) <input id="opt-time" type="number" min="1" max="3600" value="20"></label>
               </div>
               <label id="opt-auf-row" class="check-row" title="Algoritmus smí začít i skončit natočením horní vrstvy (AUF); to se do délky ani hodnocení nepočítá"><input type="checkbox" id="opt-auf" checked> Povolit AUF – natočení U před a po algoritmu (nepočítá se)</label>
             </details>

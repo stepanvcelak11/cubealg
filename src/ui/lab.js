@@ -561,13 +561,69 @@ function ergoChanged() {
 
 function clearResults() {
   if (client.running) client.cancel();
+  keepAwake(false);
   ui.results.clear();
   ui.chosen = null;
+  ui.proof = 0;
   searchUi(false);
-  $('status').textContent = '';
+  $('status').textContent = loadFound() ? `Uložená řešení z minulého hledání (${ui.results.size}) – „Hledat“ na ně naváže a dál je zlepšuje.` : '';
   renderResults();
   renderPlayer();
 }
+
+// --- Uložená řešení: dlouhé hledání jde přerušit a navázat ------------------------------
+// Nejlepší řešení každého zadání se průběžně ukládají (posledních 12 zadání). Po návratu
+// do Labu (i když prohlížeč aplikaci na pozadí zastavil) se ukážou a další hledání
+// z nich vychází.
+
+const FOUND_INDEX = 'ergocube.lab.found';
+function taskKey() {
+  const text = JSON.stringify([model.id, ui.hold, ui.constraints, model.serialize(ui.A), model.serialize(ui.B),
+    model.kind === 'sq1' ? ui.sq1 : [ui.bases, ui.amounts]]);
+  let h1 = 2166136261, h2 = 5381;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
+  return `${FOUND_INDEX}.${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
+}
+
+/** Nejlepší řešení v každém pohledu (sjednocení prvních `per`). */
+function topResults(per) {
+  const { list, ranks } = rankedResults();
+  return list.filter((x) => Object.values(ranks.get(x)).some((r) => r <= per)).map((x) => x.alg);
+}
+
+let saveTimer = null;
+function saveFound(now = false) {
+  clearTimeout(saveTimer);
+  const doSave = () => {
+    if (!ui.results.size) return;
+    const key = taskKey();
+    storage.set(key, { at: Date.now(), algs: topResults(40), proof: ui.proof });
+    const index = [key, ...(storage.get(FOUND_INDEX) ?? []).filter((k) => k !== key)];
+    for (const old of index.splice(12)) storage.remove(old);
+    storage.set(FOUND_INDEX, index);
+  };
+  if (now) doSave(); else saveTimer = setTimeout(doSave, 1500);
+}
+
+function loadFound() {
+  const data = storage.get(taskKey());
+  if (!data?.algs?.length) return false;
+  for (const alg of data.algs) { try { ui.results.set(alg, score(alg)); } catch { /* neplatný zápis */ } }
+  ui.proof = data.proof ?? 0;
+  return ui.results.size > 0;
+}
+
+// Obrazovka během hledání nezhasne (jen dokud je aplikace otevřená).
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener?.('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && client.running) keepAwake(true); });
 
 function searchUi(running) {
   $('search').disabled = running;
@@ -582,21 +638,28 @@ function startSearch() {
   if (!tracked.some((n) => !model.centers.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
   const moveSet = currentMoveSet();
   if (model.kind === 'perm' && !moveSet.moves.length) { $('status').textContent = 'Nejsou povolené žádné tahy (Tahy a váhy).'; return; }
-  clearResults();
+  // dosavadní řešení zůstávají a hledání z nich vychází (navázání po přerušení)
+  if (client.running) client.cancel();
+  const toModel = (alg) => (alg && ui.hold ? held().toModelString(alg) : alg);
+  const seeds = model.kind === 'perm' ? topResults(15).map((alg) => {
+    const { pre, core, post } = splitAuf(alg);
+    return { alg: toModel(core), pre: toModel(pre), post: toModel(post) };
+  }) : [];
+  keepAwake(true);
   const shown = num('opt-results', 1, 500);
   const useAuf = aufAllowed() && $('opt-auf').checked;
   storage.set('ergocube.lab.auf', $('opt-auf').checked);
   const opts = {
     lambda,
-    maxLength: num('opt-max', 1, 20),
+    maxLength: num('opt-max', 1, 30),
     extraDepth: num('opt-extra', 0, 6),
     // hledá se víc kandidátů, než se ukáže – z nich se vybírají nejlepší v každém pohledu
     // (pro „Rychlost“ jsou potřeba i delší plynulé algoritmy, hledání jde od nejkratších)
     maxResults: Math.min(5000, Math.max(3000, shown * 200)),
-    timeLimit: num('opt-time', 1, 300) * 1000,
+    timeLimit: num('opt-time', 1, 3600) * 1000,
   };
   searchUi(true);
-  $('status').textContent = 'Spouštím…';
+  $('status').textContent = seeds.length ? `Navazuji na ${seeds.length} dosavadních řešení…` : 'Spouštím…';
   let pending = false;
   const scheduleRender = () => {
     if (pending) return;
@@ -610,6 +673,7 @@ function startSearch() {
     puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.engineMoves, options: opts, ergonomics: ui.ergo,
     held: model.kind === 'perm' ? moveSet.moves : undefined,
     auf: aufMoves ? { pre: aufMoves, post: aufMoves } : null,
+    seeds,
     sq1: { shape: ui.sq1.shape, top: ui.sq1.top, bottom: ui.sq1.bottom },
   }, {
     onProgress: (p) => {
@@ -624,9 +688,11 @@ function startSearch() {
         ui.results.set(a, score(a));
       }
       scheduleRender();
+      saveFound();
     },
     onDone: (d) => {
       searchUi(false);
+      keepAwake(false);
       ui.proof = Math.max(ui.proof, d.cleared ?? 0);
       const why = {
         done: 'Hotovo', time: 'Vypršel časový limit', results: 'Dosažen max. počet kandidátů',
@@ -639,9 +705,10 @@ function startSearch() {
         : ui.proof > 1 ? ` · ověřeno: pod ${ui.proof} ${unit()} řešení není` : '';
       $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof} · ${(d.elapsed / 1000).toFixed(1)} s`;
       renderResults();
+      saveFound(true);
       if (!ui.chosen && ui.results.size) choose(sortedResults()[0].alg, false);
     },
-    onError: (e) => { searchUi(false); $('status').textContent = `Chyba: ${e.message}`; },
+    onError: (e) => { searchUi(false); keepAwake(false); $('status').textContent = `Chyba: ${e.message}`; },
   });
 }
 
@@ -672,6 +739,10 @@ const provenShortest = (length) => ui.proof >= length;
 function searchPhaseText(p) {
   if (p.task === 'subset') return `Zlepšuji: prohledávám tahy ${p.label} do ${p.depth} ${unit()}`;
   if (p.task === 'comfort') return `Zlepšuji pohodlí: hledám pohodlnější řešení na ${p.depth} ${unit()}`;
+  if (p.task === 'staged') return p.stage
+    ? `Hledám první řešení po částech: hotovo ${p.stage.done}/${p.stage.total} dílků (${p.stage.length} ${unit()})`
+    : 'Hledám první řešení po částech…';
+  if (p.task === 'refine') return `Zlepšuji ${VIEWS[p.view]?.label.toLowerCase() ?? ''}: přeřešuji úseky po ${p.label} ${unit()} (${p.current} ${unit()})`;
   if (p.task === 'full' && p.best && p.depth < p.best) return `Nejkratší zatím ${p.best} ${unit()} · zkouším všechny tahy: jde to za ${p.depth}?`;
   if (p.task === 'full') return `Zlepšuji: prohledávám všechny tahy do ${p.depth} ${unit()}`;
   return `Hloubka ${p.depth}`;
@@ -1009,7 +1080,7 @@ function selectPuzzle(id) {
   // výchozí hloubka hledání podle hlavolamu (Square-1 se měří v řezech)
   $('opt-max-label').textContent = model.kind === 'sq1' ? 'Max. řezů' : 'Max. tahů';
   $('opt-extra-label').textContent = model.kind === 'sq1' ? 'Řezů nad optimum' : 'Tahů nad optimum';
-  if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '11'; $('opt-extra').value = '3'; }
+  if (model.kind === 'sq1') { $('opt-max').value = '7'; $('opt-extra').value = '1'; } else { $('opt-max').value = '20'; $('opt-extra').value = '3'; }
   $('opt-auf-row').hidden = !aufAllowed();
   $('a-scan').hidden = !model.scan;
   $('b-scan').hidden = !model.scan;
@@ -1077,6 +1148,8 @@ export function initLab({ onSub } = {}) {
   $('search').onclick = startSearch;
   $('stop').onclick = () => {
     client.cancel();
+    keepAwake(false);
+    saveFound(true);
     searchUi(false);
     $('status').textContent += ' · zastaveno';
     renderResults();

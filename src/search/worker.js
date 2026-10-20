@@ -28,7 +28,10 @@ import { ergoStep, ERGO_START, fullConfig } from '../ergonomics/score.js';
 import { moveWeight } from '../ergonomics/weights.js';
 import { mirrorMove, MOVE_DEFS } from '../core/notation.js';
 import { styleMetrics, speedKey, balancedValue } from '../ergonomics/style.js';
-import { buildTable, improve } from './improve.js';
+import { buildTable, improve, simplify } from './improve.js';
+import { compileGoal } from '../core/constraints.js';
+import { stagedSolve } from './staged.js';
+import { makeResolver } from './resolve.js';
 
 self.onmessage = ({ data }) => {
   if (data.type !== 'search') return;
@@ -39,7 +42,7 @@ self.onmessage = ({ data }) => {
   }
 };
 
-function run({ puzzle: id = '333', start, target, constraints, moves, held, auf, shard, options, ergonomics, sq1 }) {
+function run({ puzzle: id = '333', start, target, constraints, moves, held, auf, shard, seeds, options, ergonomics, sq1 }) {
   const P = getPuzzle(id);
   const t0 = Date.now();
   const onTable = (info) => self.postMessage({ type: 'progress', phase: 'tables', ...info });
@@ -85,6 +88,19 @@ function run({ puzzle: id = '333', start, target, constraints, moves, held, auf,
       turnCost: (a, c) => scoreFor(P, `(${a},${c})`, config).total,
     });
   } else {
+    // dosavadní řešení (navázání): platná jsou výchozí body zlepšování; do seznamu
+    // je pošle jen první worker, ostatní si je jen poznamenají
+    if (seeds?.length) {
+      const goal = compileGoal(constraints, Uint8Array.from(target), P);
+      for (const sd of seeds) {
+        const pre = sd.pre ?? null, post = sd.post ?? null;
+        try {
+          if (!goal.test(P.applyAlg(Uint8Array.from(start), [pre, sd.alg, post].filter(Boolean).join(' ')))) continue;
+        } catch { continue; }
+        if (!shard || shard.index === 0) handlers.onSolution(sd.alg, pre, post);
+        else { seen.add(`${pre ?? ''}|${sd.alg}|${post ?? ''}`); tracker.add({ alg: sd.alg, pre, post }, scoreOf(sd.alg)); }
+      }
+    }
     res = explore({ P, start: Uint8Array.from(start), target: Uint8Array.from(target), constraints, moves, held: held ?? moves, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0 });
   }
   flush();
@@ -194,22 +210,26 @@ function costModel(held, config) {
 }
 
 /**
- * Hledání s postupným zlepšováním. Úlohy:
- *   - menší sady tahů (jen když je druhů tahů aspoň 3 a úloha je dlouhá),
- *   - úplná sada tahů (nejkratší řešení a důkaz, že kratší nejsou),
- *   - pohodlí: větve a meze podle ceny rychlosti (od prvního kola).
- * V kolech se úlohy s délkou prohloubí o jeden tah; každé kolo přinese nová,
- * delší a různorodější řešení. Kandidáti každého pohledu se po změně doladí.
+ * Hledání s postupným zlepšováním. Nejdřív jakékoli řešení, pak se v kolech
+ * zlepšuje – nic se nezačíná znovu od začátku a délka řešení není omezená.
+ * Úlohy (každá dostane v kole krátký díl času a příště naváže, kde skončila):
+ *   - první řešení po etapách (staged.js), když krátké hledání nic nenajde,
+ *   - menší sady tahů (rychlé první řešení a pohodlné varianty),
+ *   - úplná sada tahů (nejkratší řešení a důkaz, že kratší nejsou; do „Max. tahů“),
+ *   - pohodlí: větve a meze podle ceny rychlosti,
+ *   - přeřešení úseků nejlepších řešení úplným hledáním (resolve.js).
+ * Kandidáti každého pohledu se po změně doladí výměnou krátkých úseků (improve.js).
  * AUF: výchozí stavy po natočení U před algoritmem a cíle po natočení po něm.
- * S víc workery (shard) každý prohledá jen svůj díl úplné sady a pohodlí a dostane
- * jen některé menší sady.
+ * S víc workery (shard) každý prohledá jen svůj díl úplné sady a pohodlí, dostane
+ * jen některé menší sady a etapové hledání zkouší tahy v jiném pořadí.
  */
 function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0 }) {
   const timeLimit = options.timeLimit ?? 15000;
   const deadline = t0 + timeLimit;
   const left = () => deadline - Date.now();
   const extra = options.extraDepth ?? 0;
-  const maxLength = options.maxLength ?? 20;
+  // „Max. tahů“ omezuje jen úplné prohledávání; etapy a zlepšování délku neomezují
+  const maxLength = Math.min(30, options.maxLength ?? 20);
   const nearLimit = options.nearLimit ?? NEAR_LIMIT;
   const name = (m) => P.moveToString(m);
   const roots = [{ loc: start, pre: null }, ...(auf?.pre ?? []).map((m) => ({ loc: P.applyAlg(start, [m]), pre: name(m) }))];
@@ -220,6 +240,8 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
   const amountOf = (t) => (t ? P.parseAlg(t)[0].amount : 0);
   const aufName = (a) => { const r = ((a % 4) + 4) % 4; return r ? name({ base: aufBase, amount: r === 3 ? -1 : r }) : null; };
   const emit = (alg, pre, post) => {
+    alg = simplify(P, moves, alg);
+    if (!alg) return;
     if (aufBase) {
       const t = alg.split(' ');
       while (t.length > 1 && P.parseAlg(t[0])[0].base === aufBase) pre = aufName(amountOf(pre) + amountOf(t.shift()));
@@ -233,29 +255,38 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
   const make = (ms, goals = targets, near = nearLimit) => prepare({ puzzle: P, constraints, moves: ms, targets: goals, nearLimit: near, onTable });
   const full = make(moves);
   const mine = (i) => !shard || i % shard.count === shard.index;
+  const startOf = (pre) => (pre ? P.applyAlg(start, pre) : start);
 
   const tasks = [];
   const bases = [...new Set(moves.map((m) => m.base))];
   // krátké úlohy (do 8 tahů) najde úplné hledání rychle samo
-  const probe = bases.length >= 3 ? search(full, roots, { maxLength: 8, extraDepth: 0, maxResults: 1, timeLimit: 300 }) : null;
+  const probe = search(full, roots, { maxLength: Math.min(8, maxLength), extraDepth: 0, maxResults: 1, timeLimit: 300, onSolution: found });
   const proof = handlers.proof;
-  if (probe) proof.cleared = probe.cleared ?? 0;
-  if (probe && !probe.solutions.length && probe.reason !== 'already-solved' && probe.reason !== 'unsolvable') {
+  proof.cleared = probe.cleared ?? 0;
+  const hard = !probe.solutions.length && probe.reason !== 'already-solved' && probe.reason !== 'unsolvable';
+  // pořadí: menší sady (rychlé první řešení, když případ jde jimi), první řešení po
+  // etapách (u víc workerů jen každý druhý, s jiným pořadím tahů), přeřešení úseků,
+  // úplná sada, pohodlí
+  if (hard && bases.length >= 3) {
     subsetsOf(bases).forEach((sub, i) => {
       if (!mine(i)) return;
       const set = new Set(sub);
       tasks.push({ label: sub.join(' '), moves: moves.filter((m) => set.has(m.base)), problem: null });
     });
   }
+  if (hard && (!shard || shard.index % 2 === 0)) tasks.push({ label: 'po etapách', staged: true });
+  tasks.push({ label: 'úseky', refine: true });
   const fullTask = { label: null, moves, problem: full, full: true, shard };
   tasks.push(fullTask);
   const comfort = P.ergonomics === 'cube' && options.comfort !== false ? { label: 'pohodlí', comfort: true, rounds: 0 } : null;
   if (comfort) tasks.push(comfort);
   const costs = comfort ? costModel(held, config) : null;
   const indexOf = new Map(moves.map((m, i) => [name(m), i]));
+  const resolver = makeResolver(full, P, target);
 
   let table = null;
-  let last = { reason: 'done', optimal: null, nodes: 0 };
+  let last = probe;
+  const valueOf = (id) => (alg) => tracker.values(scoreOf(alg))[id];
   const polish = () => {
     if (!tracker.takeChanged() || left() < 1500) return;
     table ??= buildTable(P, moves);
@@ -263,18 +294,16 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
     const per = Math.min(400, Math.max(80, 900 / jobs.length));
     for (const [id, b] of jobs) {
       if (left() < 1000) break;
-      const value = (alg) => (alg.split(' ').length > maxLength ? [Infinity] : tracker.values(scoreOf(alg))[id]);
-      improve(table, b.alg, value, { deadline: Math.min(deadline - 500, Date.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
+      improve(table, b.alg, valueOf(id), { deadline: Math.min(deadline - 500, Date.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
     }
     tracker.takeChanged();
   };
 
-  // pohodlí: délky od nejkratší známé nahoru, v každém kole o jednu delší
+  // pohodlí: délky od délky nejlepšího po rychlosti střídavě kratší a delší
   const runComfort = (slice) => {
     const best = tracker.best('speed');
     const seq = best.alg.split(' ').map((t) => indexOf.get(t));
     if (seq.some((i) => i === undefined)) { comfort.done = true; return; }
-    // délky od délky nejlepšího po rychlosti střídavě kratší a delší (b, b−1, b+1, …)
     const low = tracker.shortest() ?? seq.length;
     const high = Math.min(maxLength, Math.max(seq.length, low + Math.max(4, extra + 1)));
     if (!comfort.lengths) {
@@ -289,29 +318,113 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
       onSolution: found, onProgress: (p) => handlers.onProgress({ depth: comfort.length, nodes: p.nodes }),
     });
     comfort.rounds++;
-    // nestihlo se: příště stejná délka s přísnější mezí (pokud se mezitím něco zlepšilo)
     if (res.reason === 'done' || comfort.retried) { comfort.lengths.shift(); comfort.retried = false; } else comfort.retried = true;
   };
 
+  // přeřešení úseků: pro každý pohled zvlášť, okna od 6 tahů, po marném průchodu delší
+  const views = ['efficient', 'balanced', 'speed'];
+  const MAX_WINDOW = 16;
+  const refine = Object.fromEntries(views.map((id) => [id, { w: 6, i: 0, alg: null, better: false }]));
+  let refineView = 0;
+  const runRefine = (slice) => {
+    const end = Date.now() + slice;
+    for (let tries = 0; tries < views.length && Date.now() < end; tries++) {
+      const id = views[refineView];
+      refineView = (refineView + 1) % views.length;
+      const b = tracker.best(id);
+      if (!b) continue;
+      const st = refine[id];
+      if (st.alg !== b.alg) { st.alg = b.alg; st.i = 0; st.exhausted = false; }
+      if (st.exhausted) continue;
+      let cur = b.alg.split(' ');
+      const value = valueOf(id);
+      let curValue = value(b.alg);
+      const s0 = startOf(b.pre);
+      const viewEnd = Math.min(end, Date.now() + slice / views.length);
+      while (Date.now() < viewEnd) {
+        const w = st.w;
+        if (w > Math.min(MAX_WINDOW, cur.length)) { st.exhausted = true; break; }
+        // úplné sledování: okna po celé délce; jinak jen konec algoritmu
+        const i = resolver.full ? st.i : cur.length - w;
+        if (resolver.full && i + w > cur.length) {
+          // průchod hotový: bez zlepšení → delší okna
+          if (!st.better) st.w++;
+          st.i = 0; st.better = false;
+          continue;
+        }
+        handlers.context = { label: `${w}`, task: 'refine', view: id, round: 0, current: cur.length };
+        handlers.onProgress({ depth: w, nodes: 0 });
+        const per = Math.max(300, Math.min(viewEnd - Date.now(), 800 * 1.7 ** Math.max(0, w - 8)));
+        // efektivita jen kratší; ostatní pohledy i stejně dlouhé, rozhodne hodnota
+        const opts = { maxLength: id === 'efficient' ? w - 1 : w + 2, maxResults: id === 'efficient' ? 1 : 20, timeLimit: per };
+        const candidates = resolver.full
+          ? resolver.window(s0, cur, i, w, opts).solutions.map((alg) => ({ alg, post: b.post }))
+          : resolver.tail(s0, cur, i, opts).solutions.map((x) => ({ alg: x.alg, post: posts[x.target] }));
+        let replaced = null;
+        for (const c of candidates) {
+          const text = simplify(P, moves, [...cur.slice(0, i), c.alg, ...cur.slice(i + w)].filter(Boolean).join(' '));
+          if (!text) continue;
+          const next = text.split(' ');
+          const v = value(text);
+          if (lexLess(v, curValue)) { replaced = { next, post: c.post }; curValue = v; }
+          else emit(next.join(' '), b.pre, c.post); // i horší varianty jsou platná řešení (do seznamu)
+        }
+        if (replaced) {
+          cur = replaced.next;
+          emit(cur.join(' '), b.pre, replaced.post);
+          st.alg = tracker.best(id)?.alg ?? st.alg;
+          st.better = true;
+          handlers.onProgress({ depth: w, nodes: 0 });
+          if (!resolver.full) st.w = 6;
+          if (st.alg !== cur.join(' ')) break; // nejlepší je teď jiné (např. s AUF)
+        } else if (resolver.full) st.i++;
+        else st.w++;
+      }
+    }
+  };
+
+  const SLICE = { staged: 90000, subset: 10000, full: 8000, comfort: 6000, refine: 6000 };
   for (let round = 0; left() > 300 && tasks.some((t) => !t.done); round++) {
     for (const task of tasks) {
       if (task.done || left() < 300) continue;
       const active = tasks.filter((t) => !t.done).length;
-      // úplná sada tahů dostane větší díl času (hledá kratší řešení), ostatní menší
-      const slice = Math.max(1000, task.full ? left() * (active > 1 ? 0.4 : 1) : Math.min(10000, left() / (2 * active)));
-      if (task.comfort) {
-        if (!tracker.best('speed')) {
+      const kind = task.staged ? 'staged' : task.comfort ? 'comfort' : task.refine ? 'refine' : task.full ? 'full' : 'subset';
+      const has = tracker.shortest() !== null;
+      // dokud není řešení, dostane hlavní díl první řešení; potom se střídají krátké díly
+      let cap = SLICE[kind];
+      if (kind === 'full' && has && fullTask.depth === undefined && (tracker.shortest() - (fullTask.resume ?? 0)) > 3) cap = 3000;
+      // bez řešení: menší sady jen krátce (jinak je řada na etapách)
+      if (kind === 'subset' && !has && round === 0) cap = 4000;
+      const slice = Math.max(800, Math.min(cap, kind === 'staged' ? left() * 0.6 : left() / Math.max(1, active - 1)));
+      if (task.staged) {
+        // řešení už mezitím našla jiná úloha: etapy nejsou potřeba
+        if (has) { task.done = true; continue; }
+        handlers.context = { label: task.label, task: 'staged', round };
+        const res = stagedSolve(full, roots[0].loc, {
+          deadline: Date.now() + slice, seed: shard ? shard.index : 0,
+          onStage: (info) => handlers.onProgress({ depth: info.length, nodes: 0, stage: info }),
+        });
+        if (res.alg) emit(res.alg, null, null);
+        task.done = true;
+        polish();
+        continue;
+      }
+      if (task.comfort || task.refine) {
+        if (!has) {
           // bez prvního řešení není co zlepšovat; když už nic jiného neběží, konec
-          if (tasks.every((t) => t === task || t.done)) task.done = true;
+          if (tasks.every((t) => t.comfort || t.refine || t.done)) task.done = true;
           continue;
         }
-        runComfort(slice);
+        if (task.comfort) runComfort(slice); else runRefine(slice);
+        // přeřešení úseků bez další práce: hotovo, jen když už nic jiného neběží
+        if (task.refine && views.every((v) => !tracker.best(v) || (refine[v].exhausted && refine[v].alg === tracker.best(v).alg))
+          && tasks.every((t) => t === task || t.done)) task.done = true;
         polish();
         continue;
       }
       // menší sady bez AUF: jeden cíl je pro hlubší hledání rychlejší (AUF řeší úplná sada)
       task.problem ??= make(task.moves, targets.slice(0, 1), Math.floor(nearLimit / 4));
-      handlers.context = { label: task.label, task: task.full ? 'full' : 'subset', round };
+      handlers.context = { label: task.label, task: kind, round };
       const first = task.depth === undefined;
       const common = { extraDepth: 0, maxResults: options.maxResults, timeLimit: slice, shard: task.shard, onSolution: found, onProgress: handlers.onProgress };
       const res = search(task.problem, task.full ? roots : roots.slice(0, 1), first
@@ -329,13 +442,11 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
       }
       if (first) {
         if (res.optimal !== null) { task.opt = res.optimal; task.depth = res.optimal + 1; }
-        // úplná sada příště pokračuje od délky, kterou nestihla (kratší nejsou)
-        else if (res.reason === 'time' && task.full && left() > 2000) {
+        else if (res.reason === 'time' && left() > 1000) {
           // příště od délky a větve, kde se skončilo (kratší ani hotové větve řešení nemají)
           task.skip = res.depth === task.resume ? Math.max(task.skip ?? 0, res.branch) : res.branch;
           task.resume = res.depth;
-        }
-        else task.done = true;
+        } else task.done = true;
       } else if (res.reason === 'time') task.done = true; // další délka by se už nestihla
       else task.depth += 1;
       if (task.depth > Math.min(maxLength, (task.opt ?? 0) + extra)) task.done = true;
@@ -346,6 +457,11 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
   }
   const optimal = tracker.shortest();
   const reason = last.reason === 'already-solved' || last.reason === 'unsolvable' ? last.reason
-    : optimal === null ? (last.reason === 'done' ? 'not-found' : last.reason) : left() <= 300 ? 'time' : 'done';
-  return { reason, optimal, nodes: last.nodes, solutions: [], cleared: proof.cleared };
+    : optimal === null ? (left() <= 300 ? 'time' : 'not-found') : left() <= 300 ? 'time' : 'done';
+  return { reason, optimal, nodes: last.nodes ?? 0, solutions: [], cleared: proof.cleared };
+}
+
+function lexLess(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
 }

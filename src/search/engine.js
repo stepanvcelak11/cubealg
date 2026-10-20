@@ -309,6 +309,21 @@ function buildNear(pieces, moveCount, invTrans, limit) {
   };
 }
 
+/**
+ * Pattern databáze pro vybranou skupinu sledovaných dílků (indexy do problem.pieces)
+ * vůči prvnímu cíli; pro etapové hledání (staged.js). Vrací vzdálenosti jako buildTable.
+ */
+export function groupTable(problem, indexes) {
+  problem.invTrans ??= Object.fromEntries(Object.entries(problem.trans).map(([type, t]) => {
+    const size = t.length / problem.moveCount;
+    const inv = new Uint8Array(t.length);
+    for (let m = 0; m < problem.moveCount; m++) for (let v = 0; v < size; v++) inv[m * size + t[m * size + v]] = v;
+    return [type, inv];
+  }));
+  const group = indexes.map((i) => ({ ...problem.pieces[i], oks: [problem.pieces[i].oks[0]] }));
+  return buildTable(group, problem.moveCount, problem.invTrans);
+}
+
 /** Převede stav kostky na vektor hodnot sledovaných dílků. */
 export function encode(problem, loc) {
   return Uint8Array.from(problem.pieces, (p) => problem.local[loc[p.ref]]);

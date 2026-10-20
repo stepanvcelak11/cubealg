@@ -99,6 +99,48 @@ function normalize(seq, moves, indexOf, orderOf, commutes) {
 }
 
 /**
+ * Zjednoduší algoritmus: sloučí tahy se stejným základem i přes komutující tahy
+ * (R R2 → R', L2 R L2 → R). Vrací null, když vznikne nepovolený tah.
+ * @param {object} puzzle
+ * @param {{base:string, amount:number}[]} moves povolené tahy
+ * @param {string} alg
+ */
+const SIMPLIFY = new WeakMap();
+export function simplify(puzzle, moves, alg) {
+  if (!alg) return '';
+  const indexOf = new Map(moves.map((m, i) => [`${m.base}${m.amount}`, i]));
+  const seq = puzzle.parseAlg(alg).map((m) => indexOf.get(`${m.base}${m.amount}`));
+  if (seq.some((i) => i === undefined)) return null;
+  let ctx = SIMPLIFY.get(moves);
+  if (!ctx) {
+    const perms = moves.map((m) => puzzle.perm(m));
+    const n = puzzle.size;
+    const memo = new Map();
+    ctx = (a, b) => {
+      const key = a * 1024 + b;
+      if (!memo.has(key)) { const p = perms[a], q = perms[b]; let same = true; for (let k = 0; k < n && same; k++) same = q[p[k]] === p[q[k]]; memo.set(key, same); }
+      return memo.get(key);
+    };
+    SIMPLIFY.set(moves, ctx);
+  }
+  const commutes = ctx;
+  const out = normalize(seq, moves, indexOf, (base) => puzzle.orderOf(base), commutes);
+  if (!out) return null;
+  // komutující sousedy do kanonického pořadí (U2 D' i D' U2 je totéž)
+  for (let swapped = true; swapped;) {
+    swapped = false;
+    for (let i = 0; i + 1 < out.length; i++) {
+      const a = moves[out[i]], b = moves[out[i + 1]];
+      if (a.base !== b.base && puzzle.redundant(a, b) && commutes(out[i], out[i + 1])) {
+        [out[i], out[i + 1]] = [out[i + 1], out[i]];
+        swapped = true;
+      }
+    }
+  }
+  return out.map((i) => puzzle.moveToString(moves[i])).join(' ');
+}
+
+/**
  * Vylepšování algoritmu podle cíle `value` (nižší = lepší; pole se porovnává
  * lexikograficky). Iterované lokální hledání: stoupá k lepším sousedům (výměna
  * úseku), a když se zasekne v lokálním optimu, algoritmus „postrčí“ náhodnou
