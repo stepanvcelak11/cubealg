@@ -584,6 +584,8 @@ function startSearch() {
     onProgress: (p) => {
       $('status').textContent = p.phase === 'tables'
         ? `Připravuji heuristiku ${p.table}/${p.tables}…`
+        : p.phase === 'quick'
+        ? `Rychlé hledání s tahy ${p.label} (${p.step}/${p.steps}) · nalezeno ${ui.results.size}…`
         : `Hloubka ${p.depth} · ${p.nodes.toLocaleString('cs')} uzlů · nalezeno ${p.found} · ${(p.elapsed / 1000).toFixed(1)} s`;
     },
     onSolutions: (items) => {

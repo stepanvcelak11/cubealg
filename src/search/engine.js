@@ -8,6 +8,12 @@
 // až ~4 dílků a obsahuje přesnou vzdálenost k cíli pro tuto skupinu
 // (spočtenou zpětným BFS jen s povolenými tahy), takže je přípustná.
 //
+// Navíc tabulka „blízko cíle“: všechny stavy sledovaných dílků do vzdálenosti K
+// od cíle (zpětné BFS, dokud se vejde do limitu). Stav mimo ni je od cíle dál než
+// K, takže heuristika je max(databáze, K + 1) a v posledních K tazích se prohledávají
+// jen stavy z tabulky (setkání uprostřed). U dlouhých algoritmů s celou kostkou
+// (např. PLL s mnoha druhy tahů) to ušetří většinu práce.
+//
 // Hledání nevrací jen optimum: projde délky optimum … optimum + extraDepth
 // a vrátí všechny nalezené sekvence, které se pak řadí podle ergonomie.
 
@@ -32,6 +38,7 @@ function typeInfo(puzzle) {
 }
 
 const DEFAULT_TABLE_LIMIT = 24 ** 4;
+const DEFAULT_NEAR_LIMIT = 1_500_000;
 const UNREACHABLE = 255;
 
 /**
@@ -42,9 +49,10 @@ const UNREACHABLE = 255;
  * @param {Uint8Array} [p.target] cílový stav B
  * @param {{base:string, amount:number}[]} p.moves povolené tahy
  * @param {number} [p.tableLimit] max. velikost jedné pattern databáze
+ * @param {number} [p.nearLimit] max. počet stavů v tabulce „blízko cíle“ (0 = bez ní)
  * @param {(info:{table:number, tables:number}) => void} [p.onTable]
  */
-export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), moves, tableLimit = DEFAULT_TABLE_LIMIT, onTable }) {
+export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable }) {
   const { SLOT_OF, ORI_AT } = puzzle;
   const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
   const moveCount = moves.length;
@@ -93,9 +101,11 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   const tracked = pieces.filter((p) => movingTypes.has(p.kind));
   const groups = makeGroups(tracked, tableLimit);
   const tables = groups.map((g, i) => {
-    onTable?.({ table: i + 1, tables: groups.length });
+    onTable?.({ table: i + 1, tables: groups.length + 1 });
     return buildTable(g, moveCount, invTrans);
   });
+  onTable?.({ table: groups.length + 1, tables: groups.length + 1 });
+  const near = buildNear(pieces, moveCount, invTrans, nearLimit);
 
   // Kanonické pořadí tahů a jejich zápis.
   const redundant = new Uint8Array(moveCount * moveCount);
@@ -105,7 +115,7 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
 
   return {
     puzzle, local: LOCAL,
-    pieces, tables, trans, moves, moveCount, redundant,
+    pieces, tables, near, trans, moves, moveCount, redundant,
     names: moves.map((m) => puzzle.moveToString(m)),
     pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
   };
@@ -184,6 +194,103 @@ function buildTable(group, moveCount, invTrans) {
   return { pieces: group.map((p) => p.name), sizes, dist };
 }
 
+/**
+ * Tabulka „blízko cíle“: vzdálenosti všech stavů (vektorů hodnot sledovaných dílků)
+ * do vzdálenosti radius od cíle. Hašovací tabulka s otevřeným adresováním, klíče
+ * jsou vektory po n bajtech. Vrací null, když se nevejde ani první vrstva.
+ */
+function buildNear(pieces, moveCount, invTrans, limit) {
+  const n = pieces.length;
+  if (!n || limit <= 0) return null;
+  // cílové stavy = kartézský součin povolených hodnot dílků
+  const okValues = pieces.map((p) => [...p.ok.keys()].filter((v) => p.ok[v] === 1));
+  let goals = 1;
+  for (const vs of okValues) { goals *= vs.length; if (goals > limit / 4) return null; }
+
+  // velikost: mocnina dvou, zaplnění nejvýš ~70 %, klíče nejvýš ~48 MB
+  let cap = 1;
+  while (cap < limit / 0.7 && cap * 2 * n <= 48 * 2 ** 20) cap *= 2;
+  limit = Math.min(limit, Math.floor(cap * 0.7));
+  const mask = cap - 1;
+  const keys = new Uint8Array(cap * n);
+  const dist = new Uint8Array(cap).fill(UNREACHABLE);
+  let count = 0;
+  const hash = (v, off) => {
+    let h = 2166136261;
+    for (let i = 0; i < n; i++) h = Math.imul(h ^ v[off + i], 16777619);
+    return (h ^ (h >>> 15)) & mask;
+  };
+  // najde slot klíče (nebo prázdný slot, kam patří)
+  const slot = (v, off) => {
+    let i = hash(v, off);
+    for (;;) {
+      if (dist[i] === UNREACHABLE) return i;
+      let same = true;
+      const k = i * n;
+      for (let j = 0; j < n; j++) if (keys[k + j] !== v[off + j]) { same = false; break; }
+      if (same) return i;
+      i = (i + 1) & mask;
+    }
+  };
+
+  // vrstva 0: cílové stavy
+  let frontier = new Uint8Array(goals * n);
+  {
+    const digits = new Array(n).fill(0);
+    for (let g = 0; g < goals; g++) {
+      let r = g;
+      for (let i = n - 1; i >= 0; i--) { const len = okValues[i].length; digits[i] = okValues[i][r % len]; r = Math.floor(r / len); }
+      frontier.set(digits, g * n);
+      const i = slot(frontier, g * n);
+      if (dist[i] === UNREACHABLE) { keys.set(digits, i * n); dist[i] = 0; count++; }
+    }
+  }
+  let radius = 0;
+  const invs = pieces.map((p) => invTrans[p.kind]);
+  const sizes = pieces.map((p) => p.size);
+  const pred = new Uint8Array(n);
+  for (;;) {
+    const states = frontier.length / n;
+    // další vrstva se musí vejít celá, jinak by tabulka neplatila pro vzdálenost radius + 1
+    let next = new Uint8Array(Math.min(states * moveCount, limit) * n);
+    let added = 0, full = false;
+    for (let s = 0; s < states && !full; s++) {
+      const off = s * n;
+      for (let m = 0; m < moveCount; m++) {
+        for (let i = 0; i < n; i++) pred[i] = invs[i][m * sizes[i] + frontier[off + i]];
+        const at = slot(pred, 0);
+        if (dist[at] !== UNREACHABLE) continue;
+        if (count >= limit) { full = true; break; }
+        keys.set(pred, at * n);
+        dist[at] = radius + 1;
+        count++;
+        if (added * n >= next.length) { const bigger = new Uint8Array(next.length * 2); bigger.set(next); next = bigger; }
+        next.set(pred, added * n);
+        added++;
+      }
+    }
+    if (full) {
+      // nedokončenou vrstvu zahodit
+      for (let i = 0; i < cap; i++) if (dist[i] === radius + 1) dist[i] = UNREACHABLE - 1;
+      break;
+    }
+    if (!added) break;
+    radius += 1;
+    frontier = next.subarray(0, added * n);
+  }
+  // Pozn.: sloty z nedokončené vrstvy (UNREACHABLE - 1) zůstávají obsazené, aby
+  // nepřerušily řetězce sond; při hledání se berou jako „mimo tabulku“.
+  return {
+    radius,
+    /** Vzdálenost stavu od cíle, nebo -1 (dál než radius). */
+    get(v) {
+      const d = dist[slot(v, 0)];
+      return d <= radius ? d : -1;
+    },
+    size: count,
+  };
+}
+
 /** Převede stav kostky na vektor hodnot sledovaných dílků. */
 export function encode(problem, loc) {
   return Uint8Array.from(problem.pieces, (p) => problem.local[loc[p.ref]]);
@@ -204,7 +311,8 @@ export function encode(problem, loc) {
 export function search(problem, start, {
   maxLength = 12, extraDepth = 2, maxResults = 500, timeLimit = 15000, onSolution, onProgress,
 } = {}) {
-  const { pieces, tables, trans, moveCount, redundant, names, pieceIndex } = problem;
+  const { pieces, tables, near, trans, moveCount, redundant, names, pieceIndex } = problem;
+  const nearRadius = near ? near.radius : 0;
   const n = pieces.length;
   const t0 = Date.now();
   const solutions = [];
@@ -229,14 +337,22 @@ export function search(problem, start, {
     return h;
   };
 
+  // přesnější dolní odhad: tabulka blízko cíle (mimo ni je vzdálenost > radius)
+  const estimate = (v) => {
+    const h = heuristic(v);
+    if (!near) return h;
+    const d = near.get(v);
+    return d >= 0 ? d : Math.max(h, nearRadius + 1);
+  };
+
   const root = encode(problem, start);
   const result = (reason, extra = {}) => ({
     reason, solutions, nodes, elapsed: Date.now() - t0, ...extra,
   });
   let nodes = 0;
   if (isGoal(root)) return result('already-solved', { optimal: 0 });
-  const h0 = heuristic(root);
-  if (h0 >= UNREACHABLE) return result('unsolvable');
+  const h0 = estimate(root);
+  if (heuristic(root) >= UNREACHABLE) return result('unsolvable');
 
   const stack = Array.from({ length: maxLength + 1 }, () => new Uint8Array(n));
   const path = new Int16Array(maxLength);
@@ -268,6 +384,11 @@ export function search(problem, start, {
       // Pokud cíl splní už kratší prefix, prodlužování nemá smysl.
       if (goal) continue;
       if (heuristic(next) > remaining) continue;
+      // posledních nearRadius tahů: jen stavy z tabulky blízko cíle
+      if (remaining <= nearRadius) {
+        const d = near.get(next);
+        if (d < 0 || d > remaining) continue;
+      }
       dfs(depth + 1, m);
       if (stopped) return;
     }
