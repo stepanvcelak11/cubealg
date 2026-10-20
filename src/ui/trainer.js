@@ -69,9 +69,11 @@ function showCase() {
   // případ se ukáže tak, jak byla kostka držená při hledání algoritmu
   if (cube.setHold && cube.hold !== (a.task.hold ?? '')) cube.setHold(a.task.hold ?? '');
   const side = model.deserialize(a.task.colorsA);
-  const { loc } = side ? model.build(side, a.task.constraints) : { loc: null };
+  const sideB = model.deserialize(a.task.colorsB);
+  const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints) : side ? model.build(side, a.task.constraints) : { loc: null };
+  const { loc } = built;
   if (loc) {
-    cube.render(model.stateStickers(loc, a.task.constraints));
+    cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints));
     if (model.overlay) cube.setOverlay(model.overlay(loc));
   }
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';

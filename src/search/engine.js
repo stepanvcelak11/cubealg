@@ -65,16 +65,22 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
 
   // Sledované dílky a pro každý množina hodnot, které cíl splňují.
   const pieces = [];
+  // „barva na místě“ ({ allow }: povolené polohy ref vůči prvnímu cíli) – pro další
+  // cíle (AUF) se polohy přenesou stejně, jako se liší cíle: target[0][k] → t[k]
+  const moveTo = targets.map((t) => { const m = new Uint8Array(puzzle.size); for (let k = 0; k < puzzle.size; k++) m[targets[0][k]] = t[k]; return m; });
   for (const slot of puzzle.slots) {
     let type = constraints[slot.name] ?? 'ignore';
+    const allow = typeof type === 'object' && type ? type.allow : null;
+    if (allow) type = 'allow';
     // dílek s jedinou nálepkou (střed) nemá natočení
-    if (slot.facelets.length === 1) type = type === 'ignore' || type === 'orientation' ? 'ignore' : 'solved';
+    if (slot.facelets.length === 1 && !allow) type = type === 'ignore' || type === 'orientation' ? 'ignore' : 'solved';
     if (type === 'ignore') continue;
     const ref = slot.facelets[0];
     const positions = TYPE_POSITIONS[slot.type];
     // pro každý cíl: které hodnoty dílku ho splňují
-    const oks = targets.map((t) => Uint8Array.from(positions, (pos) => {
+    const oks = targets.map((t, ti) => Uint8Array.from(positions, (pos) => {
       const goalPos = t[ref];
+      if (allow) return allow.some((a) => moveTo[ti][a] === pos);
       if (type === 'solved') return pos === goalPos;
       if (type === 'permutation') return SLOT_OF[pos] === SLOT_OF[goalPos];
       return ORI_AT[pos] === ORI_AT[goalPos];

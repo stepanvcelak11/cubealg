@@ -6,6 +6,8 @@
 //   orientation  – dílek správně natočený, na libovolném místě
 //                  (rohy vůči U/D, hrany klasická EO vůči F/B)
 //   ignore       – na dílku nezáleží
+//   { allow }    – referenční nálepka dílku musí ležet na některé z pozic
+//                  („barva na místě“ z částečně vybarveného cíle, core/task.js)
 //
 // Dílek je určen svým názvem ve složené kostce („UF“, „DFR“, „U“ = střed).
 // U středů se orientace neřeší (orientation = ignore, solved = permutation).
@@ -42,8 +44,13 @@ export function compileGoal(constraints, target, puzzle) {
   const stickerEq = []; // dvojice [nálepka, pozice]
   const slotEq = [];    // dvojice [referenční nálepka, slot]
   const oriEq = [];     // dvojice [referenční nálepka, orientace]
+  const allowed = [];   // [referenční nálepka, Set povolených poloh] („barva na místě“)
   for (const [name, type] of Object.entries(constraints)) {
     if (type === 'ignore') continue;
+    if (type && typeof type === 'object' && type.allow) {
+      allowed.push([P.slotByName(name).facelets[0], new Set(type.allow)]);
+      continue;
+    }
     if (!CONSTRAINT_TYPES.includes(type)) throw new Error(`Neznámé omezení „${type}“`);
     const piece = P.slotByName(name);
     const ref = piece.facelets[0];
@@ -60,6 +67,7 @@ export function compileGoal(constraints, target, puzzle) {
     for (let i = 0; i < se.length; i += 2) if (loc[se[i]] !== se[i + 1]) return false;
     for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) return false;
     for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) return false;
+    for (const [ref, set] of allowed) if (!set.has(loc[ref])) return false;
     return true;
   }
 
@@ -69,6 +77,7 @@ export function compileGoal(constraints, target, puzzle) {
     for (let i = 0; i < se.length; i += 2) if (loc[se[i]] !== se[i + 1]) n++;
     for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) n++;
     for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) n++;
+    for (const [ref, set] of allowed) if (!set.has(loc[ref])) n++;
     return n;
   }
 

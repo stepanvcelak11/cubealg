@@ -60,7 +60,10 @@ function examplePlayer(task) {
   try {
     model = labModel(task.puzzle ?? '333');
     const side = model.deserialize(task.colorsA);
-    start = side && model.build(side, task.constraints ?? {}).loc;
+    const sideB = model.deserialize(task.colorsB);
+    const built = side && sideB ? model.buildTask(side, sideB, task.constraints ?? {}) : side ? model.build(side, task.constraints ?? {}) : null;
+    start = built?.loc;
+    if (built?.constraints) task = { ...task, constraints: built.constraints };
     if (!start) return null;
     shown = model.steps(task.alg);
     steps = task.hold ? holdFor(model, task.hold).toModel(shown) : shown;

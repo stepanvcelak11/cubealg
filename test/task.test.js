@@ -135,3 +135,28 @@ test('completeCorner doplní třetí barvu rohu', async () => {
   }
   assert.deepEqual(completeCorner(blankColors(), 'URF'), blankColors());
 });
+
+test('částečně vybarvené dílky: barva na místě (orientace bez ohledu na to, který dílek)', async () => {
+  const { taskOps, EMPTY } = await import('../src/core/task.js');
+  const { CUBE3 } = await import('../src/puzzles/cube3.js');
+  const { prepare, search } = await import('../src/search/engine.js');
+  const { compileGoal } = await import('../src/core/constraints.js');
+  const { MoveSet } = await import('../src/core/moveset.js');
+  const ops = taskOps(CUBE3);
+  const edges = ['UF', 'UR', 'UB', 'UL'];
+  const onlyWhite = (colors) => colors.map((c) => (c === 'U' ? c : EMPTY));
+  // cíl: jen bílé nálepky hran nahoře; výchozí: totéž po „F R“ (bílé jinde)
+  const B = onlyWhite(ops.homeColors(edges));
+  const A = onlyWhite(ops.moveColors(ops.homeColors(edges), 'F R'));
+  const t = ops.buildTask(A, B, Object.fromEntries(CUBE3.slots.map((s) => [s.name, 'ignore'])));
+  assert.deepEqual(t.errors, []);
+  for (const e of edges) assert.ok(t.constraints[e].allow, e);
+  const problem = prepare({ puzzle: CUBE3, constraints: t.constraints, target: t.target, moves: new MoveSet({ bases: ['R', 'U', 'F'] }).moves() });
+  const res = search(problem, t.loc, { maxLength: 4, extraDepth: 0 });
+  assert.equal(res.optimal, 2);
+  const goal = compileGoal(t.constraints, t.target, CUBE3);
+  for (const alg of res.solutions) assert.ok(goal.test(CUBE3.applyAlg(t.loc, alg)), alg);
+  // nesedí počet: jen tři bílé nálepky na hranách → srozumitelná chyba
+  const three = [...B]; three[CUBE3.slotByName('UL').facelets[0]] = EMPTY;
+  assert.match(ops.buildTask(A, three, {}).errors.join(), /barva U/);
+});

@@ -14,6 +14,8 @@ import { SCAN as PYRAMINX_SCAN } from '../puzzles/pyraminx.js';
 import { STYLE_OF } from './cubeview.js';
 
 const CACHE = new Map();
+// „barva na místě“ ({ allow }) se kreslí tečkovaně jako orientace
+const styleOf = (c) => (c && typeof c === 'object' ? 'dotted' : STYLE_OF[c]);
 
 /** Model pro hlavolam (podle id). */
 export function labModel(id = '333') {
@@ -45,6 +47,8 @@ function permModel(P) {
     pieceAtSticker: (side, pos) => ops.pieceAt(side, P.slots[P.SLOT_OF[pos]].name),
     identify: (side) => ops.identifyPieces(side),
     build: (side, constraints, where) => ops.buildStart(side, constraints, where),
+    /** Úplné zadání z obou stran (i částečně vybarvené dílky), viz core/task.js. */
+    buildTask: (A, B, constraints) => ops.buildTask(A, B, constraints),
     /** Nálepky pro pohled podle vybarvení. */
     stickers(side, constraints) {
       const { pieces } = ops.identifyPieces(side);
@@ -60,7 +64,7 @@ function permModel(P) {
       const out = new Array(P.size);
       for (let k = 0; k < P.size; k++) {
         const name = P.slots[P.SLOT_OF[k]].name;
-        out[loc[k]] = { color: P.stickerFace[k], css: css[P.stickerFace[k]], style: STYLE_OF[constraints[name]] ?? 'none' };
+        out[loc[k]] = { color: P.stickerFace[k], css: css[P.stickerFace[k]], style: styleOf(constraints[name]) ?? 'none' };
       }
       return out;
     },
@@ -223,6 +227,14 @@ function sq1Model(P) {
     pieceAtSticker: (side, pos) => ops.pieceAtSticker(side, pos),
     identify: (side) => ops.identify(side),
     build: (side, constraints, where) => ops.build(side, constraints, where),
+    buildTask(A, B, constraints) {
+      const s = ops.build(A, constraints, 'výchozí straně'), t = ops.build(B, constraints, 'cílové straně');
+      return {
+        loc: s.loc && t.loc ? s.loc : null, target: t.loc, constraints,
+        tracked: Object.keys(constraints).filter((k) => constraints[k] && constraints[k] !== 'ignore'),
+        errors: [...s.errors.map((e) => `Výchozí: ${e}`), ...t.errors.map((e) => `Cíl: ${e}`)],
+      };
+    },
     stickers(side, constraints) {
       const { pieces } = ops.identify(side);
       const known = new Map();

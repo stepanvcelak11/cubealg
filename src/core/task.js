@@ -3,6 +3,10 @@
 //   vybarvení   – barva (písmeno stěny) každé nálepky, 'X' = nevybarveno
 //   omezení     – u každého dílku styl, co se má vyřešit
 //                 (solved = plná, permutation = čárkovaná, orientation = tečkovaná)
+//   částečně vybarvený dílek (jen některé nálepky) – v cíli znamená „tahle barva
+//                 má být tady“ (zachovat orientaci barvy, na tom, který dílek to
+//                 je, nezáleží); ve výchozí straně se za něj dosadí libovolný dílek
+//                 s těmi barvami (buildTask)
 //
 // Z vybarvení se rozpoznají dílky a sestaví se úplný stav pro hledání;
 // nesledované dílky se doplní libovolně (na výsledek nemají vliv).
@@ -57,15 +61,20 @@ function makeOps(P) {
    * @returns {{pieces: Map<string, {slot: number, loc: number[]}>, errors: string[]}}
    *   pieces: název dílku → slot, kde leží, a pozice jeho nálepek (v pořadí slotu domova)
    */
-  function identifyPieces(colors) {
+  function identifyPieces(colors, { partial = false } = {}) {
     const pieces = new Map();
     const errors = [];
+    const partials = []; // { slot, colors } – částečně vybarvené sloty (jen s partial)
     for (const slot of slots) {
       const cs = slot.facelets.map((f) => colors[f]);
       const painted = cs.filter((c) => c !== EMPTY).length;
       if (painted === 0) continue;
       const where = slot.name;
-      if (painted < cs.length) { errors.push(`Dílek na pozici ${where} není vybarvený celý`); continue; }
+      if (painted < cs.length) {
+        if (partial) partials.push({ slot, colors: cs });
+        else errors.push(`Dílek na pozici ${where} není vybarvený celý`);
+        continue;
+      }
       const piece = SIGNATURE.get(signature(slot.type, cs));
       if (!piece) { errors.push(`Na pozici ${where} je dílek s barvami ${cs.join('')}, takový neexistuje`); continue; }
       const n = piece.facelets.length;
@@ -78,7 +87,111 @@ function makeOps(P) {
       if (pieces.has(piece.name)) { errors.push(`Dílek ${piece.name} je vybarvený víckrát`); continue; }
       pieces.set(piece.name, { slot: slot.id, loc });
     }
-    return { pieces, errors };
+    return { pieces, errors, partials };
+  }
+
+  /** Poloha referenční nálepky dílku, když jeho nálepka j leží na pozici pos. */
+  const refAt = (pos, j) => {
+    const slot = slots[SLOT_OF[pos]];
+    const n = slot.facelets.length;
+    const q = slot.facelets.indexOf(pos);
+    return slot.facelets[(((q - j) % n) + n) % n];
+  };
+
+  /**
+   * Úplné zadání z obou stran: výchozí stav, cíl a omezení. Celé dílky v cíli mají
+   * styl z `constraints`; částečně vybarvené sloty v cíli jsou „barva na místě“:
+   * všechny dílky s tou barvou (daného typu, které v cíli nejsou celé) ji musí mít
+   * na některém z těch míst – omezení { allow: [povolené polohy referenční nálepky] }.
+   * Částečně vybarvené sloty ve výchozí straně se obsadí dílky s těmi barvami.
+   * @returns {{loc: Uint8Array|null, target: Uint8Array|null, constraints: object, errors: string[], tracked: string[]}}
+   */
+  function buildTask(colorsA, colorsB, constraints) {
+    const errors = [];
+    const B = identifyPieces(colorsB, { partial: true });
+    errors.push(...B.errors.map((e) => `Cíl: ${e}`));
+    const out = Object.fromEntries(Object.entries(constraints).map(([k, v]) => [k, B.pieces.has(k) ? v : (v === 'ignore' ? v : 'ignore')]));
+    // barva na místě: skupiny (typ, barva) → povolené pozice nálepky té barvy
+    const groups = new Map();
+    for (const { slot, colors } of B.partials) {
+      slot.facelets.forEach((f, i) => {
+        if (colors[i] === EMPTY) return;
+        const key = `${slot.type}:${colors[i]}`;
+        if (!groups.has(key)) groups.set(key, { type: slot.type, color: colors[i], at: [] });
+        groups.get(key).at.push(f);
+      });
+    }
+    const allow = new Map(); // název dílku → Set povolených poloh ref
+    for (const g of groups.values()) {
+      const candidates = slots.filter((s) => s.type === g.type && !B.pieces.has(s.name) && s.facelets.some((k) => FACE[k] === g.color));
+      if (candidates.length !== g.at.length) {
+        errors.push(`Cíl: barva ${g.color} je vybarvená na ${g.at.length} ${g.at.length === 1 ? 'místě' : 'místech'} (jen část dílku), ale volných dílků s touto barvou je ${candidates.length} – vybarvi ji u všech, nebo dílky celé`);
+        continue;
+      }
+      for (const piece of candidates) {
+        const j = piece.facelets.findIndex((k) => FACE[k] === g.color);
+        const set = new Set(g.at.map((pos) => refAt(pos, j)));
+        const prev = allow.get(piece.name);
+        allow.set(piece.name, prev ? new Set([...prev].filter((r) => set.has(r))) : set);
+      }
+    }
+    for (const [name, set] of allow) {
+      if (!set.size) errors.push(`Cíl: dílek ${name} nemůže mít všechny vybarvené barvy na místech, kde jsou`);
+      out[name] = { allow: [...set] };
+    }
+    const tracked = trackedPieces(out);
+
+    // výchozí strana: celé dílky + částečné sloty obsazené dílky s těmi barvami
+    const A = identifyPieces(colorsA, { partial: true });
+    errors.push(...A.errors.map((e) => `Výchozí: ${e}`));
+    const placed = new Map(A.pieces);
+    const fits = (piece, slot, colors) => {
+      if (piece.type !== slot.type) return -1;
+      const n = slot.facelets.length;
+      for (let t = 0; t < n; t++) if (pieceColorsIn(piece.name, slot.name, t).every((c, i) => colors[i] === EMPTY || colors[i] === c)) return t;
+      return -1;
+    };
+    // přiřazení s návratem: nejdřív sledované dílky
+    const order = A.partials;
+    const free = slots.filter((s) => !placed.has(s.name)).sort((a, b) => Number(tracked.includes(b.name)) - Number(tracked.includes(a.name)));
+    const used = new Set();
+    const assign = (i) => {
+      if (i === order.length) return true;
+      const { slot, colors } = order[i];
+      for (const piece of free) {
+        if (used.has(piece.name)) continue;
+        const t = fits(piece, slot, colors);
+        if (t < 0) continue;
+        used.add(piece.name);
+        placed.set(piece.name, { slot: slot.id, loc: piece.facelets.map((_, k) => slot.facelets[(t + k) % slot.facelets.length]) });
+        if (assign(i + 1)) return true;
+        used.delete(piece.name);
+        placed.delete(piece.name);
+      }
+      return false;
+    };
+    if (order.length && !assign(0)) errors.push('Výchozí: částečně vybarvené dílky nejde obsadit (barvy nesedí nebo se opakují)');
+    for (const name of tracked) if (!placed.has(name)) errors.push(`Výchozí: dílek ${name} chybí`);
+    if (errors.length) return { loc: null, target: null, constraints: out, errors, tracked };
+
+    const fill = (pieces) => {
+      const loc = new Uint8Array(N);
+      const usedSlots = new Set();
+      for (const [name, p] of pieces) {
+        slotByName(name).facelets.forEach((k, i) => { loc[k] = p.loc[i]; });
+        usedSlots.add(p.slot);
+      }
+      for (const type of new Set(slots.map((s) => s.type))) {
+        const freeSlots = slots.filter((s) => s.type === type && !usedSlots.has(s.id));
+        const freePieces = slots.filter((s) => s.type === type && !pieces.has(s.name));
+        freePieces.forEach((piece, i) => piece.facelets.forEach((k, j) => { loc[k] = freeSlots[i].facelets[j]; }));
+      }
+      return loc;
+    };
+    const loc = fill(placed);
+    const invalid = placed.size === slots.length && P.validate?.(loc);
+    if (invalid) return { loc: null, target: null, constraints: out, errors: [`Výchozí: ${invalid}`], tracked };
+    return { loc, target: fill(B.pieces), constraints: out, errors, tracked };
   }
 
   /**
@@ -232,13 +345,13 @@ function makeOps(P) {
 
   return {
     puzzle: P, EMPTY,
-    blankColors, homeColors, moveColors, identifyPieces, trackedPieces, buildStart,
+    blankColors, homeColors, moveColors, identifyPieces, trackedPieces, buildStart, buildTask,
     findPiece, removePiece, placePiece, twistAt, pieceAt, pieceColorsIn, setSlot,
     completePiece, completeCorner: completePiece, paintSticker,
   };
 }
 
-/** Sledované dílky (s jiným stylem než „nezáleží“). */
+/** Sledované dílky (s jiným stylem než „nezáleží“; i „barva na místě“ { allow }). */
 export function trackedPieces(constraints) {
   return Object.entries(constraints).filter(([, t]) => t && t !== 'ignore').map(([name]) => name);
 }

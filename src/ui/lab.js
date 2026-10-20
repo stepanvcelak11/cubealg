@@ -320,8 +320,8 @@ function renderStyles() {
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(ui.style === type));
     b.onclick = () => {
-      // Opakované klepnutí na zvolený styl přepne na nástroj styl (klepání na dílky).
-      if (ui.style === type || styleTool) ui.paint.B = null;
+      // Volba stylu přepne na nástroj styl: klepnutí na dílek mu dá tento styl.
+      ui.paint.B = null;
       ui.style = type;
       renderStyles();
       renderPalette('B');
@@ -336,15 +336,10 @@ function renderCubes() {
   renderView(cubeB, model.stickers(ui.B, ui.constraints), ui.B.state);
 }
 
+/** Zadání pro hledání: výchozí stav, cíl a omezení (i „barva na místě“ z částečných dílků). */
 function taskInfo() {
-  const start = model.build(ui.A, ui.constraints, 'výchozí straně');
-  const target = model.build(ui.B, ui.constraints, 'cílové straně');
-  return {
-    tracked: trackedPieces(ui.constraints),
-    loc: start.loc && target.loc ? start.loc : null,
-    target: target.loc,
-    errors: [...start.errors.map((e) => `Výchozí: ${e}`), ...target.errors.map((e) => `Cíl: ${e}`)],
-  };
+  const t = model.buildTask(ui.A, ui.B, ui.constraints);
+  return { tracked: t.tracked, loc: t.loc, target: t.target, constraints: t.constraints, errors: t.errors };
 }
 
 function renderTaskStatus() {
@@ -355,6 +350,13 @@ function renderTaskStatus() {
     node = el('span', { className: 'warn', textContent: 'Vybarvi na obou stranách dílky, které se mají vyřešit (nebo v cíli klepni stylem na dílek).' });
   } else if (errors.length) {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
+    // dílky z cíle, které ve výchozí straně chybí a jejich místo je volné: doplnit jedním klepnutím
+    const missing = tracked.filter((n) => !model.findPiece(ui.A, n) && model.homeEmpty(ui.A, n));
+    if (missing.length && model.kind === 'perm') {
+      const fix = el('button', { type: 'button', className: 'chip fix-missing', textContent: `Doplnit ${missing.length} chybějící do výchozí strany (na svá místa)` });
+      fix.onclick = () => { snapshot(); for (const n of missing) ui.A = model.placeHome(ui.A, n); taskChanged(); };
+      node = el('span', {}, node, ' ', fix);
+    }
   } else {
     node = el('span', { className: 'good', textContent: `✓ ${pieces.length} dílků: ${pieces.join(' ')}` });
   }
@@ -633,7 +635,7 @@ function searchUi(running) {
 const num = (id, min, max) => Math.min(max, Math.max(min, Math.round(Number($(id).value) || min)));
 
 function startSearch() {
-  const { tracked, loc, target, errors } = taskInfo();
+  const { tracked, loc, target, errors, constraints } = taskInfo();
   if (errors.length || !loc) { $('status').textContent = `Zadání není v pořádku: ${errors[0]}`; return; }
   if (!tracked.some((n) => !model.centers.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
   const moveSet = currentMoveSet();
@@ -670,7 +672,7 @@ function startSearch() {
   const aufMoves = useAuf ? toModelSteps([1, -1, 2].map((amount) => ({ base: 'U', amount }))) : null;
   const toHeld = (alg) => (alg && ui.hold ? held().toHeldString(alg) : alg);
   client.start({
-    puzzle: model.id, start: loc, target, constraints: ui.constraints, moves: moveSet.engineMoves, options: opts, ergonomics: ui.ergo,
+    puzzle: model.id, start: loc, target, constraints, moves: moveSet.engineMoves, options: opts, ergonomics: ui.ergo,
     held: model.kind === 'perm' ? moveSet.moves : undefined,
     auf: aufMoves ? { pre: aufMoves, post: aufMoves } : null,
     seeds,
@@ -953,7 +955,7 @@ function playerSteps() {
 }
 
 function renderPlayer() {
-  const { loc, target, errors } = taskInfo();
+  const { loc, target, errors, constraints } = taskInfo();
   const detail = $('detail');
   const saveBtn = $('p-save');
   const steps = playerSteps();
@@ -964,7 +966,7 @@ function renderPlayer() {
     return;
   }
   if (steps === null) {
-    renderView(cubeP, model.stateStickers(loc, ui.constraints), loc);
+    renderView(cubeP, model.stateStickers(loc, constraints), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: 'Algoritmus nejde přečíst.' }));
     return;
   }
@@ -975,11 +977,11 @@ function renderPlayer() {
     current = model.applySteps(loc, real.slice(0, ui.step));
     end = model.applySteps(loc, real);
   } catch (e) {
-    renderView(cubeP, model.stateStickers(loc, ui.constraints), loc);
+    renderView(cubeP, model.stateStickers(loc, constraints), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: `Algoritmus nejde provést: ${e.message}` }));
     return;
   }
-  renderView(cubeP, model.stateStickers(current, ui.constraints), current);
+  renderView(cubeP, model.stateStickers(current, constraints), current);
   if (!steps.length) {
     detail.replaceChildren(el('p', { className: 'hint', textContent: 'Vyber řešení ze seznamu nebo napiš vlastní algoritmus.' }));
     return;
@@ -992,7 +994,7 @@ function renderPlayer() {
   saveBtn.classList.toggle('on', isSaved);
 
   const moveSet = currentMoveSet();
-  const goal = model.goal(ui.constraints, target, { shape: ui.sq1.shape });
+  const goal = model.goal(constraints, target, { shape: ui.sq1.shape });
   const exact = goal.test(end);
   const rotated = !exact && goal.rotated(end);
   const illegal = model.steps(splitAuf(algText).core).filter((m) => !model.allows(moveSet, m)).map((m) => model.stepToString(m));
