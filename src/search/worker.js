@@ -9,7 +9,7 @@
 // pomalé. Proto se nejdřív rychle prohledají trojice druhů tahů (R U F, R U L, …) –
 // najdou výsledky za pár sekund – a teprve ve zbytku času běží úplné hledání.
 
-import { prepare, search } from './engine.js';
+import { prepare, search, NEAR_LIMIT } from './engine.js';
 import { prepareSq1, searchSq1 } from './sq1engine.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
@@ -39,16 +39,18 @@ function run({ puzzle: id = '333', start, target, constraints, moves, options, e
     lastFlush = Date.now();
   };
   const seen = new Set();
+  let best = null; // nejkratší zatím nalezené řešení (počet tahů)
   const handlers = {
-    onSolution: (alg) => {
+    onSolution: (alg, length) => {
       if (seen.has(alg)) return;
       seen.add(alg);
+      if (length && (best === null || length < best)) best = length;
       batch.push({ alg, score: scoreFor(P, alg, config) });
       if (batch.length >= 50 || Date.now() - lastFlush > 200) flush();
     },
     onProgress: (info) => {
       flush();
-      self.postMessage({ type: 'progress', phase: 'search', ...info, elapsed: Date.now() - t0 });
+      self.postMessage({ type: 'progress', phase: 'search', ...info, found: seen.size, best, elapsed: Date.now() - t0 });
     },
   };
 
@@ -61,9 +63,12 @@ function run({ puzzle: id = '333', start, target, constraints, moves, options, e
     });
   } else {
     const timeLimit = options.timeLimit ?? 15000;
-    const problem = prepare({ puzzle: P, constraints, moves, target: Uint8Array.from(target), onTable });
+    const problem = prepare({ puzzle: P, constraints, moves, target: Uint8Array.from(target), nearLimit: NEAR_LIMIT, onTable });
     const quick = quickPhase({ P, problem, start, target, constraints, moves, options, handlers, budget: timeLimit * 0.35 });
-    res = search(problem, Uint8Array.from(start), { ...options, ...handlers, timeLimit: Math.max(1000, timeLimit - (Date.now() - t0)) });
+    // úplné hledání jde od krátkých délek nahoru: buď najde kratší a lepší verze
+    // řešení z rychlé fáze, nebo potvrdí, že kratší nejsou
+    const maxLength = quick.optimal === null ? options.maxLength : Math.min(options.maxLength ?? 99, quick.optimal + (options.extraDepth ?? 0));
+    res = search(problem, Uint8Array.from(start), { ...options, maxLength, ...handlers, timeLimit: Math.max(1000, timeLimit - (Date.now() - t0)) });
     if (res.optimal === null && quick.optimal !== null) res.optimal = quick.optimal;
     if (res.reason === 'unsolvable' && quick.optimal !== null) res.reason = 'done';
   }
@@ -101,10 +106,12 @@ function quickPhase({ P, problem: full, start, target, constraints, moves, optio
     if (left < 300) break;
     const sub = new Set(tries[i]);
     const label = tries[i].join(' ');
-    self.postMessage({ type: 'progress', phase: 'quick', label, step: i + 1, steps: tries.length });
-    const problem = prepare({ puzzle: P, constraints, moves: moves.filter((m) => sub.has(m.base)), target: Uint8Array.from(target) });
+    self.postMessage({ type: 'progress', phase: 'quick', label, step: i + 1, steps: tries.length, best: out.optimal });
+    const problem = prepare({ puzzle: P, constraints, moves: moves.filter((m) => sub.has(m.base)), target: Uint8Array.from(target), nearLimit: NEAR_LIMIT });
     const res = search(problem, Uint8Array.from(start), {
-      ...options, timeLimit: left / (tries.length - i), onSolution: handlers.onSolution,
+      // jen o tah nad nejkratší a nejvýš 10 s na trojici – hlavní je rychle mít výsledky
+      ...options, extraDepth: Math.min(options.extraDepth ?? 0, 1),
+      timeLimit: Math.min(10000, left / (tries.length - i)), onSolution: handlers.onSolution,
     });
     if (res.optimal !== null && (out.optimal === null || res.optimal < out.optimal)) out.optimal = res.optimal;
   }

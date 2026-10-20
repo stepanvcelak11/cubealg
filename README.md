@@ -62,7 +62,14 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
-    přehrávač a ukládání do zvolené sady trenažéru.
+    přehrávač a ukládání do zvolené sady trenažéru. Každé řešení má **styl**:
+    ⚡ rychlostní (delší, ale pohodlné tahy, hodně R/U – pro agresivní otáčení),
+    ◎ efektivní (krátké s náročnějšími tahy – pro přesné, pomalejší otáčení),
+    ★ všestranné (krátké i pohodlné); výsledky jde podle stylu filtrovat a řadit.
+  - **Dlouhé algoritmy** (např. PLL s mnoha druhy tahů): hledání nejdřív rychle
+    zkusí trojice R U x a za pár sekund ukáže první řešení, pak ve zbytku času
+    hledá kratší a lepší verze. Odhad vzdálenosti zesiluje tabulka všech stavů
+    do ~5 tahů od cíle.
 
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají
 v prohlížeči (localStorage); zálohu jde stáhnout a obnovit v nastavení.

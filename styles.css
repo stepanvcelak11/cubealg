@@ -743,3 +743,15 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .guide-step input:not([type]), .guide-step select { background-color: var(--panel); }
 .tabbar button.active, .tabbar button.active:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
 .stats-head .step-select { order: 5; flex: 1 1 100%; max-width: none; }
+
+/* Styl algoritmu (rychlostní / efektivní / všestranný) */
+.style-filter { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 4px 0 2px; }
+.style-filter button { font-size: 0.78rem; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.style-filter .count { margin-left: 4px; }
+@media (max-width: 420px) { .style-filter button { font-size: 0.7rem; } .style-filter .count { display: none; } }
+.style-tag { padding: 1px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+.style-tag.speed { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.style-tag.efficient { background: var(--accent-soft); color: var(--accent); }
+.style-tag.balanced { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.style-note { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 4px; font-size: 0.85rem; }
+.style-note .hint { margin: 0; }

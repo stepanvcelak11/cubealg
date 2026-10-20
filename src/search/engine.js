@@ -38,7 +38,8 @@ function typeInfo(puzzle) {
 }
 
 const DEFAULT_TABLE_LIMIT = 24 ** 4;
-const DEFAULT_NEAR_LIMIT = 1_500_000;
+const DEFAULT_NEAR_LIMIT = 0; // zapíná ji Lab (worker hledání)
+export const NEAR_LIMIT = 1_500_000;
 const UNREACHABLE = 255;
 
 /**

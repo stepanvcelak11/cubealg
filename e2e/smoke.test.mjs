@@ -97,6 +97,10 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await tapSticker(p, 'cube-a', 20);
   await p.locator('#go-search').tap();
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
+  // styl algoritmů: přepínač s počty a štítky u výsledků
+  await p.waitForSelector('#style-filter:not([hidden])');
+  assert.ok(await p.locator('#results .style-tag').count() > 0);
+  assert.match(await p.locator('#detail .style-note').innerText(), /náročnost/);
   await p.locator('#results .result .save').first().tap();
   await p.locator('.tabbar [data-tab="trainer"]').tap();
   await p.waitForFunction(() => !document.querySelector('#tr-cube').hidden);
