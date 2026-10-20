@@ -632,7 +632,7 @@ function sortedResults() {
   return filtered.sort((a, b) => (order === 'length'
     ? a.score.metrics.htm - b.score.metrics.htm || a.score.total - b.score.total
     : order === 'speed'
-    ? a.m.ease - b.m.ease || (b.m.ru ?? 0) - (a.m.ru ?? 0) || a.score.total - b.score.total
+    ? (a.m.regrips + a.m.rotations) - (b.m.regrips + b.m.rotations) || a.m.fluency - b.m.fluency || a.score.total - b.score.total
     : a.score.total - b.score.total || a.score.metrics.htm - b.score.metrics.htm));
 }
 
@@ -839,11 +839,12 @@ function styleNote(alg, s) {
   const style = ui.results.has(alg) ? list.find((x) => x.alg === alg)?.style : classify(m, ctx);
   const facts = [
     m.ru !== null ? `R/U ${Math.round(m.ru * 100)} % tahů` : null,
-    `náročnost ${m.ease.toFixed(2)} na tah`,
+    m.regrips || m.rotations ? [m.regrips && `${m.regrips}× přehmat`, m.rotations && `${m.rotations}× rotace`].filter(Boolean).join(', ') : 'bez přehmatů',
+    `nepohodlnost ${m.fluency.toFixed(2)} na tah`,
     ctx ? `nejkratší nalezené ${ctx.minLength} ${unit()}` : null,
   ].filter(Boolean).join(' · ');
   return el('div', { className: 'style-note' },
-    style ? el('div', {}, styleTag(style), el('span', { textContent: ` ${ALG_STYLES[style].text}` })) : el('div', { className: 'hint', textContent: 'Styl: dlouhý i náročnější – spíš ho přeskoč.' }),
+    style ? el('div', {}, styleTag(style), el('span', { textContent: ` ${ALG_STYLES[style].text}` })) : el('div', { className: 'hint', textContent: 'Bez štítku: není nejkratší a není plynulý (přehmaty, rotace nebo horší návaznost).' }),
     el('small', { className: 'hint', textContent: facts }));
 }
 

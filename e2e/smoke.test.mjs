@@ -100,7 +100,7 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   // styl algoritmů: přepínač s počty a štítky u výsledků
   await p.waitForSelector('#style-filter:not([hidden])');
   assert.ok(await p.locator('#results .style-tag').count() > 0);
-  assert.match(await p.locator('#detail .style-note').innerText(), /náročnost/);
+  assert.match(await p.locator('#detail .style-note').innerText(), /na tah/);
   await p.locator('#results .result .save').first().tap();
   await p.locator('.tabbar [data-tab="trainer"]').tap();
   await p.waitForFunction(() => !document.querySelector('#tr-cube').hidden);
