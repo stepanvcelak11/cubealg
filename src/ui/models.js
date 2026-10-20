@@ -44,6 +44,7 @@ function permModel(P) {
     homeEmpty: (side, name) => homeOf(name).every((f) => side[f] === EMPTY),
     homeIs: (side, name) => homeOf(name).every((f) => side[f] === P.stickerFace[f]),
     placeHome: (side, name) => ops.placePiece(side, name, name),
+    placePiece: (side, name, slotName, twist = 0) => ops.placePiece(side, name, slotName, twist),
     pieceAtSticker: (side, pos) => ops.pieceAt(side, P.slots[P.SLOT_OF[pos]].name),
     identify: (side) => ops.identifyPieces(side),
     build: (side, constraints, where) => ops.buildStart(side, constraints, where),

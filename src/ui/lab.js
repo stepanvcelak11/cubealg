@@ -79,9 +79,10 @@ const unit = () => (model.kind === 'sq1' ? 'řezů' : 'tahů');
 // --- Uložení a načtení zadání ----------------------------------------------------------
 
 function save() {
-  const { constraints, bases, amounts, sq1, hold } = ui;
+  const { constraints, bases, amounts, sq1, hold, mode, arrows, arrowRest, colorBackup } = ui;
   storage.set(storageKey(model.id), {
     constraints, bases, amounts, sq1, hold, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
+    mode, arrows, arrowRest, colorBackup,
   });
 }
 
@@ -98,6 +99,11 @@ function load() {
   }
   ui.sq1 = { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true, ...(saved.sq1 ?? {}) };
   ui.hold = holdList(model).some((h) => h.id === saved.hold) ? saved.hold : '';
+  ui.mode = saved.mode === 'arrows' && arrowsAllowed() ? 'arrows' : 'colors';
+  ui.arrows = Array.isArray(saved.arrows) ? saved.arrows : [];
+  ui.arrowRest = saved.arrowRest ?? true;
+  ui.colorBackup = saved.colorBackup ?? null;
+  ui.arrowSel = null;
   ui.memory = {};
   ui.autoA = new Set();
   ui.undo = [];
@@ -133,7 +139,7 @@ const joinAuf = (pre, core, post) => [pre && `(${pre})`, core, post && `(${post}
 const score = (alg) => scoreFor(P(), splitAuf(alg).core, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
 
 function snapshot() {
-  ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B) });
+  ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B), arrows: ui.arrows.map((a) => ({ ...a })), mode: ui.mode });
   if (ui.undo.length > 60) ui.undo.shift();
 }
 
@@ -343,7 +349,10 @@ function taskInfo() {
 }
 
 function renderTaskStatus() {
-  const { tracked, errors } = taskInfo();
+  const { tracked, errors: taskErrors } = taskInfo();
+  const arrowErr = ui.mode === 'arrows' ? arrowsError() : null;
+  if (arrowErr) { $('task-status').replaceChildren(el('span', { className: 'warn', textContent: arrowErr })); return; }
+  const errors = taskErrors;
   const pieces = tracked.filter((n) => !model.centers.includes(n));
   let node;
   if (!pieces.length) {
@@ -352,7 +361,7 @@ function renderTaskStatus() {
     node = el('span', { className: 'bad', textContent: errors[0] + (errors.length > 1 ? ` (+${errors.length - 1})` : '') });
     // dílky z cíle, které ve výchozí straně chybí a jejich místo je volné: doplnit jedním klepnutím
     const missing = tracked.filter((n) => !model.findPiece(ui.A, n) && model.homeEmpty(ui.A, n));
-    if (missing.length && model.kind === 'perm') {
+    if (missing.length && model.kind === 'perm' && ui.mode !== 'arrows') {
       const fix = el('button', { type: 'button', className: 'chip fix-missing', textContent: `Doplnit ${missing.length} chybějící do výchozí strany (na svá místa)` });
       fix.onclick = () => { snapshot(); for (const n of missing) ui.A = model.placeHome(ui.A, n); taskChanged(); };
       node = el('span', {}, node, ' ', fix);
@@ -413,6 +422,134 @@ async function scan(side) {
       taskChanged();
     },
   });
+}
+
+// --- Zadání šipkami ---------------------------------------------------------------------
+// Místo barev se klepnutím zadají přesuny dílků (odkud → kam), u každého zda zachovat
+// orientaci. Ze šipek se sestaví obyčejné zadání (výchozí strana = složené dílky, cíl =
+// dílky na nových místech; čárkovaně, když na orientaci nezáleží), takže hledání,
+// přehrávač i ukládání fungují stejně jako u barev.
+
+const arrowsAllowed = () => model.kind === 'perm' && !!model.flatView;
+const slotName = (pos) => P().slots[P().SLOT_OF[pos]].name;
+const slotType = (name) => P().slotByName(name).type;
+let arrowView = null;
+
+function setMode(mode) {
+  if (mode === ui.mode || (mode === 'arrows' && !arrowsAllowed())) return;
+  snapshot();
+  if (mode === 'arrows') {
+    // barevné zadání se schová a po návratu obnoví
+    ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints } };
+    ui.mode = 'arrows';
+    applyArrows();
+  } else {
+    ui.mode = 'colors';
+    const b = ui.colorBackup;
+    if (b) { ui.A = model.deserialize(b.A) ?? ui.A; ui.B = model.deserialize(b.B) ?? ui.B; ui.constraints = { ...b.constraints }; }
+    ui.colorBackup = null;
+    taskChanged();
+  }
+  renderMode();
+}
+
+function renderMode() {
+  const arrows = ui.mode === 'arrows';
+  $('task-mode').hidden = !arrowsAllowed();
+  for (const b of $('task-mode').querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === ui.mode);
+  $('arrows-panel').hidden = !arrows;
+  document.querySelector('.cubes').hidden = arrows;
+  if (arrows) renderArrows();
+}
+
+/** Chyba šipek (nebo null): kam se dílek přesouvá, musí být volno. */
+function arrowsError() {
+  if (!ui.arrows.length) return 'Přidej aspoň jednu šipku: klepni na dílek a pak na místo, kam se má přesunout.';
+  if (!ui.arrowRest) return null;
+  const from = new Set(ui.arrows.map((a) => a.from));
+  const bad = ui.arrows.find((a) => !from.has(a.to));
+  return bad ? `Na místo ${bad.to} se přesouvá dílek, ale dílek ${bad.to} tam zůstává – přidej šipku i pro něj, nebo vypni „Ostatní dílky nechat na místě“.` : null;
+}
+
+/** Sestaví zadání (barvy obou stran a styly) ze šipek. */
+function applyArrows() {
+  const names = model.pieceNames;
+  const moved = new Map(ui.arrows.map((a) => [a.from, a]));
+  const shown = ui.arrowRest ? names : [...new Set([...moved.keys(), ...model.centers])];
+  ui.A = model.home(shown);
+  let B = model.home(shown.filter((n) => !moved.has(n)));
+  for (const a of ui.arrows) B = model.placePiece(B, a.from, a.to, 0);
+  ui.B = B;
+  ui.constraints = Object.fromEntries(names.map((n) => {
+    const a = moved.get(n);
+    if (a) return [n, a.keep ? 'solved' : 'permutation'];
+    return [n, shown.includes(n) ? 'solved' : 'ignore'];
+  }));
+  save();
+  renderCubes();
+  renderTaskStatus();
+  clearResults();
+  if (ui.mode === 'arrows') renderArrows();
+}
+
+function tapArrow(pos) {
+  const name = slotName(pos);
+  const sel = ui.arrowSel;
+  if (!sel || sel === name || slotType(sel) !== slotType(name)) {
+    ui.arrowSel = sel === name ? null : name;
+    renderArrows();
+    return;
+  }
+  snapshot();
+  // jedna šipka z každého dílku a jedna do každého místa
+  ui.arrows = ui.arrows.filter((a) => a.from !== sel && a.to !== name);
+  ui.arrows.push({ from: sel, to: name, keep: $('arrow-keep').checked });
+  ui.arrowSel = null;
+  applyArrows();
+}
+
+/** Střed nálepky v síti (z bodů polygonu). */
+function centerOf(points) {
+  const pts = points.trim().split(/\s+/).map((p) => p.split(',').map(Number));
+  return pts.reduce((a, [x, y]) => [a[0] + x / pts.length, a[1] + y / pts.length], [0, 0]);
+}
+
+function renderArrows() {
+  if (!arrowsAllowed()) return;
+  const v = model.flatView;
+  if (!arrowView || arrowView.puzzle !== model.id) {
+    arrowView = new NetView($('cube-arrows'), { label: 'Přesuny dílků', viewBox: v.viewBox, polys: v.polys, onSticker: tapArrow, fill: true });
+    arrowView.puzzle = model.id;
+  }
+  const involved = new Set(ui.arrows.flatMap((a) => [a.from, a.to]));
+  const home = model.home(model.pieceNames);
+  arrowView.render(home.map((color, pos) => {
+    const name = slotName(pos);
+    const solid = involved.has(name) || name === ui.arrowSel || model.centers.includes(name);
+    return { color, style: solid ? 'solid' : 'faded', selected: name === ui.arrowSel };
+  }));
+  // šipky od referenční nálepky zdroje k referenční nálepce cíle
+  const ref = (name) => centerOf(v.polys[P().slotByName(name).facelets[0]]);
+  const lines = ui.arrows.map((a) => {
+    const [x1, y1] = ref(a.from), [x2, y2] = ref(a.to);
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    const ex = x2 - ux * 0.12, ey = y2 - uy * 0.12; // hrot kousek před středem
+    const head = `${ex},${ey} ${ex - ux * 0.22 - uy * 0.12},${ey - uy * 0.22 + ux * 0.12} ${ex - ux * 0.22 + uy * 0.12},${ey - uy * 0.22 - ux * 0.12}`;
+    const d = `M${x1},${y1} L${ex - ux * 0.15},${ey - uy * 0.15}`;
+    return `<path class="nv-arrow-halo" d="${d}"/><path class="nv-arrow${a.keep ? '' : ' free'}" d="${d}"/><polygon class="nv-arrowhead" points="${head}"/>`;
+  });
+  arrowView.setOverlay(lines.join(''));
+  const list = $('arrow-list');
+  list.replaceChildren(...(ui.arrows.length ? ui.arrows.map((a, i) => {
+    const ori = el('button', { type: 'button', className: `secondary small ori${a.keep ? ' on' : ''}`, textContent: a.keep ? 'orientace: zachovat' : 'orientace: nezáleží', title: 'Přepnout, zda má dílek skončit správně natočený' });
+    ori.onclick = () => { snapshot(); ui.arrows[i] = { ...a, keep: !a.keep }; applyArrows(); };
+    const del = el('button', { type: 'button', className: 'icon-btn', ariaLabel: `Smazat šipku ${a.from} → ${a.to}`, textContent: '×' });
+    del.onclick = () => { snapshot(); ui.arrows.splice(i, 1); applyArrows(); };
+    return el('li', {}, el('b', { textContent: `${a.from} → ${a.to}` }), ori, del);
+  }) : [el('li', { className: 'empty', textContent: ui.arrowSel ? `Vybráno ${ui.arrowSel} – klepni, kam se má přesunout.` : 'Zatím žádná šipka.' })]));
+  if (ui.arrowSel && ui.arrows.length) list.append(el('li', { className: 'empty', textContent: `Vybráno ${ui.arrowSel} – klepni, kam se má přesunout.` }));
+  $('arrow-rest').checked = ui.arrowRest;
 }
 
 // --- Tahy a váhy -----------------------------------------------------------------------
@@ -636,6 +773,8 @@ const num = (id, min, max) => Math.min(max, Math.max(min, Math.round(Number($(id
 
 function startSearch() {
   const { tracked, loc, target, errors, constraints } = taskInfo();
+  const arrowErr = ui.mode === 'arrows' ? arrowsError() : null;
+  if (arrowErr) { $('status').textContent = `Zadání není v pořádku: ${arrowErr}`; return; }
   if (errors.length || !loc) { $('status').textContent = `Zadání není v pořádku: ${errors[0]}`; return; }
   if (!tracked.some((n) => !model.centers.includes(n))) { $('status').textContent = 'V cíli není označený žádný dílek.'; return; }
   const moveSet = currentMoveSet();
@@ -1096,6 +1235,7 @@ function selectPuzzle(id) {
   renderMoveSet();
   renderErgo();
   renderCubes();
+  renderMode();
   renderTaskStatus();
   clearResults();
   showSub(ui.sub);
@@ -1134,9 +1274,14 @@ export function initLab({ onSub } = {}) {
     ui.constraints = last.constraints;
     ui.A = model.deserialize(last.A);
     ui.B = model.deserialize(last.B);
+    ui.arrows = last.arrows ?? ui.arrows;
+    ui.mode = last.mode ?? ui.mode;
+    renderMode();
     taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
+  for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
+  $('arrow-rest').onchange = () => { snapshot(); ui.arrowRest = $('arrow-rest').checked; applyArrows(); };
   $('flat').onclick = () => {
     flat = !flat;
     storage.set('ergocube.lab.flat', flat);

@@ -59,6 +59,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     pohled „zafixuješ“; u Pyraminxu a Skewbu (a v plošné síti) držení vybereš
     z nabídky. Povolené tahy, ergonomika, nalezené i uložené algoritmy se pak píšou
     podle toho, jak hlavolam držíš (U = stěna nebo špička nahoře).
+  - **Zadání šipkami:** místo barev klepneš na dílek a na místo, kam se má přesunout
+    (u každé šipky zvlášť, zda zachovat orientaci); ostatní dílky zůstanou na místě,
+    nebo na nich nezáleží. **Částečně vybarvený dílek** (jen některé barvy) znamená
+    „tahle barva má být tady“ – zachová se orientace barvy bez ohledu na to, který
+    dílek to je (např. OLL: jen žluté nálepky nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
     Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým
@@ -76,6 +81,12 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   - **AUF:** řešení smí začít a skončit natočením horní vrstvy, které se do délky
     ani hodnocení nepočítá – zápis „(U) R U R' … (U2)“ (vypnout jde v nastavení
     hledání).
+  - **Nejdřív jakékoli řešení:** když krátké hledání nic nenajde, složí se cíl po
+    etapách (dílek po dílku, už složené se drží) – řešení může mít libovolně tahů –
+    a pak se zlepšuje: úseky až 16 tahů se přeřeší úplným hledáním (u neúplně
+    sledovaného zadání konec algoritmu). „Max. tahů“ omezuje jen úplné prohledávání.
+    Limit hledání je až 60 minut; nejlepší řešení se průběžně ukládají, po návratu
+    do Labu se ukážou a další hledání na ně naváže.
   - **Postupné zlepšování:** hledání běží v několika vláknech najednou (podle
     počtu jader, každé prohledá svůj díl). Nejdřív rychle najde nějaké řešení (u
     mnoha druhů tahů přes menší sady ⟨R U⟩, ⟨R U r⟩, ⟨R U D⟩, ⟨R U M⟩, R U x…) a

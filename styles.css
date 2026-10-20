@@ -790,3 +790,17 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .pareto .tip { fill: var(--text); font-size: 9px; }
 .mv.auf { opacity: 0.6; font-style: italic; }
 .best-chip .proof { color: var(--good); font-weight: 600; }
+
+/* Lab: zadání šipkami */
+.task-mode { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 8px; }
+.arrows-panel .arrows-host { position: relative; aspect-ratio: 4 / 3; max-height: 52vh; margin: 4px auto; }
+.netview .nv-overlay { pointer-events: none; }
+.arrow-list { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.arrow-list li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 0.85rem; }
+.arrow-list li.empty { border: none; padding: 0; color: var(--muted); }
+.arrow-list .ori { font-size: 0.75rem; padding: 2px 8px; }
+.arrow-list .ori.on { border-color: var(--accent); color: var(--accent); }
+.netview .nv-arrow { stroke: var(--text); stroke-width: 0.07; fill: none; stroke-linecap: round; }
+.netview .nv-arrow.free { stroke-dasharray: 0.12 0.1; }
+.netview .nv-arrow-halo { stroke: var(--panel); stroke-width: 0.16; fill: none; stroke-linecap: round; opacity: 0.85; }
+.netview .nv-arrowhead { fill: var(--text); }

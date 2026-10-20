@@ -174,6 +174,17 @@
 
       <!-- Zadání -->
       <div class="sub fixed-sub" data-sub="task">
+        <div class="segmented task-mode" id="task-mode" role="group" aria-label="Způsob zadání">
+          <button type="button" data-mode="colors" class="active">Barvy</button>
+          <button type="button" data-mode="arrows">Šipky – přesuny dílků</button>
+        </div>
+        <article class="panel arrows-panel" id="arrows-panel" hidden>
+          <p class="hint">Klepni na dílek a pak na místo, kam se má přesunout – na barvách nezáleží. Šipku smažeš křížkem v seznamu.</p>
+          <div id="cube-arrows" class="cube-host arrows-host"></div>
+          <ul id="arrow-list" class="arrow-list"></ul>
+          <label class="check-row"><input type="checkbox" id="arrow-rest" checked> Ostatní dílky nechat na místě</label>
+          <label class="check-row"><input type="checkbox" id="arrow-keep" checked> Nové šipky: zachovat orientaci dílku</label>
+        </article>
         <div class="cubes">
           <article class="panel cube-panel">
             <header class="panel-head">

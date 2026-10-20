@@ -590,3 +590,26 @@ test('vlastní metoda: části bez Labu (předvolba), nácvik z průvodce a zast
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: zadání šipkami (3-cyklus hran nahoře) najde a ověří řešení', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.locator('#task-mode [data-mode="arrows"]').tap();
+  const ref = await p.evaluate(async () => { const { CUBE3 } = await import('./src/puzzles/cube3.js'); return Object.fromEntries(['UF', 'UR', 'UL'].map((n) => [n, CUBE3.slotByName(n).facelets[0]])); });
+  const tap = async (pos) => { const bb = await p.locator(`#cube-arrows [data-pos="${pos}"]`).boundingBox(); await p.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); };
+  await tap(ref.UF); await tap(ref.UR);
+  assert.match(await p.locator('#task-status').innerText(), /přidej šipku i pro něj/);
+  await tap(ref.UR); await tap(ref.UL);
+  await tap(ref.UL); await tap(ref.UF);
+  assert.equal(await p.locator('#arrow-list li').count(), 3);
+  assert.match(await p.locator('#task-status').innerText(), /✓ 20 dílků/);
+  await p.evaluate(() => { document.querySelector('#opt-time').value = '5'; });
+  await p.locator('#go-search').tap();
+  await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 60000 });
+  assert.match(await p.locator('#detail .verdict').innerText(), /řeší zadání/);
+  // zpět na barvy: původní zadání se obnoví
+  await p.locator('.segmented button[data-sub="task"]').tap();
+  await p.locator('#task-mode [data-mode="colors"]').tap();
+  assert.ok(await p.locator('#arrows-panel').isHidden());
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
