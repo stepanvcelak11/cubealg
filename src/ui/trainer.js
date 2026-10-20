@@ -221,6 +221,16 @@ export function initTrainer({ isActive }) {
   showCase();
 }
 
+/** Přepne trénovanou sadu (z průvodce metodou). */
+export function trainSetTo(id) {
+  trainSet = id;
+  checkSet();
+  storage.set('ergocube.trainer.set', trainSet);
+  currentId = pickNext();
+  revealed = false;
+  showCase();
+}
+
 export function showTrainer() {
   cube.layout();
   if (!currentId) currentId = pickNext();

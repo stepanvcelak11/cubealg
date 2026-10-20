@@ -1,0 +1,160 @@
+// Průvodce metodou: slovní popis metody po krocích s obrázky kostky (zadání
+// převzaté z Labu) a odkazy na sady algoritmů. Slouží k učení i ke sdílení:
+// metodu jde i s algoritmy poslat jako soubor a druhý ji naimportuje.
+
+import { el } from './dom.js';
+import { icon } from './icons.js';
+import { methods, guides, algSets, algs, exportMethod } from './store.js';
+import { labModel } from './models.js';
+import { Cube3D } from './cube3d.js';
+import { NetView } from './netview.js';
+
+let dialog = null;
+let editing = false;
+let deps = { labTask: () => null, train: () => {} };
+
+/** Text s odstavci (prázdný řádek) a zalomeními – bez HTML (data můžou být cizí). */
+function richText(text) {
+  return el('div', { className: 'guide-text' }, ...String(text).split(/\n\s*\n/).filter((p) => p.trim()).map((para) => {
+    const p = el('p');
+    para.split('\n').forEach((line, i) => { if (i) p.append(el('br')); p.append(line); });
+    return p;
+  }));
+}
+
+/** Obrázek strany zadání (A = před, B = po). */
+function taskView(task, side, label) {
+  const host = el('div', { className: 'guide-cube' });
+  try {
+    const model = labModel(task.puzzle ?? '333');
+    const data = model.deserialize(side === 'A' ? task.colorsA : task.colorsB);
+    if (!data) return null;
+    const stickers = model.stickers(data, task.constraints ?? {});
+    queueMicrotask(() => {
+      const v = model.view;
+      const view = v.type === 'cube3d'
+        ? new Cube3D(host, { label, facelets: v.facelets, scale: v.scale })
+        : new NetView(host, { label, viewBox: v.viewBox, polys: v.polys });
+      view.setHold?.(task.hold ?? '');
+      view.render(stickers);
+    });
+  } catch { return null; }
+  return el('figure', { className: 'guide-fig' }, host, el('figcaption', { textContent: label }));
+}
+
+function illustration(task) {
+  if (!task) return null;
+  const a = taskView(task, 'A', 'před'), b = taskView(task, 'B', 'po');
+  return el('div', { className: 'guide-figs' }, a, el('span', { className: 'guide-arrow', textContent: '→' }), b);
+}
+
+function render() {
+  const method = methods.active();
+  const name = methods.get(method).name;
+  const guide = guides.get(method);
+  const body = dialog.querySelector('.guide-body');
+  dialog.querySelector('.guide-title').textContent = name;
+  dialog.querySelector('.guide-edit').innerHTML = `${icon(editing ? 'check' : 'edit', { size: 18 })}<span>${editing ? 'Hotovo' : 'Upravit'}</span>`;
+  const save = () => guides.set(method, guide);
+
+  if (!editing) {
+    const empty = !guide.intro.trim() && !guide.steps.length;
+    body.replaceChildren(...[
+      empty ? el('div', { className: 'guide-empty' },
+        el('p', { textContent: 'Tady můžeš popsat, jak metoda funguje: úvod a kroky, ke každému kroku obrázek kostky z Labu a sadu algoritmů.' }),
+        el('p', { className: 'hint', textContent: 'Klepni na „Upravit“. Hotovou metodu pošleš i s algoritmy přes „Sdílet“ – druhý ji naimportuje ve výběru metody.' })) : null,
+      guide.intro.trim() ? richText(guide.intro) : null,
+      ...guide.steps.map((st, i) => {
+        const set = st.set && algSets.list(method).find((x) => x.id === st.set);
+        return el('section', { className: 'guide-step' },
+          el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`),
+          st.text?.trim() ? richText(st.text) : null,
+          illustration(st.task),
+          set ? el('div', { className: 'guide-set' },
+            el('span', { textContent: `Algoritmy: ${set.name} (${algs.inSet(set.id).length})` }),
+            Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
+              innerHTML: `${icon('trainer', { size: 16 })}<span>Trénovat</span>`,
+              onclick: () => { dialog.close(); deps.train(set.id); },
+            })) : null);
+      })].filter(Boolean));
+    return;
+  }
+
+  // úpravy (ukládají se průběžně)
+  const intro = el('textarea', { className: 'guide-input', rows: 4, value: guide.intro, placeholder: 'Úvod: pro koho metoda je, hlavní myšlenka, kolik má kroků…' });
+  intro.oninput = () => { guide.intro = intro.value; save(); };
+  const setOptions = (value) => [
+    el('option', { value: '', textContent: '— bez sady algoritmů —' }),
+    ...algSets.list(method).map((x) => el('option', { value: x.id, textContent: `${x.name} (${algs.inSet(x.id).length})`, selected: x.id === value })),
+  ];
+  const steps = guide.steps.map((st, i) => {
+    const title = el('input', { className: 'guide-input', value: st.title, placeholder: `Krok ${i + 1} – název (např. První blok)` });
+    title.oninput = () => { st.title = title.value; save(); };
+    const text = el('textarea', { className: 'guide-input', rows: 4, value: st.text ?? '', placeholder: 'Co se v kroku dělá, na co se dívat, tipy…' });
+    text.oninput = () => { st.text = text.value; save(); };
+    const set = el('select', { ariaLabel: 'Sada algoritmů kroku' }, ...setOptions(st.set));
+    set.onchange = () => { st.set = set.value || undefined; save(); };
+    const btn = (ic, label, fn, cls = 'icon-btn') => Object.assign(el('button', { type: 'button', className: cls, title: label, ariaLabel: label }),
+      { innerHTML: icon(ic, { size: 18 }), onclick: () => { fn(); save(); render(); } });
+    const take = Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
+      innerHTML: `${icon('lab', { size: 16 })}<span>${st.task ? 'Nahradit obrázkem z Labu' : 'Obrázek z Labu'}</span>`,
+      title: 'Vezme současné zadání z Labu (výchozí stav a cíl)',
+      onclick: () => { st.task = deps.labTask(); save(); render(); },
+    });
+    return el('section', { className: 'guide-step editing' },
+      el('div', { className: 'guide-step-head' },
+        el('span', { className: 'guide-n', textContent: String(i + 1) }), title,
+        btn('up', 'Posunout nahoru', () => { if (i) [guide.steps[i - 1], guide.steps[i]] = [guide.steps[i], guide.steps[i - 1]]; }),
+        btn('down', 'Posunout dolů', () => { if (i < guide.steps.length - 1) [guide.steps[i + 1], guide.steps[i]] = [guide.steps[i], guide.steps[i + 1]]; }),
+        btn('trash', 'Smazat krok', () => { if (confirm(`Smazat krok „${st.title || i + 1}“?`)) guide.steps.splice(i, 1); })),
+      text,
+      illustration(st.task),
+      el('div', { className: 'row-btns guide-tools' }, take,
+        st.task ? btn('close', 'Odebrat obrázek', () => { delete st.task; }, 'secondary small') : null, set));
+  });
+  const add = Object.assign(el('button', { type: 'button', className: 'secondary' }), {
+    innerHTML: `${icon('plus', { size: 18 })}<span>Přidat krok</span>`,
+    onclick: () => { guide.steps.push(guides.newStep()); save(); render(); },
+  });
+  body.replaceChildren(
+    el('label', { className: 'guide-label', textContent: 'Úvod' }), intro,
+    ...steps, add,
+    el('p', { className: 'hint', textContent: 'Obrázek kroku: v Labu nastav výchozí stav a cíl (třeba jen dílky, o které v kroku jde), pak tady klepni na „Obrázek z Labu“.' }));
+}
+
+async function share() {
+  const data = exportMethod();
+  const name = `metoda-${data.method.name.normalize('NFD').replace(/[^\w-]+/g, '-').replace(/-+/g, '-').toLowerCase()}.json`;
+  const file = new File([JSON.stringify(data, null, 1)], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: `Metoda ${data.method.name}` }); return; } catch { /* zrušeno */ }
+  }
+  const a = el('a', { href: URL.createObjectURL(file), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** Otevře průvodce aktivní metodou. */
+export function openGuide(opts = {}) {
+  deps = { ...deps, ...opts };
+  editing = false;
+  if (!dialog) {
+    const close = Object.assign(el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
+    const edit = el('button', { type: 'button', className: 'secondary small guide-edit' });
+    const shareBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-share', title: 'Poslat metodu i s algoritmy jako soubor' }),
+      { innerHTML: `${icon('share', { size: 16 })}<span>Sdílet</span>` });
+    dialog = el('dialog', { className: 'help-dialog guide-dialog' },
+      el('div', { className: 'guide-head' },
+        el('div', {}, el('small', { className: 'hint', textContent: 'Průvodce metodou' }), el('h2', { className: 'guide-title' })),
+        edit, shareBtn, close),
+      el('div', { className: 'guide-body' }));
+    close.onclick = () => dialog.close();
+    edit.onclick = () => { editing = !editing; render(); };
+    shareBtn.onclick = share;
+    document.body.append(dialog);
+  }
+  render();
+  dialog.showModal();
+}

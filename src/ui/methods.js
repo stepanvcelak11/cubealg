@@ -2,17 +2,22 @@
 // algoritmů v Labu i trenažér) do režimu zvolené metody.
 
 import { $, el } from './dom.js';
-import { methods } from './store.js';
+import { methods, importMethod } from './store.js';
+import { openGuide } from './guide.js';
+
+let guideDeps = {};
 
 function render() {
   const select = $('method');
   const active = methods.active();
-  select.replaceChildren(
+  select.replaceChildren(...[
     ...methods.list().map((m) => el('option', { value: m.id, textContent: m.name })),
+    el('option', { value: '+guide', textContent: 'Průvodce metodou…' }),
     el('option', { value: '+new', textContent: '+ Nová metoda…' }),
+    el('option', { value: '+import', textContent: 'Importovat metodu…' }),
     el('option', { value: '+rename', textContent: 'Přejmenovat metodu…' }),
     active !== 'default' ? el('option', { value: '+delete', textContent: 'Smazat metodu…' }) : null,
-  );
+  ].filter(Boolean));
   select.value = active;
   select.title = `Metoda: ${methods.get(active).name} – složení i algoritmy se ukládají k ní`;
   document.body.dataset.method = active;
@@ -22,7 +27,11 @@ function pick() {
   const select = $('method');
   const v = select.value;
   const active = methods.active();
-  if (v === '+new') {
+  if (v === '+guide') {
+    openGuide(guideDeps);
+  } else if (v === '+import') {
+    importFile();
+  } else if (v === '+new') {
     const name = prompt('Název metody (např. Roux, ZZ nebo tvoje vlastní):', '')?.trim();
     if (name) methods.setActive(methods.add(name));
   } else if (v === '+rename') {
@@ -40,7 +49,27 @@ function pick() {
   select.blur();
 }
 
-export function initMethods() {
+function importFile() {
+  const input = el('input', { type: 'file', accept: '.json,application/json' });
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      importMethod(JSON.parse(await file.text()));
+      openGuide(guideDeps);
+    } catch (e) {
+      alert(`Metodu se nepodařilo načíst: ${e.message}`);
+    }
+  };
+  input.click();
+}
+
+/**
+ * @param {{labTask: () => object, train: (setId: string) => void}} deps
+ *   labTask – současné zadání Labu (obrázek kroku), train – trénovat sadu
+ */
+export function initMethods(deps = {}) {
+  guideDeps = deps;
   $('method').onchange = pick;
   methods.subscribe(render);
   render();

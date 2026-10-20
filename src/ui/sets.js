@@ -11,13 +11,13 @@ import { algSets, algs, defaultSetId } from './store.js';
  */
 export function setOptions(select, value, { all = false, manage = false } = {}) {
   const count = (id) => algs.inSet(id).length;
-  select.replaceChildren(
+  select.replaceChildren(...[
     all ? el('option', { value: 'all', textContent: `Všechny sady (${algs.inMethod().length})` }) : null,
     ...algSets.list().map((s) => el('option', { value: s.id, textContent: `${s.name} (${count(s.id)})` })),
     el('option', { value: '+new', textContent: '+ Nová sada…' }),
     manage && value !== 'all' ? el('option', { value: '+rename', textContent: 'Přejmenovat sadu…' }) : null,
     manage && value !== 'all' && value !== defaultSetId() ? el('option', { value: '+delete', textContent: 'Smazat sadu…' }) : null,
-  );
+  ].filter(Boolean));
   const known = algSets.list().some((x) => x.id === value);
   select.value = value === 'all' && all ? 'all' : known ? value : defaultSetId();
 }

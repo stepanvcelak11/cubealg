@@ -426,3 +426,57 @@ test('metody: přepnutí metody odděluje složení i algoritmy a jde je porovna
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { algs } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const names = ['URF', 'U', 'F', 'R'];
+    const home = m.home(names);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+    const task = { constraints, colorsA: m.applyMoves(home, "R U R'"), colorsB: home };
+    localStorage.setItem('ergocube.v3', JSON.stringify(task));
+    algs.add({ alg: "R U' R'", task, name: 'Vložení' });
+  });
+  await p.reload();
+  await p.selectOption('#method', '+guide');
+  await p.waitForSelector('.guide-dialog[open]');
+  assert.match(await p.locator('.guide-empty').innerText(), /popsat/);
+  await p.locator('.guide-edit').tap();
+  await p.locator('.guide-body textarea').first().fill('Moje metoda: nejdřív roh, pak zbytek.');
+  await p.locator('.guide-body button', { hasText: 'Přidat krok' }).tap();
+  await p.locator('.guide-step-head input').fill('Vložení rohu');
+  await p.locator('.guide-step textarea').fill('Roh nad slotem vložíš trojicí tahů.\nDívej se na bílou nálepku.');
+  await p.locator('.guide-step button', { hasText: 'Obrázek z Labu' }).tap();
+  assert.equal(await p.locator('.guide-step .guide-fig').count(), 2);
+  await p.locator('.guide-step select').selectOption('default');
+  await p.locator('.guide-edit').tap();   // hotovo
+  assert.match(await p.locator('.guide-step h3').innerText(), /Vložení rohu/);
+  assert.doesNotMatch(await p.locator('.guide-body').innerText(), /null|undefined/);
+  assert.equal(await p.locator('.guide-step .guide-text br').count(), 1);
+  assert.match(await p.locator('.guide-set').innerText(), /Moje algoritmy \(1\)/);
+  await p.waitForFunction(() => document.querySelectorAll('.guide-step .sticker3d').length === 108);
+  // sdílení: soubor s průvodcem a algoritmy
+  const [download] = await Promise.all([p.waitForEvent('download'), p.locator('.guide-share').tap()]);
+  const shared = Buffer.concat(await (await download.createReadStream()).toArray());
+  const data = JSON.parse(shared.toString());
+  assert.equal(data.format, 'ergocube-method');
+  assert.equal(data.guide.steps[0].title, 'Vložení rohu');
+  assert.equal(data.algs.length, 1);
+  assert.equal(data.algs[0].times, undefined);
+  await p.locator('.guide-head .icon-btn').tap();
+  // import: vznikne nová metoda „Základní (2)“ s průvodcem i algoritmem
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.selectOption('#method', '+import')]);
+  await chooser.setFiles({ name: 'metoda.json', mimeType: 'application/json', buffer: shared });
+  await p.waitForSelector('.guide-dialog[open]');
+  assert.equal(await p.locator('#method option:checked').innerText(), 'Základní (2)');
+  assert.match(await p.locator('.guide-step h3').innerText(), /Vložení rohu/);
+  // Trénovat → trenažér se sadou kroku
+  await p.locator('.guide-set button').tap();
+  await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden && !document.querySelector('#tr-cube').hidden);
+  assert.match(await p.locator('#tr-count').innerText(), /1 z 1/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

@@ -4,8 +4,8 @@ import { hydrateIcons } from './icons.js';
 import { storage } from './dom.js';
 import { initTimer } from './timer.js';
 import { initStats, showStats } from './stats.js';
-import { initTrainer, showTrainer } from './trainer.js';
-import { initLab, showLab, labSub } from './lab.js';
+import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
+import { initLab, showLab, labSub, labTask } from './lab.js';
 import { initSettings } from './settings.js';
 import { initMethods } from './methods.js';
 
@@ -37,7 +37,7 @@ function showPage(name) {
 hydrateIcons();
 for (const b of document.querySelectorAll('.tabbar button')) b.onclick = () => { showPage(b.dataset.tab); b.blur(); };
 
-initMethods();
+initMethods({ labTask, train: (id) => { trainSetTo(id); showPage('trainer'); } });
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });

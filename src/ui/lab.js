@@ -940,6 +940,11 @@ export function initLab({ onSub } = {}) {
   selectPuzzle(model.id);
 }
 
+/** Současné zadání Labu (pro obrázek kroku v průvodci metodou). */
+export function labTask() {
+  return { ...taskSnapshot(), puzzle: model.id };
+}
+
 export function showLab() {
   showSub(ui.sub);
 }

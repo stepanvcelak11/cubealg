@@ -48,6 +48,8 @@ export const methods = {
     for (let i = algsData.length - 1; i >= 0; i--) if (sets.has(algsData[i].set)) algsData.splice(i, 1);
     for (let i = setsData.length - 1; i >= 0; i--) if (setsData[i].method === id) setsData.splice(i, 1);
     if (methodsData.active === id) methodsData.active = 'default';
+    delete guidesData[id];
+    storage.set('ergocube.guides', guidesData);
     storage.set('ergocube.solves', solvesData);
     storage.set('ergocube.algsets', setsData);
     storage.set('ergocube.algs', algsData);
@@ -226,3 +228,79 @@ export const algs = {
   },
   subscribe: algsEvents.subscribe,
 };
+
+// --- Průvodce metodou ----------------------------------------------------------------
+// Popis metody pro sebe i pro ostatní: úvod a kroky (text, obrázek zadání z Labu,
+// odkaz na sadu algoritmů). Metodu jde i s průvodcem, sadami a algoritmy sdílet
+// jako soubor.
+
+const guidesData = storage.get('ergocube.guides') ?? {};
+const guideEvents = emitter();
+const newId = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export const guides = {
+  /** Průvodce metody: { intro, steps: [{ id, title, text, task?, set? }] }. */
+  get(method = methods.active()) {
+    const g = guidesData[method] ?? {};
+    return { intro: g.intro ?? '', steps: (g.steps ?? []).map((st) => ({ ...st })) };
+  },
+  set(method, guide) {
+    guidesData[method] = { intro: guide.intro ?? '', steps: guide.steps ?? [] };
+    storage.set('ergocube.guides', guidesData);
+    guideEvents.emit();
+  },
+  newStep: (title = '') => ({ id: newId('k'), title, text: '' }),
+  subscribe: guideEvents.subscribe,
+};
+
+const SHARE_FORMAT = 'ergocube-method';
+
+/** Metoda k sdílení: název, průvodce, sady a algoritmy (bez časů). */
+export function exportMethod(method = methods.active()) {
+  const sets = algSets.list(method);
+  const ids = new Set(sets.map((x) => x.id));
+  return {
+    format: SHARE_FORMAT, version: 1, exported: new Date().toISOString(),
+    method: { name: methods.get(method).name },
+    guide: guides.get(method),
+    sets: sets.map((x) => ({ id: x.id, name: x.name })),
+    algs: algsData.filter((a) => ids.has(a.set ?? 'default'))
+      .map(({ name, alg, task, set }) => ({ name, alg, task, set: set ?? 'default' })),
+  };
+}
+
+/** Naimportuje sdílenou metodu jako novou metodu (nové id sad a algoritmů); vrací id metody. */
+export function importMethod(data) {
+  if (data?.format !== SHARE_FORMAT || !data.method?.name) throw new Error('Tohle není sdílená metoda ErgoCube Lab');
+  const taken = new Set(methods.list().map((m) => m.name));
+  let name = data.method.name;
+  for (let i = 2; taken.has(name); i++) name = `${data.method.name} (${i})`;
+  const id = newId('m');
+  methodsData.list.push({ id, name });
+  const setMap = new Map();
+  for (const x of data.sets ?? []) {
+    if (x.id === 'default' || x.id.startsWith('default@')) { setMap.set(x.id, defaultSetId(id)); continue; }
+    const sid = newId('s');
+    setsData.push({ id: sid, name: x.name, method: id });
+    setMap.set(x.id, sid);
+  }
+  for (const a of data.algs ?? []) {
+    if (typeof a.alg !== 'string' || !a.task) continue;
+    algsData.push({
+      id: newId('a'), name: a.name ?? 'Algoritmus', alg: a.alg, task: a.task,
+      set: setMap.get(a.set) ?? defaultSetId(id), enabled: true, times: [], created: Date.now(),
+    });
+  }
+  const guide = data.guide ?? {};
+  guidesData[id] = {
+    intro: String(guide.intro ?? ''),
+    steps: (guide.steps ?? []).map((st) => ({ ...st, id: newId('k'), set: st.set ? setMap.get(st.set) : undefined })),
+  };
+  storage.set('ergocube.algsets', setsData);
+  storage.set('ergocube.algs', algsData);
+  storage.set('ergocube.guides', guidesData);
+  methodsData.active = id;
+  methods.save();
+  guideEvents.emit();
+  return id;
+}

@@ -44,11 +44,12 @@ export function eventOptions(select, value) {
 /** Naplní select skupin disciplíny; poslední volby jsou akce (nová / přejmenovat / smazat). */
 export function groupOptions(select, event, value) {
   const list = groups.list(event);
-  select.replaceChildren(
+  select.replaceChildren(...[
     ...list.map((g) => el('option', { value: g.id, textContent: g.name })),
     el('option', { value: '+new', textContent: '+ Nová skupina…' }),
     value !== 'main' ? el('option', { value: '+rename', textContent: 'Přejmenovat skupinu…' }) : null,
-    value !== 'main' ? el('option', { value: '+delete', textContent: 'Smazat skupinu…' }) : null);
+    value !== 'main' ? el('option', { value: '+delete', textContent: 'Smazat skupinu…' }) : null,
+  ].filter(Boolean));
   select.value = groups.get(event, value) ? value : 'main';
 }
 
