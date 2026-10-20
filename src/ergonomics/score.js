@@ -4,12 +4,14 @@
 //          + penalizace rotací
 //          + přehmaty zápěstí (moc otočení R/L jedním směrem)
 //          + změny úchopu (přechody mezi oblastmi mimo home)
+//          + návaznost tahů (prstoklad: kdo tah dělá a z jaké polohy, viz flow.js)
 //          − bonusy za plynulé triggery
 
 import { parseAlg, moveToString, MOVE_DEFS } from '../core/notation.js';
 import { metrics } from '../core/metrics.js';
 import { DEFAULT_CONFIG, moveWeight } from './weights.js';
 import { buildTriggers, findTriggers } from './triggers.js';
+import { flowOf } from './flow.js';
 
 // Které tahy točí zápěstím (a kterým směrem vůči „nahoru“).
 const WRIST = { R: ['right', 1], r: ['right', 1], L: ['left', -1], l: ['left', -1] };
@@ -55,6 +57,9 @@ export function scoreAlg(alg, config = {}) {
     return item;
   });
 
+  const flow = flowOf(moves, (b) => MOVE_DEFS[b].kind === 'rotation', cfg);
+  flow.forEach((f, i) => { perMove[i].flow = f.cost; perMove[i].flowReason = f.reason; perMove[i].hand = f.hand; });
+
   const found = findTriggers(moves, triggers).map((t) => ({ ...t, bonus: t.bonus * cfg.triggerBonusScale }));
   const sum = (key) => perMove.reduce((s, it) => s + it[key], 0);
   const breakdown = {
@@ -62,6 +67,7 @@ export function scoreAlg(alg, config = {}) {
     rotations: round(sum('rotation')),
     regrips: round(sum('regrip')),
     gripChanges: round(sum('gripChange')),
+    flow: round(sum('flow')),
     triggerBonus: round(-found.reduce((s, t) => s + t.bonus, 0)),
   };
   const total = Math.max(0, Object.values(breakdown).reduce((a, b) => a + b, 0));

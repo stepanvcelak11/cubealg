@@ -60,7 +60,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     z nabídky. Povolené tahy, ergonomika, nalezené i uložené algoritmy se pak píšou
     podle toho, jak hlavolam držíš (U = stěna nebo špička nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
-    časů z trenažéru.
+    časů z trenažéru. Hodnocení bere v úvahu i **návaznost tahů** (prstoklad,
+    pravák v home grip): kterým prstem se tah udělá podle polohy zápěstí, stejný
+    prst dvakrát po sobě, dva prstové tahy jednou rukou, bonus za střídání rukou.
+    Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
     přehrávač a ukládání do zvolené sady trenažéru. Každé řešení má **styl**:
     ⚡ rychlostní (delší, ale pohodlné tahy, hodně R/U – pro agresivní otáčení),

@@ -474,6 +474,10 @@ const ERGO_FIELDS = {
     ['gripChangePenalty', 'Změna úchopu', 0.1],
     ['triggerBonusScale', 'Násobič bonusů triggerů', 0.1],
     ['maxWristTurn', 'Max. ¼ zápěstím bez přehmatu', 1],
+    ['flowScale', 'Návaznost tahů – prstoklad (násobek)', 0.1],
+    ['reuse', 'Stejný prst dvakrát po sobě', 0.1],
+    ['sameHand', 'Dva prstové tahy jednou rukou', 0.05],
+    ['alternate', 'Bonus za střídání rukou', 0.05],
   ],
   sq1: [
     ['slash', 'Řez „/“', 0.1],
@@ -666,18 +670,20 @@ function movesView(alg, s, { current = -1, onStep, moveSet } = {}) {
   return el('div', { className: 'moves' }, ...steps.map((m, i) => {
     const text = model.stepToString(m);
     const bad = moveSet && !model.allows(moveSet, m);
-    const cls = ['mv', moveClass(text), trig.has(i) && 'trig', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
-    if (!onStep) return el('span', { className: cls, textContent: text });
-    const b = el('button', { type: 'button', className: cls, textContent: text });
+    const why = s.perMove?.[i]?.flowReason;
+    const cls = ['mv', moveClass(text), trig.has(i) && 'trig', why && 'flowbad', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
+    const title = why ? `Návaznost: ${why}` : undefined;
+    if (!onStep) return el('span', { className: cls, textContent: text, title });
+    const b = el('button', { type: 'button', className: cls, textContent: text, title });
     b.onclick = () => onStep(i + 1);
     return b;
   }));
 }
 
 function bar(b) {
-  const parts = [['b-moves', b.moves], ['b-rot', b.rotations], ['b-regrip', b.regrips], ['b-grip', b.gripChanges]];
+  const parts = [['b-moves', b.moves], ['b-rot', b.rotations], ['b-regrip', b.regrips], ['b-grip', b.gripChanges], ['b-flow', Math.max(0, b.flow ?? 0)]];
   const total = parts.reduce((a, [, v]) => a + v, 0) || 1;
-  return el('span', { className: 'bar', title: 'Tahy / rotace / přehmaty / úchopy' },
+  return el('span', { className: 'bar', title: 'Tahy / rotace / přehmaty / úchopy / návaznost' },
     ...parts.filter(([, v]) => v > 0).map(([cls, v]) => {
       const s = el('span', { className: cls });
       s.style.width = `${(v / total) * 100}%`;
@@ -810,11 +816,19 @@ function renderPlayer() {
       cube ? row('var(--bad)', 'Rotace', b.rotations.toFixed(2)) : null,
       cube ? row('var(--warn)', 'Přehmaty zápěstí', b.regrips.toFixed(2)) : null,
       cube ? row('#b07cc6', 'Změny úchopu', b.gripChanges.toFixed(2)) : null,
+      cube ? row('#e0679a', `Návaznost tahů${flowNotes(s)}`, (b.flow ?? 0).toFixed(2)) : null,
       cube ? row('var(--good)', `Triggery${s.triggers.length ? ` (${s.triggers.map((t) => t.name).join(', ')})` : ''}`, b.triggerBonus.toFixed(2)) : null,
       model.kind === 'sq1'
         ? row(null, 'Řezů / tahů celkem', `${s.metrics.htm} / ${s.metrics.qtm}`)
         : row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`)),
   );
+}
+
+/** Nejčastější důvody špatné návaznosti („ · 2× stejný prst …“). */
+function flowNotes(s) {
+  const counts = new Map();
+  for (const m of s.perMove ?? []) for (const r of m.flowReason ? m.flowReason.split(', ') : []) counts.set(r, (counts.get(r) ?? 0) + 1);
+  return counts.size ? ` (${[...counts].map(([r, n]) => `${n}× ${r}`).join(', ')})` : '';
 }
 
 /** Styl algoritmu v detailu: pro koho se hodí a proč. */

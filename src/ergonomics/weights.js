@@ -1,3 +1,5 @@
+import { FLOW_DEFAULTS } from './flow.js';
+
 // Výchozí parametry ergonomické funkce. Vše je laditelné – hodnoty jsou
 // výchozí odhad pro pravou ruku v home gripu (palec vpředu, ukazováček nahoře).
 
@@ -46,6 +48,8 @@ export const DEFAULT_CONFIG = {
   gripChangePenalty: 0.6,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
   triggerBonusScale: 1,
+  // Návaznost tahů – prstoklad (viz flow.js).
+  ...FLOW_DEFAULTS,
 };
 
 export function moveWeight(m, config = DEFAULT_CONFIG) {

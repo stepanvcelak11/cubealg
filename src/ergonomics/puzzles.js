@@ -26,7 +26,7 @@ export function defaultErgo(puzzle) {
 // otočení stojí jen zlomek (otáčí se současně).
 export const SQ1_DEFAULTS = { slash: 1, turn: [0, 0.4, 0.7, 0.6, 0.9, 1.1, 1.0], simultaneous: 0.5 };
 
-const emptyBreakdown = () => ({ moves: 0, rotations: 0, regrips: 0, gripChanges: 0, triggerBonus: 0 });
+const emptyBreakdown = () => ({ moves: 0, rotations: 0, regrips: 0, gripChanges: 0, flow: 0, triggerBonus: 0 });
 
 /**
  * @param {object} puzzle hlavolam (src/puzzles)
