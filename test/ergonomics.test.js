@@ -17,8 +17,8 @@ test('zrcadla se neduplikují', () => {
 test('rotace jsou drahé', () => {
   const plain = scoreAlg("R U R'");
   const rotated = scoreAlg("y R U R' y'");
-  assert.ok(rotated.total - plain.total >= 20);
-  assert.equal(rotated.breakdown.rotations, 20);
+  assert.ok(rotated.total - plain.total >= 7.9);
+  assert.equal(rotated.breakdown.rotations, 8);
 });
 
 test('RU je pohodlnější než B a slice', () => {
@@ -34,7 +34,7 @@ test('trigger snižuje skóre oproti stejným tahům bez bonusu', () => {
 });
 
 test('přehmat zápěstí při opakovaném R jedním směrem', () => {
-  assert.equal(scoreAlg("R U R U R").breakdown.regrips, 2.5);
+  assert.equal(scoreAlg("R U R U R").breakdown.regrips, 1.5);
   assert.equal(scoreAlg("R U R' U R").breakdown.regrips, 0);
 });
 

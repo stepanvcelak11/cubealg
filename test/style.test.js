@@ -13,16 +13,17 @@ const ALGS = [
 ];
 const list = ALGS.map((alg) => ({ alg, m: styleMetrics(scoreAlg(alg)) }));
 
-test('pohledy: efektivita = nejmíň tahů, rychlost = bez přehmatů a plynulé', () => {
+test('pohledy: efektivita = nejmíň tahů, rychlost = odhad času provedení', () => {
   const eff = rankResults(list, 'efficient');
   assert.equal(eff[0].m.length, 6);
   assert.equal(eff[1].m.length, 6);
   const speed = rankResults(list, 'speed');
-  // přehmaty jsou v rychlosti až na konci; plynulé R/U (i delší) jsou před algoritmy
-  // s nešikovnou návazností (F), prodlužování se ale nevyplácí
+  // přehmaty jsou v rychlosti až na konci; plynulé tahy před nešikovnou návazností
+  // (F U F'), ale o pět tahů delší algoritmus nevyhraje jen proto, že je celý R/U
   assert.equal(speed[0].alg, "R U R' U R U2 R'");
   const at = (alg) => speed.findIndex((x) => x.alg === alg);
-  assert.ok(at("R U R' U' R U R' U' R U R'") < at("F R U R' U' F'"));
+  assert.ok(at("F R U R' U' F'") < at("R U R' U' R U R' U' R U R'"));
+  assert.ok(at("R U R' U' R U R' U' R U R'") < at("F U F' R U R'"));
   assert.ok(speed.slice(-2).every((x) => x.m.regrips > 0));
 });
 

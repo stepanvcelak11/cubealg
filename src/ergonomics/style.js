@@ -1,8 +1,9 @@
 // Tři pohledy na nalezená řešení – každý řadí všechna řešení jinak:
 //
-//   rychlost    – příjemné skládání: nejdřív co nejméně přehmatů a rotací, pak
-//                 co nejméně míst se špatnou návazností nebo změnou úchopu, pak
-//                 celková nepohodlnost (váhy tahů, návaznost, triggery)
+//   rychlost    – odhad času provedení: celková nepohodlnost (váhy tahů, přehmaty,
+//                 rotace, změny úchopu, návaznost, triggery) – jedno číslo, takže
+//                 se nevyplatí algoritmus natahovat jen kvůli jednomu přehmatu
+//                 (přehmat stojí zhruba jako tah a půl, viz weights.js)
 //   efektivita  – co nejméně tahů; pohodlí rozhoduje jen mezi stejně dlouhými
 //   všestranné  – kombinace obou: (1 − λ) · délka + λ · hodnota rychlosti, λ volí
 //                 posuvník „kratší ↔ pohodlnější“ (absolutní, takže se pořadí
@@ -10,7 +11,7 @@
 
 export const VIEWS = {
   balanced: { label: 'Všestranné', icon: '★', text: 'kombinace obou: málo tahů i příjemné skládání (poměr nastavíš posuvníkem)' },
-  speed: { label: 'Rychlost', icon: '⚡', text: 'příjemné skládání: co nejméně přehmatů a rotací, pak co nejméně nešikovných návazností a úchopů' },
+  speed: { label: 'Rychlost', icon: '⚡', text: 'nejrychlejší provedení: tahy, přehmaty, návaznost a úchopy dohromady' },
   efficient: { label: 'Efektivita', icon: '◎', text: 'co nejméně tahů – pohodlí rozhoduje jen mezi stejně dlouhými' },
 };
 
@@ -37,13 +38,14 @@ export function styleMetrics(score, cube = true) {
 }
 
 /**
- * Hodnota pro rychlost (lexikograficky, nižší = lepší): přehmaty a rotace, pak
- * nepříjemná místa (špatná návaznost, změna úchopu), pak celková nepohodlnost.
- * Celková (ne na tah), aby se nevyplatilo algoritmus natahovat levnými tahy.
+ * Hodnota pro rychlost (nižší = lepší): celková nepohodlnost (ne na tah, aby se
+ * nevyplatilo algoritmus natahovat levnými tahy), při shodě kratší. Dřív se řadilo
+ * nejdřív podle počtu přehmatů – vyhrávaly pak o hodně delší algoritmy bez přehmatu
+ * (známé rychlé algoritmy jako Pi nebo U-perm skončily až kolem 50. místa).
  */
-export const speedKey = (m) => [m.regrips + m.rotations, m.rough, m.total];
+export const speedKey = (m) => [m.total, m.length];
 /** Jedno číslo rychlosti pro kombinaci ve všestranném pohledu. */
-export const speedValue = (m) => 2 * (m.regrips + m.rotations) + 0.5 * m.rough + m.total;
+export const speedValue = (m) => m.total;
 
 /** Výchozí poměr všestranného pohledu (0 = jen délka, 1 = jen pohodlí). */
 export const DEFAULT_LAMBDA = 0.5;

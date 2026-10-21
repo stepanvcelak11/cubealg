@@ -75,8 +75,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     zrcadlově. Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
     přehrávač a ukládání do zvolené sady trenažéru. Tři **pohledy** řadí všechna
-    řešení jinak: ⚡ rychlost (nejdřív co nejméně přehmatů a rotací, pak co
-    nejpříjemnější tahy a návaznost, délka skoro nehraje roli), ◎ efektivita (co
+    řešení jinak: ⚡ rychlost (odhad času provedení – tahy, přehmaty, rotace,
+    návaznost a úchopy dohromady; přehmat stojí zhruba jako tah a půl, takže
+    o hodně delší algoritmus jen kvůli jednomu přehmatu nevyhraje – ověřeno na
+    známých rychlých PLL a OLL), ◎ efektivita (co
     nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (poměr délky a
     pohodlí nastavíš posuvníkem „kratší ↔ pohodlnější“). Graf **délka × pohodlí**
     ukazuje všechna řešení a zvýrazní ta, která nejde zlepšit v jednom bez

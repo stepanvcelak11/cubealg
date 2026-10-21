@@ -121,6 +121,8 @@ function load() {
   ui.lastPaint = -1;
   ui.paint = { A: P().colors[0].face, B: null };
   const e = storage.get(ergoKey(model.id));
+  // staré výchozí ceny přehmatu a rotace (uložené s ostatním nastavením) → nové výchozí
+  if (e && !e.v2) { if (e.regripPenalty === 2.5) delete e.regripPenalty; if (e.rotationPenalty === 10) delete e.rotationPenalty; e.v2 = true; }
   const def = defaultErgo(P());
   ui.ergo = P().ergonomics === 'cube'
     ? { ...DEFAULT_CONFIG, ...e, moveWeights: { ...DEFAULT_MOVE_WEIGHTS, ...(e?.moveWeights ?? {}) } }

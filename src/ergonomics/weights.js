@@ -40,11 +40,12 @@ export const DEFAULT_CONFIG = {
   moveWeights: DEFAULT_MOVE_WEIGHTS,
   gripZones: DEFAULT_GRIP_ZONES,
   fallbackWeight: 2.5,
-  // Za každou čtvrtotáčku rotace x/y/z.
-  rotationPenalty: 10,
+  // Za každou čtvrtotáčku rotace x/y/z (zhruba jako 3–4 tahy, podobně jako MCC).
+  rotationPenalty: 4,
   // Zápěstí: kolik čtvrtotáček jedním směrem zvládne bez přehmatu.
   maxWristTurn: 2,
-  regripPenalty: 2.5,
+  // Přehmat stojí zhruba jako tah a půl (ověřeno na známých rychlých PLL/OLL).
+  regripPenalty: 1.5,
   gripChangePenalty: 0.6,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
   triggerBonusScale: 1,

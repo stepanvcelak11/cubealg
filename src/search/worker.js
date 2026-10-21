@@ -168,8 +168,8 @@ function subsetsOf(bases) {
 /**
  * Model ceny pro hledání podle pohodlí: stav ruky (zápěstí, úchop, prstoklad)
  * je číslo, přechody a ceny se počítají líně (ergoStep) a pamatují. Cena tahu
- * odpovídá hodnotě rychlosti (speedValue) bez triggerů: váha + přehmat + úchop +
- * návaznost, navíc 2 za přehmat či rotaci a 0,5 za nešikovné místo.
+ * odpovídá hodnotě rychlosti (speedValue) bez triggerů: váha + rotace + přehmat +
+ * úchop + návaznost.
  */
 function costModel(held, config) {
   const cfg = fullConfig(config);
@@ -194,8 +194,7 @@ function costModel(held, config) {
     }
     const i = ctx * M + m;
     next[i] = id;
-    price[i] = item.base + item.rotation + item.regrip + item.gripChange + item.flow
-      + (item.regrip > 0 || item.rotation > 0 ? 2 : 0) + (item.flowReason || item.gripChange > 0 ? 0.5 : 0);
+    price[i] = item.base + item.rotation + item.regrip + item.gripChange + item.flow;
   };
   const isRot = (m) => MOVE_DEFS[m.base]?.kind === 'rotation';
   const minMove = Math.max(0, Math.min(...moves.map((m) => (isRot(m) ? cfg.rotationPenalty * Math.abs(m.amount) : moveWeight(m, cfg) - cfg.alternate * cfg.flowScale))));
