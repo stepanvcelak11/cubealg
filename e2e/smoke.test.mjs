@@ -657,3 +657,43 @@ test('lab: styl jen jedné nálepky a střed vždy plně', async () => {
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: úprava nalezeného algoritmu klepáním a přidání do výsledků', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.locator('#palette-b [title="Bílá"]').tap();
+  await tapSticker(p, 'cube-b', 8);
+  await p.locator('#palette-b [title="Zelená"]').tap();
+  await tapSticker(p, 'cube-b', 20);
+  await p.locator('#palette-b [title="Červená"]').tap();
+  await tapSticker(p, 'cube-b', 9);
+  await p.locator('#palette-a [title="Červená"]').tap();
+  await tapSticker(p, 'cube-a', 8);
+  await p.locator('#palette-a [title="Zelená"]').tap();
+  await tapSticker(p, 'cube-a', 9);
+  await p.locator('#palette-a [title="Bílá"]').tap();
+  await tapSticker(p, 'cube-a', 20);
+  await p.evaluate(() => { document.querySelector('#opt-time').value = '3'; });
+  await p.locator('#go-search').tap();
+  await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 30000 });
+  const original = await p.locator('#alg').inputValue();
+  const total = async () => Number((await p.locator('#detail .view-ranks').innerText()).match(/z (\d+)/)[1]);
+  const count = await total();
+  await p.locator('#detail .edit-actions button', { hasText: 'Upravit' }).tap();
+  // smazat první tah → neřeší
+  await p.locator('#detail .moves button').first().tap();
+  await p.locator('#detail .edit-tools [title="Smazat tah"]').tap();
+  assert.match(await p.locator('#detail .verdict').innerText(), /neřeší/);
+  await p.locator('#detail .edit-actions button', { hasText: 'Původní' }).tap();
+  assert.equal(await p.locator('#alg').inputValue(), original);
+  // vložit na začátek R a R' → pořád řeší, jde přidat do výsledků (úpravy zůstávají zapnuté)
+  await p.locator('#detail .edit-tools.insert [title="Vložit R"]').tap();
+  await p.locator('#detail .edit-tools.insert [title="Vložit R"]').tap();
+  await p.locator('#detail .edit-tools [title="Opačný směr"]').tap();
+  assert.match(await p.locator('#alg').inputValue(), /^R R' /);
+  assert.match(await p.locator('#detail .verdict').innerText(), /✓ řeší/);
+  await p.locator('#detail .edit-actions button', { hasText: 'Přidat do výsledků' }).tap();
+  assert.equal(await total(), count + 1);
+  assert.equal(await p.locator('#detail .edit-actions button', { hasText: 'Přidat' }).count(), 0);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

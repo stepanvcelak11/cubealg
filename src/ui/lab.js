@@ -1158,7 +1158,7 @@ function movesView(alg, s, { current = -1, onStep, moveSet } = {}) {
     const bad = moveSet && !model.allows(moveSet, m) && !auf;
     const why = auf ? null : s.perMove?.[i - off]?.flowReason;
     const cls = ['mv', auf ? 'auf' : moveClass(text), trig.has(i) && 'trig', why && 'flowbad', i === current && 'current', bad && 'bad'].filter(Boolean).join(' ');
-    const title = auf ? 'AUF – natočení horní vrstvy, do délky se nepočítá' : why ? `Návaznost: ${why}` : undefined;
+    const title = auf ? 'AUF – natočení horní vrstvy, do délky se nepočítá' : why ? `Návaznost: ${why}` : '';
     if (!onStep) return el('span', { className: cls, textContent: text, title });
     const b = el('button', { type: 'button', className: cls, textContent: text, title });
     b.onclick = () => onStep(i + 1);
@@ -1233,6 +1233,8 @@ function renderResults() {
 
 function choose(alg, scroll) {
   ui.chosen = alg;
+  ui.editFrom = alg;
+  ui.editSel = -1;
   ui.step = 0;
   $('alg').value = alg;
   stopPlaying();
@@ -1296,11 +1298,27 @@ function renderPlayer() {
     el('td', { textContent: value }));
   const cube = P().ergonomics === 'cube';
 
-  detail.replaceChildren(
-    movesView(algText, s, { current: ui.step - 1, onStep: (i) => { ui.step = i; stopPlaying(); renderPlayer(); }, moveSet }),
+  const editing = ui.editing && model.kind === 'perm';
+  const onStep = editing
+    ? (i) => { ui.editSel = ui.editSel === i - 1 ? -1 : i - 1; ui.step = ui.editSel + 1; stopPlaying(); renderPlayer(); }
+    : (i) => { ui.step = i; stopPlaying(); renderPlayer(); };
+  const known = ui.results.has(algText) || ui.results.has(ui.chosen);
+  detail.replaceChildren(...[
+    movesView(algText, s, { current: editing ? ui.editSel : ui.step - 1, onStep, moveSet }),
+    editing ? editBar(parts) : null,
     el('div', { className: 'verdict' },
       el('span', { className: exact || rotated ? 'ok' : 'ko', textContent: exact ? '✓ řeší zadání' : rotated ? '✓ řeší zadání (po otočení kostky)' : `✗ neřeší zadání (${goal.violations(end)} porušení)` }),
       illegal.length ? el('span', { className: 'ko', textContent: ` · nepovolené tahy: ${illegal.join(' ')}` }) : null),
+    el('div', { className: 'edit-actions' },
+      model.kind === 'perm' ? Object.assign(el('button', { type: 'button', className: `secondary small${editing ? ' on' : ''}`, textContent: editing ? '✓ Hotovo' : '✎ Upravit' }), {
+        onclick: () => { ui.editing = !editing; ui.editSel = -1; renderPlayer(); },
+      }) : null,
+      exact && !known ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '+ Přidat do výsledků', title: 'Upravený algoritmus se zařadí mezi nalezená řešení (a uloží se s nimi)' }), {
+        onclick: () => { ui.results.set(algText, score(algText)); saveFound(true); choose(algText, false); },
+      }) : null,
+      ui.editFrom && ui.editFrom !== algText ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '↺ Původní', title: ui.editFrom }), {
+        onclick: () => { const a = ui.editFrom; ui.editSel = -1; choose(a, false); ui.editFrom = a; },
+      }) : null),
     el('div', {}, el('span', { className: 'score-big', textContent: s.total.toFixed(1) }), el('span', { className: 'hint', textContent: '  nepohodlnost (nižší = lepší)' })),
     styleNote(algText, s),
     el('table', { className: 'breakdown' },
@@ -1313,7 +1331,49 @@ function renderPlayer() {
       model.kind === 'sq1'
         ? row(null, 'Řezů / tahů celkem', `${s.metrics.htm} / ${s.metrics.qtm}`)
         : row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`)),
-  );
+  ].filter(Boolean));
+}
+
+// --- Úprava algoritmu klepáním -----------------------------------------------------------
+// Klepnutím se vybere tah (v movesView je index i s AUF na začátku); tlačítka ho otočí,
+// zdvojí, posunou nebo smažou, nebo za něj vloží nový tah. Upravuje se jen jádro
+// algoritmu, AUF v závorkách zůstává. Zápis jde měnit i přímo v poli nad tím.
+
+/** Nastaví upravený algoritmus (pole i přehrávač). */
+function setEdited(pre, moves, post, sel) {
+  const core = moves.map((m) => model.stepToString(m)).join(' ');
+  ui.chosen = joinAuf(pre, core, post) || null;
+  ui.editSel = sel;
+  ui.step = Math.max(0, sel + 1); // kostka ukazuje stav po vybraném tahu
+  $('alg').value = ui.chosen ?? '';
+  stopPlaying();
+  renderResults();
+  renderPlayer();
+}
+
+function editBar({ pre, core, post }) {
+  let moves;
+  try { moves = model.steps(core).map((m) => ({ ...m })); } catch { return null; }
+  const off = pre ? 1 : 0;
+  const i = ui.editSel - off; // index v jádru (−1 = nic, vkládá se na začátek)
+  const sel = i >= 0 && i < moves.length ? i : -1;
+  const btn = (label, title, fn, disabled = false) => Object.assign(
+    el('button', { type: 'button', className: 'chip', textContent: label, title, disabled }), { onclick: fn });
+  const change = (fn) => () => { const next = moves.map((m) => ({ ...m })); const s2 = fn(next); setEdited(pre, next, post, s2 + off); };
+  const tools = el('div', { className: 'edit-tools' },
+    btn("′", 'Opačný směr', change((ms) => { ms[sel].amount = ms[sel].amount === 2 ? 2 : -ms[sel].amount; return sel; }), sel < 0),
+    btn('2', 'Dvojitý / zpět na jednoduchý', change((ms) => { ms[sel].amount = ms[sel].amount === 2 ? 1 : 2; return sel; }), sel < 0),
+    btn('←', 'Posunout dřív', change((ms) => { [ms[sel - 1], ms[sel]] = [ms[sel], ms[sel - 1]]; return sel - 1; }), sel < 1),
+    btn('→', 'Posunout později', change((ms) => { [ms[sel + 1], ms[sel]] = [ms[sel], ms[sel + 1]]; return sel + 1; }), sel < 0 || sel >= moves.length - 1),
+    btn('✕', 'Smazat tah', change((ms) => { ms.splice(sel, 1); return Math.min(sel, ms.length - 1); }), sel < 0));
+  // vložení tahu za vybraný (bez výběru na začátek): povolené vrstvy
+  const bases = (ui.bases.length ? ui.bases : P().defaultBases);
+  const insert = el('div', { className: 'edit-tools insert' },
+    el('span', { className: 'hint', textContent: sel < 0 ? 'Vložit na začátek:' : `Vložit za ${model.stepToString(moves[sel])}:` }),
+    ...bases.map((b) => btn(b, `Vložit ${b}`, change((ms) => { ms.splice(sel + 1, 0, { base: b, amount: 1 }); return sel + 1; }))));
+  return el('div', { className: 'edit-bar' },
+    el('p', { className: 'hint', textContent: sel < 0 ? 'Klepni na tah, který chceš změnit.' : `Vybráno: ${model.stepToString(moves[sel])} (${sel + 1}. tah)` }),
+    tools, insert);
 }
 
 /** Nejčastější důvody špatné návaznosti („ · 2× stejný prst …“). */

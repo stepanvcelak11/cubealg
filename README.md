@@ -83,6 +83,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     pohodlí nastavíš posuvníkem „kratší ↔ pohodlnější“). Graf **délka × pohodlí**
     ukazuje všechna řešení a zvýrazní ta, která nejde zlepšit v jednom bez
     zhoršení druhého. U řádků je pořadí v ostatních pohledech, v detailu ve všech.
+  - **Úprava algoritmu:** v přehrávači „✎ Upravit“ – klepnutím vybereš tah a otočíš
+    ho (′), zdvojíš (2), posuneš (← →), smažeš nebo za něj vložíš jiný; kostka ukazuje
+    stav po vybraném tahu a hned je vidět, zda algoritmus pořád řeší zadání a jak je
+    pohodlný. Řešící úpravu jde „+ Přidat do výsledků“, „↺ Původní“ vrátí nalezený
+    algoritmus. Zápis jde měnit i přímo v textovém poli.
   - **AUF:** řešení smí začít a skončit natočením horní vrstvy, které se do délky
     ani hodnocení nepočítá – zápis „(U) R U R' … (U2)“ (vypnout jde v nastavení
     hledání).
