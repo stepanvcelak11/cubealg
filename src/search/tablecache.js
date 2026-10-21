@@ -6,8 +6,9 @@
 
 const DB = 'ergocube-tables';
 const STORE = 'tables';
-const META = 'meta'; // klíč → čas uložení (pro úklid nejstarších)
-const MAX = 120; // nejvýš tolik databází (nejstarší se mažou), řádově desítky MB
+const META = 'meta'; // klíč → [čas uložení, bajty] (pro úklid nejstarších)
+const MAX = 120; // nejvýš tolik databází (nejstarší se mažou)
+const MAX_BYTES = 160 * 2 ** 20; // a nejvýš tolik dat (velké databáze mají jednotky MB)
 
 function openDb() {
   return new Promise((resolve) => {
@@ -30,6 +31,7 @@ export async function openTableCache() {
   return {
     hits: 0,
     get(key) { const v = mem.get(key); if (v) this.hits++; return v; },
+    has(key) { return mem.has(key); },
     set(key, dist) { mem.set(key, dist); fresh.set(key, dist); },
     /** Načte uložené databáze s danými klíči. */
     async load(keys) {
@@ -52,15 +54,22 @@ export async function openTableCache() {
       const store = tx.objectStore(STORE);
       const meta = tx.objectStore(META);
       const now = Date.now();
-      for (const [key, dist] of entries) { store.put(dist, key); meta.put(now, key); }
-      // úklid: nad limit se smažou nejstarší
+      for (const [key, dist] of entries) { store.put(dist, key); meta.put([now, dist.byteLength], key); }
+      // úklid: nad limit počtu nebo velikosti se smažou nejstarší
       const keysReq = meta.getAllKeys();
       const timesReq = meta.getAll();
       timesReq.onsuccess = () => {
-        const keys = keysReq.result, times = timesReq.result;
-        if (keys.length <= MAX) return;
-        const order = keys.map((k, i) => [k, times[i]]).sort((a, b) => a[1] - b[1]);
-        for (const [old] of order.slice(0, keys.length - MAX)) { store.delete(old); meta.delete(old); }
+        const keys = keysReq.result;
+        // starší záznamy mají jen čas (velikost neznámá – malé databáze)
+        const info = timesReq.result.map((v) => (Array.isArray(v) ? v : [v, 400000]));
+        let bytes = info.reduce((a, v) => a + v[1], 0);
+        let count = keys.length;
+        const order = keys.map((k, i) => [k, ...info[i]]).sort((a, b) => a[1] - b[1]);
+        for (const [old, , size] of order) {
+          if (count <= MAX && bytes <= MAX_BYTES) break;
+          store.delete(old); meta.delete(old);
+          count--; bytes -= size;
+        }
       };
       await done(tx);
     },

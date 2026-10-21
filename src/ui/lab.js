@@ -14,6 +14,7 @@ import { AMOUNTS } from '../core/moveset.js';
 import { trackedPieces } from '../core/task.js';
 import { PUZZLES } from '../puzzles/index.js';
 import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomics/puzzles.js';
+import { aufCost } from '../ergonomics/score.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 import { calibrate, featureLabel, learnPreferences } from '../ergonomics/calibrate.js';
@@ -152,7 +153,14 @@ function splitAuf(alg) {
 }
 const joinAuf = (pre, core, post) => [pre && `(${pre})`, core, post && `(${post})`].filter(Boolean).join(' ');
 
-const score = (alg) => scoreFor(P(), splitAuf(alg).core, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
+const score = (alg) => {
+  const { pre, core, post } = splitAuf(alg);
+  const s = scoreFor(P(), core, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
+  if (P().ergonomics !== 'cube' || (!pre && !post)) return s;
+  // AUF do délky ne, do pohodlí ano
+  const auf = aufCost(pre, post, ui.ergo);
+  return { ...s, total: Math.round((s.total + auf) * 100) / 100, breakdown: { ...s.breakdown, auf } };
+};
 
 function snapshot() {
   ui.undo.push({
@@ -1352,6 +1360,7 @@ function renderPlayer() {
       cube ? row('var(--warn)', 'Přehmaty zápěstí', b.regrips.toFixed(2)) : null,
       cube ? row('#b07cc6', 'Změny úchopu', b.gripChanges.toFixed(2)) : null,
       cube ? row('#e0679a', `Návaznost tahů${flowNotes(s)}`, (b.flow ?? 0).toFixed(2)) : null,
+      cube && b.auf ? row('#8a8f98', 'AUF (natočení U před a po)', b.auf.toFixed(2)) : null,
       cube ? row('var(--good)', `Triggery${s.triggers.length ? ` (${s.triggers.map((t) => t.name).join(', ')})` : ''}`, b.triggerBonus.toFixed(2)) : null,
       model.kind === 'sq1'
         ? row(null, 'Řezů / tahů celkem', `${s.metrics.htm} / ${s.metrics.qtm}`)

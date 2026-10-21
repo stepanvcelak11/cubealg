@@ -121,3 +121,44 @@ test('volby z generátoru doladí váhy: vybraný vychází lépe', () => {
   assert.ok(res.changes.some((c) => c.key.startsWith('F:') && c.to < c.from), JSON.stringify(res.changes));
   assert.equal(learnPreferences(P, {}, pairs.slice(0, 1)).ok, false);
 });
+
+test('databáze ceny: dolní mez ceny známých řešení, s ní hledání najde totéž', async () => {
+  const { costTables } = await import('../src/search/engine.js');
+  const moves = movesOf(['R', 'U', 'F']);
+  const start = caseOf("R U R' U' R' F R F'");
+  const problem = prepare({ puzzle: P, constraints: OLL, moves, targets: targetsOf(P, P.solved(), { post: U }) });
+  const low = lowerCosts(costModel(moves, config), config);
+  const hcost = costTables(problem, low.floors);
+  const { encode } = await import('../src/search/engine.js');
+  // odhad z výchozího stavu ≤ snížená cena skutečného řešení
+  const idx = new Map(moves.map((m, i) => [P.moveToString(m), i]));
+  let ctx = low.start, c = 0;
+  for (const t of "R U R' U' R' F R F'".split(' ')) { const m = idx.get(t); c += low.cost(ctx, m); ctx = low.step(ctx, m); }
+  assert.ok(hcost(encode(problem, start)) <= c + 1e-9);
+  const run1 = searchCost(problem, rootsOf(start), { cost: low, minMove: low.minMove, bound: 100, length: 8 });
+  const run2 = searchCost(problem, rootsOf(start), { cost: low, minMove: low.minMove, bound: 100, length: 8, hcost });
+  assert.equal(run2.bound, run1.bound);
+  assert.ok(run2.nodes <= run1.nodes);
+});
+
+test('velké databáze po 4 bitech: stejné hledání jako běžné', async () => {
+  const moves = movesOf(['R', 'U']);
+  const start = caseOf("R U R' U R U2 R'");
+  const goals = targetsOf(P, P.solved(), { post: U });
+  const a = prepare({ puzzle: P, constraints: OLL, moves, targets: goals });
+  const b = prepare({ puzzle: P, constraints: OLL, moves, targets: goals, tableLimit: 24 ** 5 });
+  assert.ok(b.tables.some((t) => t.packed));
+  const { search } = await import('../src/search/engine.js');
+  const ra = search(a, rootsOf(start), { maxLength: 9, extraDepth: 1, maxResults: 1e6 });
+  const rb = search(b, rootsOf(start), { maxLength: 9, extraDepth: 1, maxResults: 1e6 });
+  assert.deepEqual([...rb.solutions].sort(), [...ra.solutions].sort());
+  assert.ok(rb.nodes <= ra.nodes);
+});
+
+test('AUF se počítá do pohodlí (U2 dráž než U), do délky ne', async () => {
+  const { aufCost } = await import('../src/ergonomics/score.js');
+  assert.equal(aufCost(null, null), 0);
+  assert.ok(aufCost('U2', null) > aufCost('U', null));
+  assert.equal(aufCost('U', "U'"), aufCost("U'", 'U'));
+  assert.equal(aufCost('U', null, { aufScale: 0 }), 0);
+});

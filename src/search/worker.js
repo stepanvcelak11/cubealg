@@ -19,14 +19,18 @@
 //      pohodlnější, než je nejlepší známé,
 //   3. po každé změně nejlepších se kandidáti doladí výměnou úseků (improve.js).
 
-import { prepare, tableKeys, NEAR_LIMIT } from './engine.js';
+import { prepare, tableKeys, costTableKeys, NEAR_LIMIT } from './engine.js';
+
+/** Od jakého časového limitu se velké databáze vyplatí postavit (jinak jen uložené). */
+const BIG_TABLE_TIME = 30000;
 import { openTableCache } from './tablecache.js';
 import { prepareSq1, searchSq1 } from './sq1engine.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
+import { aufCost } from '../ergonomics/score.js';
 import { compileGoal } from '../core/constraints.js';
-import { explore, makeTracker, subsetsOf, targetsOf } from './explore.js';
+import { explore, makeTracker, subsetsOf, targetsOf, costModel, lowerCosts } from './explore.js';
 
 self.onmessage = ({ data }) => {
   if (data.type !== 'search') return;
@@ -43,6 +47,9 @@ async function run({ puzzle: id = '333', start, target, constraints, moves, held
   const heldName = new Map(held && moves ? moves.map((m, i) => [P.moveToString(m), P.moveToString(held[i])]) : []);
   const toHeld = (alg) => (held ? alg.split(' ').map((t) => heldName.get(t) ?? t).join(' ') : alg);
   const scoreOf = (alg) => scoreFor(P, P.kind === 'sq1' ? alg : toHeld(alg), config);
+  // AUF před a po (v rámci držení) – do pohodlí se počítá, do délky ne
+  const aufOf = (pre, post) => (P.ergonomics === 'cube' && (pre || post) ? aufCost(pre && toHeld(pre), post && toHeld(post), config) : 0);
+  const withAuf = (score, pre, post) => { const a = aufOf(pre, post); return a ? { ...score, total: score.total + a } : score; };
 
   let batch = [];
   let lastFlush = Date.now();
@@ -58,7 +65,7 @@ async function run({ puzzle: id = '333', start, target, constraints, moves, held
       const key = `${pre ?? ''}|${alg}|${post ?? ''}`;
       if (seen.has(key)) return;
       seen.add(key);
-      const score = scoreOf(alg);
+      const score = withAuf(scoreOf(alg), pre, post);
       tracker.add({ alg, pre, post }, score);
       batch.push({ alg, pre, post, score });
       if (batch.length >= 50 || Date.now() - lastFlush > 200) flush();
@@ -89,7 +96,7 @@ async function run({ puzzle: id = '333', start, target, constraints, moves, held
           if (!goal.test(P.applyAlg(Uint8Array.from(start), [pre, sd.alg, post].filter(Boolean).join(' ')))) continue;
         } catch { continue; }
         if (!shard || shard.index === 0) handlers.onSolution(sd.alg, pre, post);
-        else { seen.add(`${pre ?? ''}|${sd.alg}|${post ?? ''}`); tracker.add({ alg: sd.alg, pre, post }, scoreOf(sd.alg)); }
+        else { seen.add(`${pre ?? ''}|${sd.alg}|${post ?? ''}`); tracker.add({ alg: sd.alg, pre, post }, withAuf(scoreOf(sd.alg), pre, post)); }
       }
     }
     // pattern databáze: uložené se načtou (jen ty, které budou potřeba), nové se uloží
@@ -97,14 +104,34 @@ async function run({ puzzle: id = '333', start, target, constraints, moves, held
     const goal = Uint8Array.from(target);
     const targets = targetsOf(P, goal, auf);
     const nearLimit = options.nearLimit ?? NEAR_LIMIT;
+    // velké databáze (klient je povolí podle paměti zařízení): jen když už jsou uložené,
+    // nebo je na hledání dost času, aby se vyplatilo je postavit (první stavění trvá sekundy)
+    let tableLimit;
+    if (options.tableLimit) {
+      const bigKeys = tableKeys({ puzzle: P, constraints, targets, moves, nearLimit, tableLimit: options.tableLimit });
+      await cache.load(bigKeys);
+      if (bigKeys.every((k) => cache.has(k)) || (options.timeLimit ?? 0) >= BIG_TABLE_TIME) tableLimit = options.tableLimit;
+    }
     const bases = [...new Set(moves.map((m) => m.base))];
-    const plan = [{ moves, targets, near: nearLimit },
+    const plan = [{ moves, targets, near: nearLimit, tableLimit },
       ...(bases.length >= 3 ? subsetsOf(bases).filter((_, i) => !shard || i % shard.count === shard.index)
         .map((sub) => ({ moves: moves.filter((m) => sub.includes(m.base)), targets: targets.slice(0, 1), near: Math.floor(nearLimit / 4) })) : [])];
-    await cache.load(plan.flatMap((x) => tableKeys({ puzzle: P, constraints, targets: x.targets, moves: x.moves, nearLimit: x.near })));
-    const full = prepare({ puzzle: P, constraints, moves, targets, nearLimit, onTable, cache });
+    const fullKeys = tableKeys({ puzzle: P, constraints, targets, moves, nearLimit, tableLimit });
+    await cache.load([...fullKeys, ...plan.slice(1).flatMap((x) => tableKeys({ puzzle: P, constraints, targets: x.targets, moves: x.moves, nearLimit: x.near }))]);
+    // hlavní databáze uložené: ostatní workery (klient je spouští až po „ready“) můžou začít hned
+    const cached = fullKeys.every((k) => cache.has(k));
+    if (cached) self.postMessage({ type: 'ready' });
+    const full = prepare({ puzzle: P, constraints, moves, targets, nearLimit, tableLimit, onTable, cache });
+    // databáze ceny (hledání podle pohodlí, závisí i na vahách hodnocení): uložené se načtou,
+    // jinak je explore postaví, až budou potřeba
+    if (P.ergonomics === 'cube' && options.comfort !== false) {
+      const low = lowerCosts(costModel(held ?? moves, config), config);
+      await cache.load(costTableKeys(full, low.floors));
+    }
     await cache.flush();
-    res = explore({ P, start: Uint8Array.from(start), target: goal, constraints, moves, held: held ?? moves, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0, full, cache });
+    // databáze jsou uložené: ostatní workery si je jen načtou (nepočítají totéž souběžně)
+    if (!cached) self.postMessage({ type: 'ready' });
+    res = explore({ P, start: Uint8Array.from(start), target: goal, constraints, moves, held: held ?? moves, auf, shard, options, config, handlers, tracker, scoreOf, aufOf, onTable, t0, full, cache });
     await cache.flush();
   }
   flush();

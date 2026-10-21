@@ -2,7 +2,7 @@
 // najednou (podle počtu jader), každý prohledá svůj díl (shard, viz worker.js);
 // klient jejich zprávy spojí, jako by šlo o jedno hledání. Zrušení je ukončí.
 
-import { NEAR_LIMIT } from './engine.js';
+import { NEAR_LIMIT, BIG_TABLE_LIMIT } from './engine.js';
 
 /** Kolik workerů spustit: o jeden méně než jader (UI má svoje), nejvýš 4; při málo paměti 2. */
 export function workerCount() {
@@ -10,6 +10,12 @@ export function workerCount() {
   const memory = globalThis.navigator?.deviceMemory ?? 8;
   return Math.max(1, Math.min(memory < 4 ? 2 : 4, cores - 1));
 }
+
+/**
+ * Velké databáze (skupiny 5–6 dílků, po 4 bitech ~4 MB na skupinu): jen zařízení,
+ * která hlásí aspoň 8 GB paměti (první sestavení trvá jednotky sekund, pak se načítají).
+ */
+export const bigTables = () => (globalThis.navigator?.deviceMemory ?? 0) >= 8;
 
 export class SearchClient {
   constructor() {
@@ -73,31 +79,46 @@ export class SearchClient {
       });
     };
 
-    for (let index = 0; index < count; index++) {
+    // s velkými databázemi: první worker je připraví a uloží; ostatní se spustí, až jsou
+    // uložené (jen je načtou – nestaví každý svých ~40 MB souběžně), a dostanou o to kratší
+    // čas. S běžnými databázemi začnou všechny hned (stavění zabere jen chvilku).
+    const t0 = Date.now();
+    const allowBig = bigTables() && job.puzzle !== 'sq1';
+    const options = { ...job.options, nearLimit, ...(allowBig ? { tableLimit: BIG_TABLE_LIMIT } : {}) };
+    // postupné spuštění jen když se velké databáze možná budou stavět (dlouhé hledání)
+    const big = allowBig && (job.options?.timeLimit ?? 0) >= 30000;
+    const launch = (index) => {
       const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
-      list.push(worker);
+      list[index] = worker;
       worker.onmessage = ({ data }) => {
         if (!live()) return;
-        if (data.type === 'progress') {
+        if (data.type === 'ready') {
+          if (big && index === 0) for (let i = 1; i < count; i++) launch(i);
+        } else if (data.type === 'progress') {
           if (data.phase === 'tables') { if (index === 0) onProgress?.(data); return; }
           state[index].progress = data;
           onProgress?.(merged(data));
         } else if (data.type === 'solutions') onSolutions?.(data.items);
         else if (data.type === 'done') {
           state[index].done = data;
+          // hotovo dřív, než ostatní začaly (např. výchozí stav už je složený)
+          if (index === 0 && list.filter(Boolean).length < count) for (let i = 1; i < count; i++) if (!list[i]) state[i].done = { ...data, found: 0 };
           if (state.every((s) => s.done)) finish();
         } else if (data.type === 'error') fail(data.message);
       };
       worker.onerror = (e) => fail(e.message || 'Chyba ve workeru');
+      const spent = Date.now() - t0;
       worker.postMessage({
         type: 'search',
         ...job,
-        options: { ...job.options, nearLimit },
+        options: { ...options, timeLimit: Math.max(500, (options.timeLimit ?? 15000) - spent) },
         shard: { index, count },
         start: Array.from(job.start),
         target: Array.from(job.target),
       });
-    }
+    };
+    if (big) launch(0);
+    else for (let i = 0; i < count; i++) launch(i);
   }
 
   cancel() {

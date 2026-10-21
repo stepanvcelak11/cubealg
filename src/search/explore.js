@@ -1,7 +1,7 @@
 // Průběh hledání (mimo Square-1): nejdřív jakékoli řešení, pak kola zlepšování.
 // Odděleno od workeru, aby šlo spustit i v Node (testy a měření kvality).
 
-import { prepare, search, searchCost, NEAR_LIMIT } from './engine.js';
+import { prepare, search, searchCost, costTables, NEAR_LIMIT } from './engine.js';
 import { ergoStep, ERGO_START, fullConfig } from '../ergonomics/score.js';
 import { moveWeight } from '../ergonomics/weights.js';
 import { mirrorMove, MOVE_DEFS } from '../core/notation.js';
@@ -141,6 +141,8 @@ export function lowerCosts(costs, config) {
     step: costs.step,
     cost: (ctx, m) => costs.cost(ctx, m) - disc[m],
     minMove: Math.max(0.05, Math.min(...costs.floors.map((f, m) => f - disc[m]))),
+    // dolní mez ceny každého tahu bez ohledu na stav ruky (pro databáze ceny)
+    floors: costs.floors.map((f, m) => Math.max(0.05, f - disc[m])),
     disc,
   };
 }
@@ -161,7 +163,7 @@ const MAX_COMFORT = 40; // nejdelší délka pro hledání podle pohodlí
  * S víc workery (shard) každý prohledá jen svůj díl úplné sady a pohodlí, dostane
  * jen některé menší sady a etapové hledání zkouší tahy v jiném pořadí.
  */
-export function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0, full: prepared, cache }) {
+export function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, aufOf = () => 0, onTable, t0, full: prepared, cache }) {
   const timeLimit = options.timeLimit ?? 15000;
   const deadline = t0 + timeLimit;
   const left = () => deadline - Date.now();
@@ -235,17 +237,25 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   if (blocks) tasks.push(blocks);
   const resolver = makeResolver(full, P, target);
 
+  // pohledy, které tento worker dolaďuje a přeřešuje (víc workerů si je rozdělí, ať nedělají totéž)
+  const ALL_VIEWS = ['efficient', 'balanced', 'speed'];
+  const myViews = shard ? ALL_VIEWS.filter((_, i) => i % Math.min(shard.count, 3) === shard.index % 3) : ALL_VIEWS;
   let table = null;
   let last = probe;
-  const valueOf = (id) => (alg) => tracker.values(scoreOf(alg))[id];
+  // hodnota v pohledu: hodnocení algoritmu + AUF (pre/post nejlepšího se při přeřešení nemění)
+  const valueOf = (id, pre = null, post = null) => (alg) => { const s = scoreOf(alg); const a = aufOf(pre, post); return tracker.values(a ? { ...s, total: s.total + a } : s)[id]; };
+  const totalOf = (b) => scoreOf(b.alg).total + aufOf(b.pre, b.post);
+  // hledání podle pohodlí: AUF před (podle výchozího stavu) a po (podle cíle) je pevná cena navíc
+  const costRoots = roots.map((r) => ({ ...r, g0: aufOf(r.pre, null) }));
+  const finishCost = (t) => aufOf(null, posts[t]);
   const polish = () => {
     if (!tracker.takeChanged() || left() < 1500) return;
     table ??= buildTable(P, moves);
-    const jobs = Object.entries(tracker.elites).flatMap(([id, list]) => list.map((b) => [id, b]));
+    const jobs = Object.entries(tracker.elites).filter(([id]) => myViews.includes(id)).flatMap(([id, list]) => list.map((b) => [id, b]));
     const per = Math.min(400, Math.max(80, 900 / jobs.length));
     for (const [id, b] of jobs) {
       if (left() < 1000) break;
-      improve(table, b.alg, valueOf(id), { deadline: Math.min(deadline - 500, Date.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
+      improve(table, b.alg, valueOf(id, b.pre, b.post), { deadline: Math.min(deadline - 500, Date.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
     }
     tracker.takeChanged();
   };
@@ -258,7 +268,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   const runComfort = (slice) => {
     const best = tracker.best('speed');
     const len = best.alg.split(' ').length;
-    const bound = scoreOf(best.alg).total + 1e-6;
+    const bound = totalOf(best) + 1e-6;
     // kratší než `cleared` žádné řešení nemají (prohledáno úplnou sadou)
     const low = Math.max(1, proof.cleared);
     // delší než tohle by bylo dražší i z nejlevnějších tahů
@@ -275,8 +285,10 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
     }
     const L = comfort.cur && todo.includes(comfort.cur.length) ? comfort.cur.length : todo[0];
     handlers.context = { label: 'pohodlí', task: 'comfort', round: comfort.rounds, length: L };
-    const res = searchCost(full, roots, {
-      cost: lowCosts, minMove: lowCosts.minMove, bound, length: L, timeLimit: slice, shard,
+    // databáze ceny: dolní mez ceny do cíle podle skupin dílků (silnější než zbytek × nejlevnější tah)
+    comfort.hcost ??= costTables(full, lowCosts.floors, { cache });
+    const res = searchCost(full, costRoots, {
+      cost: lowCosts, minMove: lowCosts.minMove, bound, length: L, hcost: comfort.hcost, finish: finishCost, timeLimit: slice, shard,
       skip: comfort.cur?.length === L ? comfort.cur.branch : 0,
       onSolution: found, onProgress: (p) => handlers.onProgress({ depth: L, nodes: p.nodes }),
     });
@@ -295,11 +307,12 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
         [...held.map(() => 0), ...blocks.list.map((b) => b.bonus * (config.triggerBonusScale ?? 1))]);
     }
     const best = tracker.best('speed');
-    const bound = scoreOf(best.alg).total + 1e-6;
+    const bound = totalOf(best) + 1e-6;
     const L = blocks.cur?.length ?? (blocks.next ?? 2);
     if (L > 12 || L * blocks.costs.minMove >= bound) { blocks.done = true; return; }
     handlers.context = { label: 'bloky', task: 'blocks', round: blocks.rounds, length: L };
-    const res = searchCost(blocks.problem, roots, {
+    const res = searchCost(blocks.problem, costRoots, {
+      finish: finishCost,
       cost: blocks.costs, minMove: blocks.costs.minMove, bound, length: L, timeLimit: slice, shard,
       skip: blocks.cur?.branch ?? 0,
       onSolution: found, onProgress: (p) => handlers.onProgress({ depth: L, nodes: p.nodes }),
@@ -309,7 +322,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   };
 
   // přeřešení úseků: pro každý pohled zvlášť, okna od 6 tahů, po marném průchodu delší
-  const views = ['efficient', 'balanced', 'speed'];
+  const views = myViews;
   const MAX_WINDOW = 16;
   const refine = Object.fromEntries(views.map((id) => [id, { w: 6, i: 0, alg: null, better: false }]));
   let refineView = 0;
@@ -324,7 +337,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
       if (st.alg !== b.alg) { st.alg = b.alg; st.i = 0; st.exhausted = false; }
       if (st.exhausted) continue;
       let cur = b.alg.split(' ');
-      const value = valueOf(id);
+      const value = valueOf(id, b.pre, b.post);
       let curValue = value(b.alg);
       const s0 = startOf(b.pre);
       const viewEnd = Math.min(end, Date.now() + slice / views.length);

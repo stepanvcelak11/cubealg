@@ -38,6 +38,22 @@ function typeInfo(puzzle) {
 }
 
 const DEFAULT_TABLE_LIMIT = 24 ** 4;
+/** Velké databáze (skupiny 5–6 dílků, zapíná klient podle paměti zařízení). */
+export const BIG_TABLE_LIMIT = 24 ** 5;
+// databáze větší než tohle se ukládají po 4 bitech (vzdálenost nejvýš 14, 15 = nedosažitelné)
+const PACK_ABOVE = DEFAULT_TABLE_LIMIT;
+const PACKED_UNREACHABLE = 15;
+
+/** Zabalí vzdálenosti po 4 bitech (delší než 14 → 14, což je pořád dolní mez). */
+function pack(dist) {
+  const out = new Uint8Array((dist.length + 1) >> 1);
+  for (let i = 0; i < dist.length; i++) {
+    const d = dist[i];
+    const v = d === UNREACHABLE ? PACKED_UNREACHABLE : Math.min(d, PACKED_UNREACHABLE - 1);
+    out[i >> 1] |= v << ((i & 1) << 2);
+  }
+  return out;
+}
 const DEFAULT_NEAR_LIMIT = 0; // zapíná ji Lab (worker hledání)
 export const NEAR_LIMIT = 1_500_000;
 const UNREACHABLE = 255;
@@ -90,11 +106,16 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
     onTable?.({ table: i + 1, tables: groups.length + 1 });
     const key = cache && tableKey(puzzle, moves, g);
     const hit = key && cache.get(key);
-    if (hit && hit.length === g.reduce((a, p) => a * p.size, 1)) return { pieces: g.map((p) => p.name), sizes: g.map((p) => p.size), dist: hit };
+    const total = g.reduce((a, p) => a * p.size, 1);
+    const packed = total > PACK_ABOVE;
+    if (hit && hit.length === (packed ? (total + 1) >> 1 : total)) return { pieces: g.map((p) => p.name), sizes: g.map((p) => p.size), dist: hit, packed };
     const t = buildTable(g, moveCount, invTrans);
+    if (packed) { t.dist = pack(t.dist); t.packed = true; }
     if (key) cache.set(key, t.dist);
     return t;
   });
+  // menší skupiny pro databáze ceny (16 bitů na stav – velké skupiny by zabraly moc paměti)
+  const smallGroups = tableLimit > DEFAULT_TABLE_LIMIT ? makeGroups(tracked, DEFAULT_TABLE_LIMIT, true) : groups;
   onTable?.({ table: groups.length + 1, tables: groups.length + 1 });
   const near = buildNear(pieces, moveCount, invTrans, nearLimit);
 
@@ -106,7 +127,7 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
 
   return {
     puzzle, local: LOCAL, targetCount: targets.length,
-    pieces, tables, near, trans, moves, moveCount, redundant,
+    pieces, tables, smallGroups, near, trans, moves, moveCount, redundant,
     names: moves.map((m) => puzzle.moveToString(m)),
     pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
   };
@@ -241,6 +262,99 @@ function buildTable(group, moveCount, invTrans) {
 }
 
 /**
+ * Databáze ceny: pro skupinu dílků nejnižší cena (součet dolních mezí cen tahů,
+ * v celých jednotkách `q`, zaokrouhleno dolů) do cíle – Dijkstra s kbelíky po
+ * zpětných tazích. Cena tahu je dolní mez bez ohledu na stav ruky, takže odhad je
+ * přípustný i pro hledání podle pohodlí.
+ * @param {number[]} weights cena každého tahu v jednotkách q (celá čísla ≥ 1)
+ */
+function buildCostTable(group, moveCount, invTrans, weights) {
+  const k = group.length;
+  const sizes = group.map((p) => p.size);
+  const total = sizes.reduce((a, b) => a * b, 1);
+  const INF = 0xffff;
+  const dist = new Uint16Array(total).fill(INF);
+  const digits = new Uint8Array(k);
+  const decode = (idx) => {
+    for (let i = k - 1; i >= 0; i--) { digits[i] = idx % sizes[i]; idx = (idx - digits[i]) / sizes[i]; }
+  };
+  const buckets = [[]];
+  const targets = group[0].oks.length;
+  for (let idx = 0; idx < total; idx++) {
+    decode(idx);
+    for (let t = 0; t < targets; t++) {
+      let ok = true;
+      for (let i = 0; i < k && ok; i++) ok = group[i].oks[t][digits[i]] === 1;
+      if (ok) { dist[idx] = 0; buckets[0].push(idx); break; }
+    }
+  }
+  const invs = group.map((p) => invTrans[p.kind]);
+  for (let d = 0; d < buckets.length; d++) {
+    const list = buckets[d];
+    if (!list) continue;
+    for (let j = 0; j < list.length; j++) {
+      const idx = list[j];
+      if (dist[idx] !== d) continue;
+      decode(idx);
+      for (let m = 0; m < moveCount; m++) {
+        const nd = d + weights[m];
+        if (nd >= INF) continue;
+        let pred = 0;
+        for (let i = 0; i < k; i++) pred = pred * sizes[i] + invs[i][m * sizes[i] + digits[i]];
+        if (nd < dist[pred]) { dist[pred] = nd; (buckets[nd] ??= []).push(pred); }
+      }
+    }
+    buckets[d] = null;
+  }
+  return { pieces: group.map((p) => p.name), sizes, dist };
+}
+
+/**
+ * Databáze ceny pro skupiny dílků úlohy (stejné skupiny jako databáze vzdáleností).
+ * Vrací funkci: dolní mez ceny ze stavu do cíle.
+ * @param {number[]} floors dolní mez ceny každého tahu
+ * @param {object} [opts] q = jednotka (zaokrouhlení dolů), cache = uložené databáze
+ */
+const costGroups = (problem) => problem.smallGroups ?? problem.tables.map((t) => t.pieces.map((name) => problem.pieces[problem.pieceIndex.get(name)]));
+const costWeights = (floors, q) => floors.map((f) => Math.max(1, Math.floor(f / q + 1e-9)));
+const costKey = (problem, g, weights) => `cost:${tableKey(problem.puzzle, problem.moves, g)}:${weights.join(',')}`;
+
+/** Klíče databází ceny (pro načtení z úložiště před costTables). */
+export function costTableKeys(problem, floors, { q = 0.05 } = {}) {
+  const weights = costWeights(floors, q);
+  return costGroups(problem).map((g) => costKey(problem, g, weights));
+}
+
+export function costTables(problem, floors, { q = 0.05, cache } = {}) {
+  problem.invTrans ??= invertTrans(problem);
+  const weights = costWeights(floors, q);
+  const groups = costGroups(problem);
+  const tables = groups.map((g) => {
+    const key = cache && costKey(problem, g, weights);
+    const hit = key && cache.get(key);
+    const total = g.reduce((a, p) => a * p.size, 1);
+    if (hit && hit.length === total * 2) return { sizes: g.map((p) => p.size), dist: new Uint16Array(hit.buffer, hit.byteOffset, total) };
+    const t = buildCostTable(g, problem.moveCount, problem.invTrans, weights);
+    if (key) cache.set(key, new Uint8Array(t.dist.buffer));
+    return t;
+  });
+  const ids = groups.map((g) => Int32Array.from(g, (p) => problem.pieceIndex.get(p.name)));
+  const sizes = tables.map((t) => Int32Array.from(t.sizes));
+  const dists = tables.map((t) => t.dist);
+  return (v) => {
+    let h = 0;
+    for (let t = 0; t < dists.length; t++) {
+      const id = ids[t], sz = sizes[t];
+      let idx = 0;
+      for (let i = 0; i < id.length; i++) idx = idx * sz[i] + v[id[i]];
+      const d = dists[t][idx];
+      if (d > h) h = d;
+    }
+    return h === 0xffff ? Infinity : h * q;
+  };
+}
+
+/**
  * Tabulka „blízko cíle“: vzdálenosti všech stavů (vektorů hodnot sledovaných dílků)
  * do vzdálenosti radius od cíle. Hašovací tabulka s otevřeným adresováním, klíče
  * jsou vektory po n bajtech. Vrací null, když se nevejde ani první vrstva.
@@ -347,17 +461,22 @@ function buildNear(pieces, moveCount, invTrans, limit) {
   };
 }
 
-/**
- * Pattern databáze pro vybranou skupinu sledovaných dílků (indexy do problem.pieces)
- * vůči prvnímu cíli; pro etapové hledání (staged.js). Vrací vzdálenosti jako buildTable.
- */
-export function groupTable(problem, indexes) {
-  problem.invTrans ??= Object.fromEntries(Object.entries(problem.trans).map(([type, t]) => {
+/** Inverzní přechody (předchůdce hodnoty po tahu) pro každý typ dílku. */
+function invertTrans(problem) {
+  return Object.fromEntries(Object.entries(problem.trans).map(([type, t]) => {
     const size = t.length / problem.moveCount;
     const inv = new Uint8Array(t.length);
     for (let m = 0; m < problem.moveCount; m++) for (let v = 0; v < size; v++) inv[m * size + t[m * size + v]] = v;
     return [type, inv];
   }));
+}
+
+/**
+ * Pattern databáze pro vybranou skupinu sledovaných dílků (indexy do problem.pieces)
+ * vůči prvnímu cíli; pro etapové hledání (staged.js). Vrací vzdálenosti jako buildTable.
+ */
+export function groupTable(problem, indexes) {
+  problem.invTrans ??= invertTrans(problem);
   const group = indexes.map((i) => ({ ...problem.pieces[i], oks: [problem.pieces[i].oks[0]] }));
   return buildTable(group, problem.moveCount, problem.invTrans);
 }
@@ -371,6 +490,18 @@ export function encode(problem, loc) {
 function rootsOf(problem, start) {
   const list = start instanceof Uint8Array || Array.isArray(start) && typeof start[0] === 'number' ? [{ loc: start, pre: null }] : start;
   return list.map((r, i) => ({ ...r, index: i, v: encode(problem, Uint8Array.from(r.loc)) }));
+}
+
+/** Průměrná vzdálenost v databázi (nedosažitelné se nepočítají; vzorek u velkých). */
+function meanOf(dist, packed = false) {
+  const n = packed ? dist.length * 2 : dist.length;
+  const step = Math.max(1, Math.floor(n / 200000));
+  let sum = 0, count = 0;
+  for (let i = 0; i < n; i += step) {
+    const d = packed ? (dist[i >> 1] >> ((i & 1) << 2)) & 15 : dist[i];
+    if (d < (packed ? PACKED_UNREACHABLE : UNREACHABLE)) { sum += d; count++; }
+  }
+  return count ? sum / count : 0;
 }
 
 /** Společné části hledání: cíl, heuristika a odhad vzdálenosti. */
@@ -393,11 +524,12 @@ export function evaluator(problem) {
   const heuristic = (v) => {
     let h = 0;
     for (let t = 0; t < tables.length; t++) {
-      const { sizes: s, dist } = tables[t];
+      const { sizes: s, dist, packed } = tables[t];
       const ids = tableIdx[t];
       let idx = 0;
       for (let i = 0; i < ids.length; i++) idx = idx * s[i] + v[ids[i]];
-      const d = dist[idx];
+      let d = packed ? (dist[idx >> 1] >> ((idx & 1) << 2)) & 15 : dist[idx];
+      if (packed && d === PACKED_UNREACHABLE) d = UNREACHABLE;
       if (d > h) h = d;
     }
     return h;
@@ -409,7 +541,43 @@ export function evaluator(problem) {
     const d = near.get(v);
     return d >= 0 ? d : Math.max(h, nearRadius + 1);
   };
-  return { goalOf, heuristic, estimate, near, nearRadius };
+  // Tah s průběžným odřezáváním: další stav se počítá po skupinách dílků databází
+  // a jakmile některá databáze ukáže vzdálenost nad `limit`, zbytek se nepočítá
+  // (většina potomků se odřízne hned po první skupině). Vrací false = odříznuto
+  // (`next` je pak jen zčásti spočtený), true = `next` je celý a heuristika ≤ limit.
+  const { trans } = problem;
+  const T = tables.length;
+  // nejsilnější databáze (nejvyšší průměrná vzdálenost) první – odřízne nejčastěji
+  const strength = tables.map((t) => { t.mean ??= meanOf(t.dist, t.packed); return t.mean; });
+  const order = [...tables.keys()].sort((a, b) => strength[b] - strength[a]);
+  const tIds = order.map((t) => Int32Array.from(tableIdx[t]));
+  const tSizes = order.map((t) => Int32Array.from(tables[t].sizes));
+  const tDist = order.map((t) => tables[t].dist);
+  const tPacked = Uint8Array.from(order, (t) => (tables[t].packed ? 1 : 0));
+  const pTrans = pieces.map((p) => trans[p.kind]);
+  const pSize = Int32Array.from(pieces, (p) => p.size);
+  const inTable = new Uint8Array(n);
+  for (const ids of tableIdx) for (const i of ids) inTable[i] = 1;
+  const rest = Int32Array.from([...Array(n).keys()].filter((i) => !inTable[i]));
+  const advance = (cur, m, next, limit) => {
+    for (let t = 0; t < T; t++) {
+      const ids = tIds[t], sz = tSizes[t];
+      let idx = 0;
+      for (let k = 0; k < ids.length; k++) {
+        const i = ids[k];
+        const v = pTrans[i][m * pSize[i] + cur[i]];
+        next[i] = v;
+        idx = idx * sz[k] + v;
+      }
+      if (tPacked[t]) {
+        const d = (tDist[t][idx >> 1] >> ((idx & 1) << 2)) & 15;
+        if (d > limit || d === PACKED_UNREACHABLE) return false;
+      } else if (tDist[t][idx] > limit) return false;
+    }
+    for (let k = 0; k < rest.length; k++) { const i = rest[k]; next[i] = pTrans[i][m * pSize[i] + cur[i]]; }
+    return true;
+  };
+  return { goalOf, heuristic, estimate, advance, near, nearRadius };
 }
 
 /**
@@ -432,13 +600,11 @@ export function evaluator(problem) {
 export function search(problem, start, {
   maxLength = 12, minLength = 1, extraDepth = 2, maxResults = 500, timeLimit = 15000, shard, skip = 0, onSolution, onProgress,
 } = {}) {
-  const { pieces, trans, moveCount, redundant, names } = problem;
-  const { goalOf, heuristic, estimate, near, nearRadius } = evaluator(problem);
+  const { pieces, moveCount, redundant, names } = problem;
+  const { goalOf, heuristic, estimate, advance, near, nearRadius } = evaluator(problem);
   const n = pieces.length;
   const t0 = Date.now();
   const solutions = [];
-  const piecesTrans = pieces.map((p) => trans[p.kind]);
-  const sizes = pieces.map((p) => p.size);
 
   const roots = rootsOf(problem, start);
   const result = (reason, extra = {}) => ({
@@ -468,12 +634,13 @@ export function search(problem, start, {
         const idx = branch++;
         if (idx < skipNow || (shard && idx % shard.count !== shard.index)) { doneBranches = Math.max(doneBranches, idx + 1); continue; }
       }
-      for (let i = 0; i < n; i++) next[i] = piecesTrans[i][m * sizes[i] + cur[i]];
       if (++nodes % 8192 === 0) {
         if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
         onProgress?.({ depth: bound, nodes, found: solutions.length });
       }
       const remaining = bound - depth - 1;
+      // cíl má heuristiku 0, takže odříznutí podle databází ho nikdy nezahodí
+      if (!advance(cur, m, next, remaining)) continue;
       const goal = goalOf(next);
       path[depth] = m;
       if (remaining === 0) {
@@ -487,7 +654,6 @@ export function search(problem, start, {
       }
       // Pokud cíl splní už kratší prefix, prodlužování nemá smysl.
       if (goal >= 0) continue;
-      if (heuristic(next) > remaining) continue;
       // posledních nearRadius tahů: jen stavy z tabulky blízko cíle
       if (remaining <= nearRadius) {
         const d = near.get(next);
@@ -539,17 +705,18 @@ export function search(problem, start, {
  * @param {number} opts.length délka hledaných řešení
  * @param {number} [opts.timeLimit]
  * @param {{index:number, count:number}} [opts.shard]
+ * @param {(target:number) => number} [opts.finish] cena navíc podle splněného cíle (AUF po algoritmu);
+ *   výchozí stavy mohou mít `g0` (AUF před algoritmem)
+ * @param {(v:Uint8Array) => number} [opts.hcost] dolní mez ceny do cíle (databáze ceny, costTables)
  * @param {number} [opts.skip] přeskočit tolik větví (navázání; `branch` z minulého výsledku)
  * @param {(alg:string, cost:number, info:{pre:any, target:number}) => void} [opts.onSolution]
  * @param {(info:{nodes:number}) => void} [opts.onProgress]
  */
-export function searchCost(problem, start, { cost, minMove, bound, length, timeLimit = 5000, shard, skip = 0, onSolution, onProgress }) {
-  const { pieces, trans, moveCount, redundant, names } = problem;
-  const { goalOf, heuristic, near, nearRadius } = evaluator(problem);
+export function searchCost(problem, start, { cost, minMove, bound, length, hcost, finish, timeLimit = 5000, shard, skip = 0, onSolution, onProgress }) {
+  const { pieces, moveCount, redundant, names } = problem;
+  const { goalOf, advance, near, nearRadius } = evaluator(problem);
   const n = pieces.length;
   const t0 = Date.now();
-  const piecesTrans = pieces.map((p) => trans[p.kind]);
-  const sizes = pieces.map((p) => p.size);
   const roots = rootsOf(problem, start);
   const stack = Array.from({ length: length + 1 }, () => new Uint8Array(n));
   const path = new Int16Array(length);
@@ -580,20 +747,21 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
       if (depth === 0 && idx < skip) continue;
       const g2 = g + cs[m];
       if (g2 + rest >= bound) break; // další tahy jsou ještě dražší
-      for (let i = 0; i < n; i++) next[i] = piecesTrans[i][m * sizes[i] + cur[i]];
       if (++nodes % 8192 === 0) {
         if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
         onProgress?.({ nodes });
       }
       path[depth] = m;
+      if (!advance(cur, m, next, remaining)) { if (depth === 0) done = idx + 1; continue; }
       const goal = goalOf(next);
       if (remaining === 0) {
-        if (goal >= 0) {
-          bound = g2;
+        const total = goal >= 0 && finish ? g2 + finish(goal) : g2;
+        if (goal >= 0 && total < bound) {
+          bound = total;
           found++;
-          onSolution?.(Array.from(path, (i) => names[i]).join(' '), g2, { pre: root.pre, target: goal });
+          onSolution?.(Array.from(path, (i) => names[i]).join(' '), total, { pre: root.pre, target: goal });
         }
-      } else if (goal < 0 && heuristic(next) <= remaining) { // kratší řešení už je (goal ≥ 0)
+      } else if (goal < 0 && !(hcost && g2 + hcost(next) >= bound)) { // kratší řešení už je (goal ≥ 0)
         let ok = true;
         if (remaining <= nearRadius) { const d = near.get(next); ok = d >= 0 && d <= remaining; }
         if (ok) { dfs(depth + 1, m, cost.step(ctx, m), g2); if (stopped) return; }
@@ -606,7 +774,7 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
     if (goalOf(r.v) >= 0 || (r.index + 1) * moveCount <= skip) continue;
     root = r;
     stack[0].set(r.v);
-    dfs(0, -1, cost.start, 0);
+    dfs(0, -1, cost.start, r.g0 ?? 0);
     if (stopped) break;
   }
   return { reason: stopped ?? 'done', nodes, found, bound, branch: done, elapsed: Date.now() - t0 };

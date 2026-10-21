@@ -92,6 +92,21 @@ export function scoreAlg(alg, config = {}) {
   return { total: round(total), breakdown, perMove, triggers: found, metrics: metrics(moves) };
 }
 
+/**
+ * Cena natočení horní vrstvy před algoritmem a po něm (AUF): váha tahu × aufScale.
+ * Do délky se AUF nepočítá, do pohodlí ano (U2 na začátku stojí víc než nic).
+ * @param {string|null} pre @param {string|null} post zápis AUF (např. "U'"), nebo null
+ */
+export function aufCost(pre, post, config = {}) {
+  const cfg = fullConfig(config);
+  let c = 0;
+  for (const a of [pre, post]) {
+    if (!a) continue;
+    for (const m of parseAlg(a)) c += moveWeight(cfg.leftHanded ? mirrorMove(m) : m, cfg) * cfg.aufScale;
+  }
+  return round(c);
+}
+
 /** Seřadí algoritmy podle ergonomie (pak podle HTM). */
 export function rankAlgs(algs, config = {}) {
   return algs

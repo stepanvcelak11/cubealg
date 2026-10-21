@@ -47,6 +47,9 @@ export const DEFAULT_CONFIG = {
   // Přehmat stojí zhruba jako tah a půl (ověřeno na známých rychlých PLL/OLL).
   regripPenalty: 1.5,
   gripChangePenalty: 0.6,
+  // Natočení horní vrstvy před algoritmem a po něm (AUF): cena tahu U × tento
+  // násobič (AUF se z části překrývá s rozpoznáním a dotočením; 0 = nepočítat).
+  aufScale: 0.5,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
   triggerBonusScale: 1,
   // Levák: hodnotí se zrcadlový algoritmus (R ↔ L', …).
