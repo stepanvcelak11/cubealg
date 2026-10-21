@@ -14,7 +14,8 @@
 //                  tahy hlavolamu; co podpis nevidí (prohození zaměnitelných dílků,
 //                  natočení dílku, na jehož natočení nezáleží), se doladí
 //   AUF          – stavy, které se liší natočením horní vrstvy před algoritmem
-//                  (a po něm, když to cíl dovolí), jsou jeden případ
+//                  (a po něm, když to cíl dovolí), jsou jeden případ; volitelně
+//                  i natočení spodní vrstvy (ADF – např. PBL, EPBL)
 //
 // Start: celý dílek = přesně tento dílek a natočení; část barev = libovolný dílek
 // s těmito barvami (v tomto natočení); nevybarvené místo = cokoli (středy, které
@@ -77,6 +78,7 @@ function puzzleInfo(P) {
  * @param {object} task { colorsA, colorsB, constraints, marks }
  * @param {object} [opts]
  * @param {boolean} [opts.auf] slučovat natočení horní vrstvy (před i po algoritmu, když to cíl dovolí)
+ * @param {boolean} [opts.adf] slučovat i natočení spodní vrstvy (D) před i po algoritmu
  * @param {string[]} [opts.rotations] slučovat stejné případy viděné z jiné strany: otočení celé
  *   kostky, která grupu generují (např. ['y'] nebo ['y', 'z2']); jen když to cíl dovolí
  * @param {string[][]} [opts.interchange] zaměnitelné barvy, např. [['U', 'D']]
@@ -84,7 +86,7 @@ function puzzleInfo(P) {
  * @returns {{cases: {rep: Uint8Array, members: Uint8Array[], states: number}[], states: number, goal: object,
  *   target: Uint8Array, constraints: object, labels: string[], tooMany?: boolean, error?: string}}
  */
-export function enumerateCases(P, task, { auf = true, rotations = [], interchange = [], limit = 20000, nodeLimit = 3_000_000 } = {}) {
+export function enumerateCases(P, task, { auf = true, adf = false, rotations = [], interchange = [], limit = 20000, nodeLimit = 3_000_000 } = {}) {
   const ops = taskOps(P);
   const info = puzzleInfo(P);
   const FACE = P.stickerFace;
@@ -274,21 +276,21 @@ export function enumerateCases(P, task, { auf = true, rotations = [], interchang
   const parent = new Map(sigs.map((s) => [s, s]));
   const find = (s) => { while (parent.get(s) !== s) { parent.set(s, parent.get(parent.get(s))); s = parent.get(s); } return s; };
   const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb); };
-  const hasU = P.bases.includes('U');
-  if (auf && hasU) {
+  const layers = adjustLayers(P, auf, adf);
+  if (layers.length) {
     const solved = P.solved();
-    const uPerm = [1, 2, 3].map((k) => P.applyAlg(solved, [{ base: 'U', amount: k === 3 ? -1 : k }]));
-    // po algoritmu: povoleno, když cíl „natočený o U před ním“ (pravé násobení) je s AUF zase cíl
-    const postOk = uPerm.every((u) => anyAuf(P, goal, Uint8Array.from(target, (_, i) => target[u[i]])));
-    const pres = [null, ...uPerm];
-    const posts = postOk ? [null, ...uPerm] : [null];
+    const turns = (ls) => adjustSeqs(ls).filter((m) => m.length).map((m) => P.applyAlg(solved, m));
+    // po algoritmu: povoleno pro vrstvu, když cíl „natočený o ni před ním“ (pravé násobení) je s natočením zase cíl
+    const postLayers = layers.filter((l) => turns([l]).every((u) => anyAdjust(P, goal, Uint8Array.from(target, (_, i) => target[u[i]]), layers)));
+    const pres = [null, ...turns(layers)];
+    const posts = [null, ...turns(postLayers)];
     for (const sig of sigs) {
       const loc = reps.get(sig);
       for (const pre of pres) for (const post of posts) {
         if (!pre && !post) continue;
         let x = loc;
-        if (post) x = Uint8Array.from(x, (_, i) => x[post[i]]); // natočení U před stavem (pravé násobení)
-        if (pre) x = Uint8Array.from(x, (v) => pre[v]);           // natočení U po stavu (= před algoritmem)
+        if (post) x = Uint8Array.from(x, (_, i) => x[post[i]]); // natočení před stavem (pravé násobení)
+        if (pre) x = Uint8Array.from(x, (v) => pre[v]);           // natočení po stavu (= před algoritmem)
         const other = sigOf(x);
         if (parent.has(other)) union(sig, other);
       }
@@ -315,11 +317,11 @@ export function enumerateCases(P, task, { auf = true, rotations = [], interchang
   const cases = [...groups.values()].map((list) => ({
     rep: reps.get(list[0]),
     members: list.map((s) => reps.get(s)),
-    solved: list.some((s) => anyAuf(P, goal, reps.get(s))),
+    solved: list.some((s) => anyAdjust(P, goal, reps.get(s), layers)),
   }));
   // složené (už splněné) případy na konec
   cases.sort((a, b) => Number(a.solved) - Number(b.solved));
-  return { cases, states, signatures: sigs.length, goal, target, constraints, tooMany, auf: auf && hasU, rotations: syms.map((g) => g.seq) };
+  return { cases, states, signatures: sigs.length, goal, target, constraints, tooMany, auf: layers.includes('U'), adf: layers.includes('D'), rotations: syms.map((g) => g.seq) };
 }
 
 /**
@@ -357,21 +359,33 @@ function goalSymmetric(P, constraints, r) {
   return true;
 }
 
-/** Splňuje stav cíl, případně po natočení horní vrstvy? */
-function anyAuf(P, goal, loc) {
-  if (goal.test(loc)) return true;
-  if (!P.bases.includes('U')) return false;
-  return [1, 2, -1].some((amount) => goal.test(P.applyAlg(loc, [{ base: 'U', amount }])));
+/** Vrstvy, jejichž natočení se slučuje (U a volitelně D, má-li je hlavolam). */
+function adjustLayers(P, auf, adf) {
+  return [auf && 'U', adf && 'D'].filter((l) => l && P.bases.includes(l));
+}
+
+/** Všechna natočení vrstev (včetně žádného) jako seznamy tahů. */
+function adjustSeqs(layers) {
+  let out = [[]];
+  for (const base of layers) {
+    out = out.flatMap((m) => [m, ...[1, 2, -1].map((amount) => [...m, { base, amount }])]);
+  }
+  return out;
+}
+
+/** Splňuje stav cíl, případně po natočení vrstev? */
+function anyAdjust(P, goal, loc, layers) {
+  return adjustSeqs(layers).some((m) => goal.test(m.length ? P.applyAlg(loc, m) : loc));
 }
 
 /**
- * Řeší algoritmus všechny stavy případu? Pro každý stav zkusí natočení U před
- * algoritmem a po něm (AUF).
+ * Řeší algoritmus všechny stavy případu? Pro každý stav zkusí natočení U (a
+ * s `adf` i D) před algoritmem a po něm.
  * @returns {{ok: boolean, failed: number}}
  */
-export function verifyCase(P, goal, members, alg, { auf = true, rotations = [] } = {}) {
+export function verifyCase(P, goal, members, alg, { auf = true, adf = false, rotations = [] } = {}) {
   const moves = P.parseAlg(alg);
-  const us = auf && P.bases.includes('U') ? [[], ...[1, 2, -1].map((amount) => [{ base: 'U', amount }])] : [[]];
+  const us = adjustSeqs(adjustLayers(P, auf, adf));
   // případ viděný z jiné strany: otočit kostku, algoritmus, otočit zpět
   const rots = rotationGroup(P, rotations).map((g) => {
     const seq = g.seq ? P.parseAlg(g.seq) : [];

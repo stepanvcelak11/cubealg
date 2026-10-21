@@ -32,6 +32,7 @@ export function openGenerator(ctx) {
   view.value = saved.view ?? 'balanced';
   const opts = el('div', { className: 'gen-opts' },
     cube ? check('gen-auf', 'Slučovat natočení horní vrstvy (AUF)', saved.auf ?? true, 'Případy, které se liší jen natočením U před nebo po algoritmu, jsou jeden') : null,
+    cube ? check('gen-adf', 'Slučovat i natočení spodní vrstvy (D)', saved.adf ?? true, 'Případy, které se liší jen natočením D před nebo po algoritmu, jsou jeden (PBL, EPBL…). Natočení D pak uděláš sám jako AUF.') : null,
     cube ? check('gen-y', 'Stejný případ z jiné strany (otočení y)', saved.y ?? false, 'Případ viděný po otočení celé kostky kolem svislé osy je stejný') : null,
     cube ? check('gen-z2', 'I vzhůru nohama (z2)', saved.z2 ?? false, 'Případ viděný po převrácení kostky je stejný (metody, kde jsou horní a spodní vrstva rovnocenné)') : null,
     cube ? check('gen-wy', 'Bílá a žlutá jsou na Startu zaměnitelné', saved.wy ?? false, 'Bílá nálepka na Startu znamená „bílá nebo žlutá“') : null,
@@ -59,10 +60,10 @@ export function openGenerator(ctx) {
   let running = false;
   let setId = null;
   const val = (id) => dlg.querySelector(`#${id}`)?.checked ?? false;
-  const settings = () => ({ auf: cube && val('gen-auf'), y: val('gen-y'), z2: val('gen-z2'), wy: val('gen-wy') });
+  const settings = () => ({ auf: cube && val('gen-auf'), adf: cube && val('gen-adf'), y: val('gen-y'), z2: val('gen-z2'), wy: val('gen-wy') });
   const enumOpts = () => {
     const s = settings();
-    return { auf: s.auf, rotations: [s.y && 'y', s.z2 && 'z2'].filter(Boolean), interchange: s.wy ? [['U', 'D']] : [] };
+    return { auf: s.auf, adf: s.adf, rotations: [s.y && 'y', s.z2 && 'z2'].filter(Boolean), interchange: s.wy ? [['U', 'D']] : [] };
   };
   const remember = () => storage.set(OPTS, { ...settings(), name: name.value, time: Number(time.value), view: view.value });
 
@@ -145,7 +146,7 @@ export function openGenerator(ctx) {
       }), view.value, { lambda: ctx.lambda });
       const best = ranked[0];
       const modelAlg = [best.it.pre, best.it.alg, best.it.post].filter(Boolean).join(' ');
-      const v = verifyCase(P, result.goal, x.c.members, modelAlg, { auf: opts.auf, rotations: opts.rotations });
+      const v = verifyCase(P, result.goal, x.c.members, modelAlg, { auf: opts.auf, adf: opts.adf, rotations: opts.rotations });
       if (v.ok) ok++; else warn++;
       x.out.replaceChildren(el('code', { textContent: best.display }),
         el('span', { className: v.ok ? 'ok' : 'ko', textContent: v.ok ? `✓ ověřeno na ${x.c.members.length}` : `⚠ neřeší ${v.failed} z ${x.c.members.length}` }));

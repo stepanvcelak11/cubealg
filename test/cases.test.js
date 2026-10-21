@@ -96,6 +96,14 @@ test('EPBL (rohy a pás složené, nahoře bílé a dole žluté hrany): 288 sta
   assert.equal(real(r), 119);
   assert.equal(real(enumerateCases(P3, t, { rotations: ['y'] })), 49);
   assert.equal(real(enumerateCases(P3, t, { rotations: ['y', 'z2'] })), 29);
+  // natočení spodní vrstvy (D před a po algoritmu): stejný případ dole jen jinak natočený je jeden
+  assert.equal(real(enumerateCases(P3, t, { adf: true })), 49);
+  assert.equal(real(enumerateCases(P3, t, { adf: true, rotations: ['y', 'z2'] })), 29);
+});
+
+test('ADF nemění případy, kde je spodní vrstva složená (PLL zůstává 21)', () => {
+  const r = enumerateCases(P3, taskOf(P3, { startFull: rest(P3), startPartial: Object.fromEntries(top(P3).map((n) => [n, ['U']])), goal: Object.fromEntries(P3.slots.map((s) => [s.name, 'solved'])) }), { adf: true });
+  assert.equal(real(r), 21);
 });
 
 test('ověření: algoritmus řeší všechny stavy případu (i viděné z jiné strany)', async () => {
