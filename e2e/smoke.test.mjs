@@ -804,3 +804,37 @@ test('simulace soutěže: kolo Ao5 s inspekcí, výsledek a přehled kol', async
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('trenažér: rozpoznání případu – výběr z možností, správně/špatně a statistiky', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { algs } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    for (const [name, alg] of [['Sune', "R U R' U R U2 R'"], ['Antisune', "R U2 R' U' R U' R'"], ['T-perm', "R U R' U' R' F R2 U' R' U' R U R' F'"]]) {
+      algs.add({ alg, task: { puzzle: '333', constraints, colorsA: m.applyMoves(home, m.invertAlg(alg)), colorsB: home }, name });
+    }
+  });
+  await p.reload();
+  await p.locator('#tr-mode [data-mode="recog"]').tap();
+  await p.waitForSelector('.recog-opt');
+  assert.equal(await p.locator('.recog-opt').count(), 3);
+  // první možnost: správná se zvýrazní zeleně, statistika se uloží (správně i špatně)
+  await p.locator('.recog-opt').first().tap();
+  await p.waitForFunction(() => document.querySelector('.recog-opt.right'));
+  const ok = await p.locator('.recog-opt').first().evaluate((b) => b.classList.contains('right'));
+  const stats = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.recog).filter(Boolean));
+  assert.equal(stats.length, 1);
+  assert.equal(stats[0].n, 1);
+  assert.equal(stats[0].ok, ok ? 1 : 0);
+  if (!ok) await p.locator('.recog > .primary').tap();
+  await p.waitForFunction(() => document.querySelectorAll('.recog-opt:not(:disabled)').length === 3, null, { timeout: 5000 });
+  // klávesnicí
+  await p.keyboard.press('2');
+  await p.waitForFunction(() => document.querySelector('.recog-opt.right'));
+  assert.match(await p.locator('.recog .reveal-stats').innerText(), /celkem \d+ % správně/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

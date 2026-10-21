@@ -140,6 +140,10 @@
         <button type="button" id="tr-open" class="icon-btn" data-icon="list" data-icon-size="20" title="Algoritmy v sadě" aria-label="Algoritmy v sadě"></button>
         <button type="button" id="tr-next" class="primary" data-icon="next" data-icon-size="18"><span>Další případ</span></button>
       </div>
+      <div class="segmented tr-mode" id="tr-mode" role="group" aria-label="Režim tréninku">
+        <button type="button" data-mode="time" class="active">Čas provedení</button>
+        <button type="button" data-mode="recog">Rozpoznání</button>
+      </div>
       <div id="tr-empty" class="empty" hidden>
         <div class="empty-art" data-icon="bookmark" data-icon-size="40"></div>
         <p>V této sadě zatím nejsou žádné algoritmy.</p>
@@ -152,6 +156,7 @@
         <div id="tr-hint" class="timer-hint">Podrž mezerník nebo prst, pusť pro start</div>
       </div>
       <div id="tr-reveal" class="reveal"></div>
+      <div id="tr-recog" class="recog" aria-live="polite" hidden></div>
 
       <div id="tr-sheet" class="sheet" hidden>
         <div class="sheet-head">

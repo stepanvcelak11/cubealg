@@ -13,6 +13,8 @@ import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
 import { retarget, stripU } from './algedit.js';
 import { sendLink, algsPayload } from './share.js';
+import { recogStats, recordRecog, pickRecog, optionsFor } from './recog.js';
+import { holdFor } from './holds.js';
 import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
 
 // Trénovaná sada ('all' = všechny).
@@ -48,17 +50,11 @@ function pickNext() {
   return srsPick(inTraining().filter((a) => a.enabled), trials, randomInt, currentId);
 }
 
-function showCase() {
-  const a = currentId && algs.get(currentId);
-  const empty = !inTraining().length;
-  $('tr-empty').hidden = !empty;
-  $('tr-cube').hidden = empty;
-  $('tr-pad').hidden = empty;
-  $('tr-next').disabled = !inTraining().some((x) => x.enabled);
-  const enabled = inTraining().filter((x) => x.enabled).length;
-  $('tr-count').textContent = `v tréninku ${enabled} z ${inTraining().length}`;
-  setOptions($('tr-set'), trainSet, { all: true, manage: true });
-  if (!a) { $('tr-reveal').replaceChildren(); $('tr-name').textContent = ''; return; }
+// Režim tréninku: 'time' = čas provedení, 'recog' = rozpoznání případu.
+let mode = storage.get('ergocube.trainer.mode') === 'recog' ? 'recog' : 'time';
+
+/** Vykreslí případ algoritmu (volitelně po natočení horní vrstvy o auf čtvrtotáček). */
+function drawCase(a, auf = 0) {
   const model = labModel(a.task.puzzle ?? '333');
   if (cubePuzzle !== model.id) {
     // pohled podle hlavolamu (3D kostka nebo plošná síť)
@@ -73,11 +69,33 @@ function showCase() {
   const side = model.deserialize(a.task.colorsA);
   const sideB = model.deserialize(a.task.colorsB);
   const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints, a.task.marks) : side ? model.build(side, a.task.constraints) : { loc: null };
-  const { loc } = built;
-  if (loc) {
-    cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints));
-    if (model.overlay) cube.setOverlay(model.overlay(loc));
+  let { loc } = built;
+  if (!loc) return;
+  if (auf) {
+    // natočení horní vrstvy v rámci držení (U = stěna nahoře)
+    const held = a.task.hold ? holdFor(model, a.task.hold) : null;
+    const m = { base: 'U', amount: auf === 3 ? -1 : auf };
+    try { loc = model.applySteps(loc, held ? held.toModel([m]) : [m]); } catch { /* bez natočení */ }
   }
+  cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints));
+  if (model.overlay) cube.setOverlay(model.overlay(loc));
+}
+
+function showCase() {
+  if (mode === 'recog') { showRecog(); return; }
+  const a = currentId && algs.get(currentId);
+  const empty = !inTraining().length;
+  $('tr-empty').hidden = !empty;
+  $('tr-cube').hidden = empty;
+  $('tr-pad').hidden = empty;
+  $('tr-reveal').hidden = false;
+  $('tr-recog').hidden = true;
+  $('tr-next').disabled = !inTraining().some((x) => x.enabled);
+  const enabled = inTraining().filter((x) => x.enabled).length;
+  $('tr-count').textContent = `v tréninku ${enabled} z ${inTraining().length}`;
+  setOptions($('tr-set'), trainSet, { all: true, manage: true });
+  if (!a) { $('tr-reveal').replaceChildren(); $('tr-name').textContent = ''; return; }
+  drawCase(a);
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';
   renderReveal(a);
 }
@@ -114,6 +132,87 @@ function renderReveal(a) {
       el('span', { textContent: `průměr ${formatTime(st.mean)}` }),
       el('span', { textContent: MASTERY[mastery(a)] })),
     ...(setup ? [setup] : []));
+}
+
+// --- Trénink rozpoznání -----------------------------------------------------------------
+
+let recog = null; // { id, options, auf, shownAt, answer }
+
+const cubeLike = (a) => labModel(a.task.puzzle ?? '333').P.bases.includes('U') && (a.task.puzzle ?? '333') !== 'pyram';
+
+function nextRecog() {
+  const list = inTraining().filter((a) => a.enabled);
+  const a = pickRecog(list, recog?.id);
+  if (!a) { recog = null; showRecog(); return; }
+  recog = { id: a.id, options: optionsFor(a, list, 4), auf: cubeLike(a) ? Math.floor(Math.random() * 4) : 0, shownAt: 0, answer: null };
+  showRecog();
+  recog.shownAt = performance.now();
+}
+
+function answerRecog(choice) {
+  if (!recog || recog.answer) return;
+  const a = algs.get(recog.id);
+  if (!a) return;
+  const ms = performance.now() - recog.shownAt;
+  const ok = choice.id === a.id;
+  recog.answer = { id: choice.id, ok, ms };
+  algs.update(a.id, { recog: recordRecog(a.recog, ok, ms) }); // přes subscribe → showCase → showRecog
+  if (ok) {
+    const id = recog.id;
+    setTimeout(() => { if (mode === 'recog' && recog?.id === id && recog.answer) nextRecog(); }, 700);
+  }
+}
+
+function showRecog() {
+  const empty = !inTraining().length;
+  $('tr-empty').hidden = !empty;
+  $('tr-cube').hidden = empty;
+  $('tr-pad').hidden = true;
+  $('tr-reveal').hidden = true;
+  const box = $('tr-recog');
+  box.hidden = empty;
+  const list = inTraining().filter((x) => x.enabled);
+  $('tr-count').textContent = `v tréninku ${list.length} z ${inTraining().length}`;
+  setOptions($('tr-set'), trainSet, { all: true, manage: true });
+  if (empty) return;
+  if (list.length < 2) {
+    box.replaceChildren(el('p', { className: 'hint', textContent: 'Na rozpoznání jsou potřeba aspoň dva algoritmy v tréninku (s různými názvy).' }));
+    return;
+  }
+  const a = recog && algs.get(recog.id);
+  if (!a) { nextRecog(); return; }
+  drawCase(a, recog.auf);
+  const ans = recog.answer;
+  const opts = recog.options.map((o, i) => {
+    const b = el('button', { type: 'button', className: 'recog-opt' },
+      el('kbd', { textContent: String(i + 1) }), el('b', { textContent: o.name }), el('code', { textContent: o.alg }));
+    if (ans) {
+      if (o.id === a.id) b.classList.add('right');
+      else if (o.id === ans.id) b.classList.add('wrong');
+      b.disabled = true;
+    }
+    b.onclick = () => answerRecog(o);
+    return b;
+  });
+  const st = recogStats(a);
+  const total = list.reduce((acc, x) => { const s = recogStats(x); acc.n += s.n; acc.ok += s.ok; return acc; }, { n: 0, ok: 0 });
+  box.replaceChildren(...[
+    el('div', { className: 'trainer-name', textContent: ans ? (ans.ok ? `Správně · ${formatTime(ans.ms)}` : `Ne – je to ${a.name}`) : 'Co je to za případ?' }),
+    el('div', { className: 'recog-opts' }, ...opts),
+    ans && !ans.ok ? Object.assign(el('button', { type: 'button', className: 'primary', textContent: 'Další' }), { onclick: nextRecog }) : null,
+    el('div', { className: 'reveal-stats' },
+      el('span', { textContent: `tento: ${st.n ? `${Math.round(st.acc * 100)} % z ${st.n}` : 'nový'}` }),
+      el('span', { textContent: Number.isFinite(st.avg) ? `průměr ${formatTime(st.avg)}` : '' }),
+      el('span', { textContent: `celkem ${total.n ? Math.round((total.ok / total.n) * 100) : 0} % správně` })),
+  ].filter(Boolean));
+}
+
+function setMode(m) {
+  mode = m;
+  storage.set('ergocube.trainer.mode', m);
+  for (const b of $('tr-mode').querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === m);
+  $('tr-next').querySelector('span').textContent = m === 'recog' ? 'Další' : 'Další případ';
+  if (m === 'recog') nextRecog(); else showCase();
 }
 
 function setupOf(a) {
@@ -224,7 +323,7 @@ export function initTrainer({ isActive }) {
   stopwatch = new Stopwatch({
     pad: $('tr-pad'),
     display: $('tr-display'),
-    isActive: () => isActiveFn() && !!currentId && $('tr-sheet').hidden,
+    isActive: () => isActiveFn() && mode === 'time' && !!currentId && $('tr-sheet').hidden,
     onStop: (ms) => {
       const a = algs.get(currentId);
       if (!a) return;
@@ -241,7 +340,15 @@ export function initTrainer({ isActive }) {
       $('tr-hint').textContent = { idle: 'Podrž mezerník nebo prst, pusť pro start', holding: 'Drž…', ready: 'Pusť!', running: '' }[s] ?? '';
     },
   });
-  $('tr-next').onclick = () => { next(); $('tr-next').blur(); };
+  $('tr-next').onclick = () => { if (mode === 'recog') nextRecog(); else next(); $('tr-next').blur(); };
+  for (const b of $('tr-mode').querySelectorAll('button')) b.onclick = () => { setMode(b.dataset.mode); b.blur(); };
+  // rozpoznání z klávesnice: 1–4 = odpověď, mezerník / Enter = další
+  window.addEventListener('keydown', (e) => {
+    if (!isActiveFn() || mode !== 'recog' || !$('tr-sheet').hidden || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName ?? '')) return;
+    const i = Number(e.key) - 1;
+    if (recog && !recog.answer && i >= 0 && i < recog.options.length) { e.preventDefault(); answerRecog(recog.options[i]); }
+    else if (recog?.answer && (e.code === 'Space' || e.key === 'Enter')) { e.preventDefault(); nextRecog(); }
+  });
   $('tr-open').onclick = () => { renderList(); $('tr-sheet').hidden = false; };
   $('tr-close').onclick = closeSheet;
   const sortSel = $('tr-sort');
@@ -277,7 +384,7 @@ export function initTrainer({ isActive }) {
     showCase();
   });
   currentId = pickNext();
-  showCase();
+  setMode(mode);
 }
 
 /** Přepne trénovanou sadu (z průvodce metodou). */

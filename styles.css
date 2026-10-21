@@ -888,3 +888,23 @@ body.timing .round-panel { visibility: hidden; }
 .round-row b { font-size: 1.08rem; font-variant-numeric: tabular-nums; }
 .round-row.best b { color: var(--good); }
 .round-row small { color: var(--muted); font-size: 0.76rem; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Trénink rozpoznání ------------------------------------------------------------------- */
+.tr-mode { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.recog { display: flex; flex-direction: column; align-items: stretch; gap: 8px; flex: none; text-align: center; }
+.recog > .primary { align-self: center; min-width: 140px; }
+.recog-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.recog-opt {
+  flex-direction: column; align-items: flex-start; gap: 1px; min-height: 58px; padding: 8px 10px 8px 34px; text-align: left;
+  position: relative; border-radius: 14px; min-width: 0;
+}
+.recog-opt kbd {
+  position: absolute; left: 9px; top: 9px; font: 800 0.7rem/1 var(--mono); color: var(--faint);
+  width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; background: var(--panel-2);
+}
+.recog-opt b { font-size: 0.95rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recog-opt code { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recog-opt:disabled { opacity: 1; }
+.recog-opt.right { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--panel)); }
+.recog-opt.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--panel)); }
+.recog-opt:disabled:not(.right):not(.wrong) { opacity: 0.5; }
