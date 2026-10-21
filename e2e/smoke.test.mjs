@@ -865,12 +865,16 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ov�
   await p.locator('.gen-dialog button', { hasText: 'Generovat' }).tap();
   await p.waitForFunction(() => /Hotovo/.test(document.querySelector('.gen-status').textContent), null, { timeout: 90000 });
   const outs = await p.locator('.gen-card .gen-out').allInnerTexts();
-  assert.equal(outs.slice(0, 3).filter((t) => /✓ ověřeno/.test(t)).length, 3, outs.slice(0, 3).join(' | '));
+  assert.equal(outs.slice(0, 3).filter((t) => /✓ \d/.test(t)).length, 3, outs.slice(0, 3).join(' | '));
   const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.alg));
   assert.equal(saved.length, 4); // 3 případy + oprava parity
   assert.equal(saved[3], 'M2 U2 M2');
   assert.ok(saved.every((a) => /^[MUD2' ()]+$/.test(a)), saved.join(' | '));
   // výběr jiného nalezeného algoritmu u prvního případu
+  // varianty jsou sbalené; rozbalit jde vždy jen jeden případ
+  await p.locator('.gen-card').nth(1).locator('.gen-alt summary').tap();
+  await p.locator('.gen-card').first().locator('.gen-alt summary').tap();
+  assert.equal(await p.locator('.gen-alt[open]').count(), 1);
   const choices = p.locator('.gen-card').first().locator('.gen-choice');
   assert.ok(await choices.count() > 1);
   await choices.nth(1).tap();
@@ -878,6 +882,7 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ov�
   assert.equal(await p.locator('.gen-seg.ok').count(), 3);
   assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs'))[0].alg), other);
   assert.equal(await p.locator('.gen-card').first().locator('.gen-choice.on code').innerText(), other);
+  assert.equal(await p.locator('.gen-card').first().locator('.gen-chosen code').innerText(), other);
   // volba jiného než nabídnutého se zapíše (kalibrace „Podle mých voleb“)
   const prefs = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.prefs')));
   assert.equal(prefs.length, 1);

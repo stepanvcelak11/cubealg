@@ -309,34 +309,42 @@ export function openGenerator(ctx) {
     const { choices, sel, id, optimal } = x.state;
     const n = x.c.members.length;
     const c = choices[sel];
+    const facts = (m) => `${m.length} tahů · ${m.regrips + m.rotations ? `${m.regrips + m.rotations}× přehmat` : 'bez přehmatů'} · náročnost ${m.total.toFixed(1)}`;
+    // štítky jen ikonami (název v popisku), ať se vejdou na řádek
+    const badges = (ch) => (ch.best.length ? el('span', { className: 'gen-badges' }, ...ch.best.map((v) => el('span', { className: `gen-badge view-${v}`, title: `Nejlepší: ${VIEWS[v].label}`, textContent: VIEWS[v].icon }))) : null);
+    const status = el('div', { className: 'gen-status-row' },
+      el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ${n}` : `⚠ ${c.v.failed}/${n}`, title: c.v.ok ? `Ověřeno na všech ${n} stavech případu` : `Neřeší ${c.v.failed} z ${n} stavů případu` }),
+      optimal ? el('span', { className: 'gen-proof', title: `Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel${x.state.cached ? ' (z paměti)' : ''}`, textContent: '✓ nejpohodlnější' }) : null,
+      badges(c));
+    // vybraný algoritmus; ostatní varianty až po rozbalení (jen u jednoho případu najednou)
+    const chosen = el('div', { className: 'gen-chosen' }, el('code', { textContent: c.display }), el('small', { textContent: facts(c.m) }));
     const more = el('button', { type: 'button', className: 'chip gen-more', textContent: 'Hledat déle (+30 s)', disabled: running, title: 'Naváže na nalezená řešení a hledá dál' });
     more.onclick = () => searchMore(x);
-    x.out.replaceChildren(
-      el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ověřeno na ${n}` : `⚠ neřeší ${c.v.failed} z ${n}` }),
-      optimal ? el('span', { className: 'gen-proof', title: 'Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel', textContent: `✓ pohodlnější neexistuje${x.state.cached ? ' (z paměti)' : ''}` }) : null,
-      el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
-        ...choices.map((ch, k) => {
-          const m = ch.m;
-          const grips = m.regrips + m.rotations;
-          return Object.assign(el('button', {
-            type: 'button', className: `gen-choice${k === sel ? ' on' : ''}${ch.v.ok ? '' : ' bad'}`,
-            role: 'radio', ariaChecked: String(k === sel),
-            title: ch.v.ok ? 'Kliknutím uložit tento algoritmus' : `Neřeší ${ch.v.failed} z ${n} stavů případu`,
-          },
-          ch.best.length ? el('span', { className: 'gen-badges' }, ...ch.best.map((v) => el('span', { className: `gen-badge view-${v}`, textContent: `${VIEWS[v].icon} ${VIEWS[v].label}` }))) : null,
-          el('code', { textContent: ch.display }),
-          el('small', { textContent: `${m.length} tahů · ${grips ? `${grips}× přehmat` : 'bez přehmatů'} · náročnost ${m.total.toFixed(1)}` })), {
-            onclick: () => {
-              if (k === x.state.sel) return;
-              // tvoje volba proti nabídnutému: podle ní se dá doladit hodnocení (Tahy a váhy → Kalibrovat)
-              recordPreference(ctx.task.puzzle, ch.display, choices[x.state.sel].display);
-              algs.update(id, { alg: ch.display });
-              x.state.sel = k;
-              renderChoices(x);
-            },
-          });
-        })),
+    const list = el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
+      ...choices.map((ch, k) => Object.assign(el('button', {
+        type: 'button', className: `gen-choice${k === sel ? ' on' : ''}${ch.v.ok ? '' : ' bad'}`,
+        role: 'radio', ariaChecked: String(k === sel),
+        title: ch.v.ok ? 'Klepnutím uložit tento algoritmus' : `Neřeší ${ch.v.failed} z ${n} stavů případu`,
+      }, el('span', { className: 'gen-choice-head' }, el('code', { textContent: ch.display }), badges(ch)), el('small', { textContent: facts(ch.m) })), {
+        onclick: () => {
+          if (k === x.state.sel) return;
+          // tvoje volba proti nabídnutému: podle ní se dá doladit hodnocení (Tahy a váhy → Podle mých voleb)
+          recordPreference(ctx.task.puzzle, ch.display, choices[x.state.sel].display);
+          algs.update(id, { alg: ch.display });
+          x.state.sel = k;
+          renderChoices(x);
+        },
+      })),
       more);
+    const summary = el('summary', { textContent: choices.length > 1 ? `Varianty (${choices.length})` : 'Varianty' });
+    const alt = el('details', { className: 'gen-alt', open: !!x.open }, summary, list);
+    alt.addEventListener('toggle', () => { x.open = alt.open; });
+    // akordeon: rozbalený je jen jeden případ, ať se seznam neroztáhne
+    summary.addEventListener('click', () => {
+      if (alt.open) return; // zavírá se
+      for (const o of cards) if (o !== x) { o.open = false; o.card.querySelector('.gen-alt')?.removeAttribute('open'); }
+    });
+    x.out.replaceChildren(status, chosen, alt);
   }
 
   /** Hledat u případu déle: naváže na nalezená řešení. */
