@@ -939,6 +939,8 @@ body.timing .round-panel { visibility: hidden; }
 .gen-track { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .gen-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s linear; }
 .gen-searching { color: var(--accent); }
+.gen-proof { color: var(--good); font-weight: 650; }
+.gen-more { align-self: flex-start; margin-top: 2px; }
 .gen-choice { display: flex; flex-direction: column; gap: 1px; }
 .gen-choice small { font-size: 0.68rem; color: var(--muted); }
 .gen-badges { display: flex; flex-wrap: wrap; gap: 4px; font-size: 0.66rem; font-weight: 650; }

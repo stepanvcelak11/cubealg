@@ -158,3 +158,42 @@ export function featureLabel(key) {
   const [base, i] = key.split(':');
   return base + ['', "'", '2'][Number(i)];
 }
+
+export const MIN_PREFS = 3;
+
+/**
+ * Doladění vah podle tvých voleb v generátoru: dvojice (vybraný, nabídnutý) –
+ * vybraný má mít nižší hodnocení. Hodnocení se bere jako lineární součet druhů
+ * tahů a míst (stejně jako u kalibrace podle časů); váhy se posouvají, dokud
+ * vybraný nevychází aspoň o `margin` lépe, a zároveň je drží u výchozích hodnot
+ * (málo voleb tedy váhy změní jen trochu).
+ * @param {{better:string, worse:string}[]} pairs
+ * @returns {{ok:false, reason:string} | {ok:true, config:object, changes:{key:string, from:number, to:number}[], used:number, agree:number}}
+ */
+export function learnPreferences(puzzle, config, pairs, { epochs = 60, rate = 0.05, pull = 0.02, margin = 0.3 } = {}) {
+  const data = pairs.map((p) => ({ b: features(puzzle, p.better, config), w: features(puzzle, p.worse, config) }))
+    .filter((d) => d.b.size && d.w.size);
+  if (data.length < MIN_PREFS) {
+    return { ok: false, reason: `Potřebuju aspoň ${MIN_PREFS} volby z generátoru sad (klepnutí na jiný než nabídnutý algoritmus). Teď jich je ${data.length}.` };
+  }
+  const keys = [...new Set(data.flatMap((d) => [...d.b.keys(), ...d.w.keys()]))];
+  const w0 = new Map(keys.map((k) => [k, weightOf(puzzle, config, k)]));
+  const w = new Map(w0);
+  const diffs = data.map((d) => keys.map((k) => (d.b.get(k) ?? 0) - (d.w.get(k) ?? 0)));
+  const value = (diff) => keys.reduce((a, k, j) => a + diff[j] * w.get(k), 0);
+  const clamp = (key, v) => (EVENTS[key] ? Math.min(EVENTS[key].max, Math.max(EVENTS[key].min, v)) : Math.min(6, Math.max(0.2, v)));
+  for (let e = 0; e < epochs; e++) {
+    for (const diff of diffs) {
+      if (value(diff) <= -margin) continue;
+      keys.forEach((k, j) => { if (diff[j]) w.set(k, clamp(k, w.get(k) - rate * diff[j])); });
+    }
+    for (const k of keys) w.set(k, w.get(k) + pull * (w0.get(k) - w.get(k)));
+  }
+  const round = (v) => Math.round(v * 10) / 10;
+  const weights = new Map(keys.map((k) => [k, round(clamp(k, w.get(k)))]));
+  const changes = keys.map((key) => ({ key, from: w0.get(key), to: weights.get(key) })).filter((x) => Math.abs(x.to - x.from) >= 0.05);
+  const next = withWeights(puzzle, config, weights);
+  // kolik voleb nové hodnocení potvrzuje
+  const agree = data.filter((d, i) => keys.reduce((a, k, j) => a + diffs[i][j] * weights.get(k), 0) < 0).length;
+  return { ok: true, config: next, changes, used: data.length, agree };
+}

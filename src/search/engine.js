@@ -374,7 +374,7 @@ function rootsOf(problem, start) {
 }
 
 /** Společné části hledání: cíl, heuristika a odhad vzdálenosti. */
-function evaluator(problem) {
+export function evaluator(problem) {
   const { pieces, tables, near, pieceIndex, targetCount } = problem;
   const n = pieces.length;
   const tableIdx = tables.map((t) => t.pieces.map((name) => pieceIndex.get(name)));
@@ -539,10 +539,11 @@ export function search(problem, start, {
  * @param {number} opts.length délka hledaných řešení
  * @param {number} [opts.timeLimit]
  * @param {{index:number, count:number}} [opts.shard]
+ * @param {number} [opts.skip] přeskočit tolik větví (navázání; `branch` z minulého výsledku)
  * @param {(alg:string, cost:number, info:{pre:any, target:number}) => void} [opts.onSolution]
  * @param {(info:{nodes:number}) => void} [opts.onProgress]
  */
-export function searchCost(problem, start, { cost, minMove, bound, length, timeLimit = 5000, shard, onSolution, onProgress }) {
+export function searchCost(problem, start, { cost, minMove, bound, length, timeLimit = 5000, shard, skip = 0, onSolution, onProgress }) {
   const { pieces, trans, moveCount, redundant, names } = problem;
   const { goalOf, heuristic, near, nearRadius } = evaluator(problem);
   const n = pieces.length;
@@ -554,7 +555,7 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
   const path = new Int16Array(length);
   const order = Array.from({ length }, () => new Int16Array(moveCount));
   const costs = Array.from({ length }, () => new Float64Array(moveCount));
-  let nodes = 0, found = 0, stopped = null, root = null, branch = 0;
+  let nodes = 0, found = 0, stopped = null, root = null, done = skip;
 
   const dfs = (depth, prev, ctx, g) => {
     const cur = stack[depth];
@@ -566,7 +567,7 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
     let k = 0;
     for (let m = 0; m < moveCount; m++) {
       if (prev >= 0 && redundant[prev * moveCount + m]) continue;
-      if (depth === 0 && shard && (branch++ % shard.count) !== shard.index) continue;
+      if (depth === 0 && shard && m % shard.count !== shard.index) continue;
       cs[m] = cost.cost(ctx, m);
       let j = k++;
       while (j > 0 && cs[ord[j - 1]] > cs[m]) { ord[j] = ord[j - 1]; j--; }
@@ -574,6 +575,9 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
     }
     for (let q = 0; q < k; q++) {
       const m = ord[q];
+      // větve (výchozí stav × první tah) v pevném pořadí – pro navázání
+      const idx = depth === 0 ? root.index * moveCount + q : 0;
+      if (depth === 0 && idx < skip) continue;
       const g2 = g + cs[m];
       if (g2 + rest >= bound) break; // další tahy jsou ještě dražší
       for (let i = 0; i < n; i++) next[i] = piecesTrans[i][m * sizes[i] + cur[i]];
@@ -589,26 +593,23 @@ export function searchCost(problem, start, { cost, minMove, bound, length, timeL
           found++;
           onSolution?.(Array.from(path, (i) => names[i]).join(' '), g2, { pre: root.pre, target: goal });
         }
-        continue;
+      } else if (goal < 0 && heuristic(next) <= remaining) { // kratší řešení už je (goal ≥ 0)
+        let ok = true;
+        if (remaining <= nearRadius) { const d = near.get(next); ok = d >= 0 && d <= remaining; }
+        if (ok) { dfs(depth + 1, m, cost.step(ctx, m), g2); if (stopped) return; }
       }
-      if (goal >= 0) continue; // kratší řešení už je
-      if (heuristic(next) > remaining) continue;
-      if (remaining <= nearRadius) {
-        const d = near.get(next);
-        if (d < 0 || d > remaining) continue;
-      }
-      dfs(depth + 1, m, cost.step(ctx, m), g2);
-      if (stopped) return;
+      if (depth === 0) done = idx + 1;
     }
+    if (depth === 0) done = Math.max(done, (root.index + 1) * moveCount);
   };
   for (const r of roots) {
-    if (goalOf(r.v) >= 0) continue;
+    if (goalOf(r.v) >= 0 || (r.index + 1) * moveCount <= skip) continue;
     root = r;
     stack[0].set(r.v);
     dfs(0, -1, cost.start, 0);
     if (stopped) break;
   }
-  return { reason: stopped ?? 'done', nodes, found, bound, elapsed: Date.now() - t0 };
+  return { reason: stopped ?? 'done', nodes, found, bound, branch: done, elapsed: Date.now() - t0 };
 }
 
 /** Pohodlná varianta: vše v jednom volání. */

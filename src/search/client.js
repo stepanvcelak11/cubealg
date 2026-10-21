@@ -65,6 +65,8 @@ export class SearchClient {
         reason, found,
         optimal: optimals.length ? Math.min(...optimals) : null,
         cleared: Math.min(...ds.map((d) => d.cleared ?? 0)),
+        // nejpohodlnější je dokázané, jen když to dokázal každý díl
+        speedOptimal: ds.every((d) => d.speedOptimal),
         nodes: ds.reduce((a, d) => a + (d.nodes ?? 0), 0),
         elapsed: Math.max(...ds.map((d) => d.elapsed ?? 0)),
         workers: count,

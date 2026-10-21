@@ -312,3 +312,19 @@ export function importMethod(data) {
   guideEvents.emit();
   return id;
 }
+
+// Volby v generátoru sad: který z nabídnutých algoritmů sis vybral místo jiného.
+// Kalibrace (Tahy a váhy) podle nich doladí hodnocení.
+const PREFS = 'ergocube.prefs';
+const MAX_PREFS = 300;
+
+/** Zapíše volbu: `better` sis vybral místo `worse` (zápis v rámci držení). */
+export function recordPreference(puzzle = '333', better, worse) {
+  if (!better || !worse || better === worse) return;
+  const list = (storage.get(PREFS) ?? []).filter((p) => !(p.puzzle === puzzle && p.better === worse && p.worse === better));
+  list.push({ puzzle, better, worse, d: Date.now() });
+  storage.set(PREFS, list.slice(-MAX_PREFS));
+}
+
+/** Uložené volby pro hlavolam. */
+export const preferencesOf = (puzzle = '333') => (storage.get(PREFS) ?? []).filter((p) => p.puzzle === puzzle);

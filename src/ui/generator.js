@@ -10,6 +10,7 @@ import { $, el, storage } from './dom.js';
 import { NetView } from './netview.js';
 import { algs, algSets } from './store.js';
 import { toast } from './share.js';
+import { recordPreference } from './store.js';
 
 const OPTS = 'ergocube.lab.generator';
 const fmtTime = (ms) => { const t = Math.round(ms / 1000); return t < 60 ? `${t} s` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
@@ -31,7 +32,7 @@ export function openGenerator(ctx) {
     Object.assign(el('input', { type: 'checkbox', id }), { checked: on }), label);
   const name = el('input', { value: saved.name ?? 'Nová sada', ariaLabel: 'Název sady' });
   const fix = el('input', { value: saved.fix ?? 'M2 U2 M2', ariaLabel: 'Oprava parity', spellcheck: false });
-  const time = el('input', { type: 'number', min: '2', max: '600', value: String(saved.time ?? 10), ariaLabel: 'Čas na případ (s)' });
+  const time = el('input', { type: 'number', min: '2', max: '600', value: String(saved.time ?? 10), ariaLabel: 'Průměrný čas na případ (s)' });
   const view = el('select', { ariaLabel: 'Vybírat podle' }, ...Object.entries(VIEWS).map(([id, v]) => el('option', { value: id, textContent: `${v.icon} ${v.label}` })));
   view.value = saved.view ?? 'balanced';
   const opts = el('div', { className: 'gen-opts' },
@@ -44,7 +45,7 @@ export function openGenerator(ctx) {
     cube ? check('gen-wy', 'Bílá a žlutá jsou na Startu zaměnitelné', saved.wy ?? false, 'Bílá nálepka na Startu znamená „bílá nebo žlutá“') : null,
     el('div', { className: 'grid-fields' },
       el('label', { className: 'field' }, 'Název sady', name),
-      el('label', { className: 'field' }, 'Čas na případ (s)', time),
+      el('label', { className: 'field', title: 'Průměr: případ, u kterého je nejpohodlnější algoritmus dokázaný dřív, skončí a ušetřený čas dostanou těžší (nejvýš 3× průměr, max. minuta)' }, 'Průměrný čas na případ (s)', time),
       el('label', { className: 'field' }, 'Vybírat podle', view)));
   const status = el('p', { className: 'status gen-status' });
   // průběh generování: pruh s dílkem za každý případ a pruh času aktuálního případu
@@ -60,7 +61,7 @@ export function openGenerator(ctx) {
   const dlg = el('dialog', { className: 'help-dialog gen-dialog' },
     el('div', { className: 'gen-head' }, el('h2', { textContent: 'Generátor sady' }), close),
     el('div', { className: 'gen-body' },
-      el('p', { className: 'hint', textContent: 'Krok metody podle zadání: Start = co je hotové před krokem (nevybarvené dílky můžou být jakkoli, dílek jen s částí barev = „tahle barva tady“), Cíl = co má být hotové po kroku. Tahy a ergonomie podle „Tahy a váhy“. Aplikace projde všechny stavy, které Startu odpovídají, sloučí stejné případy, pro každý najde algoritmus a ověří ho na všech jeho stavech.' }),
+      el('p', { className: 'hint', textContent: 'Krok metody podle zadání: Start = co je hotové před krokem (nevybarvené dílky můžou být jakkoli, dílek jen s částí barev = „tahle barva tady“), Cíl = co má být hotové po kroku. Tahy a ergonomie podle „Tahy a váhy“. Aplikace projde všechny stavy, které Startu odpovídají, sloučí stejné případy, pro každý najde algoritmus a ověří ho na všech jeho stavech. Hledání zkouší i tvoje uložené algoritmy a ty, které už v tomto běhu našlo.' }),
       opts, el('div', { className: 'row-btns gen-actions' }, countBtn, goBtn, stopBtn, openBtn), el('div', { className: 'gen-progress' }, status, timeline, live), list));
   document.body.append(dlg);
 
@@ -133,15 +134,23 @@ export function openGenerator(ctx) {
 
   /** Najde algoritmus pro jeden případ (Promise → { alg, pre, post, display } | null). */
   let resolveCurrent = null; // zastavení ukončí i probíhající hledání
-  const solveOne = (c, timeLimit, onFound) => new Promise((resolve) => {
-    const found = new Map();
-    resolveCurrent = () => resolve(found);
-    client.start(ctx.job(c.rep, result.target, result.constraints, timeLimit), {
+  // vrací { found: Map, optimal: dokázaně nejpohodlnější }; seeds = dosavadní řešení (navázání)
+  const solveOne = (c, timeLimit, onFound, { seeds = [], found = new Map() } = {}) => new Promise((resolve) => {
+    resolveCurrent = () => resolve({ found, optimal: false });
+    client.start(ctx.job(c.rep, result.target, result.constraints, timeLimit, { seeds, library: [...ctx.library(), ...learned] }), {
       onSolutions: (items) => { for (const it of items) found.set(`${it.pre}|${it.alg}|${it.post}`, it); onFound?.(found); },
-      onDone: () => resolve(found),
-      onError: () => resolve(found),
+      onDone: (d) => resolve({ found, optimal: !!d.speedOptimal }),
+      onError: () => resolve({ found, optimal: false }),
     });
   });
+  const learned = []; // algoritmy nalezené v tomto běhu – knihovna pro další případy
+  const modelAlg = (it) => [it.pre, it.alg, it.post].filter(Boolean).join(' ');
+
+  /** Nabídka u případu z nalezených řešení (seřazená podle zvoleného pohledu). */
+  const choicesOf = (x, found) => pickChoices(rankResults([...found.values()].map((it) => {
+    const display = ctx.join(ctx.toHeld(it.pre), ctx.toHeld(it.alg), ctx.toHeld(it.post));
+    return { it, display, m: styleMetrics(ctx.score(display), cube) };
+  }), view.value, { lambda: ctx.lambda }), x.c.members, enumOpts());
 
   goBtn.onclick = async () => {
     if (!result || running) return;
@@ -150,10 +159,13 @@ export function openGenerator(ctx) {
     goBtn.hidden = true; countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true;
     for (const x of cards) x.box.disabled = true;
     const chosen = cards.filter((x) => x.box.checked);
+    // čas: zadaný čas na případ je průměr; případ, u kterého je nejpohodlnější
+    // dokázané dřív, skončí a ušetřený čas dostanou těžší případy (nejvýš 3× průměr, max. minuta)
     const per = Math.max(2, Math.min(600, Number(time.value) || 10)) * 1000;
+    const cap = Math.max(per, Math.min(60000, per * 3));
+    let budget = per * chosen.length;
     setId = algSets.add(name.value.trim() || 'Nová sada');
-    const opts = enumOpts();
-    let ok = 0, warn = 0, none = 0;
+    let ok = 0, warn = 0, none = 0, proven = 0;
     const n0 = (all, done) => (done < all ? `Zastaveno po ${done} z ${all} · ` : '');
     const segs = chosen.map((x) => Object.assign(el('button', { type: 'button', className: 'gen-seg', role: 'listitem', title: `Případ ${x.i + 1}`, ariaLabel: `Případ ${x.i + 1}` }), {
       onclick: () => x.card.scrollIntoView({ behavior: 'smooth', block: 'center' }),
@@ -164,6 +176,9 @@ export function openGenerator(ctx) {
     const t0 = performance.now();
     for (let n = 0; n < chosen.length && running; n++) {
       const x = chosen[n];
+      x.seg = segs[n];
+      const casesLeft = chosen.length - n;
+      const limit = Math.round(Math.min(cap, Math.max(2000, (budget / casesLeft) * 1.5)));
       x.card.classList.add('busy');
       segs[n].classList.add('busy');
       x.card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -172,29 +187,25 @@ export function openGenerator(ctx) {
       let count = 0;
       const tick = () => {
         const el2 = performance.now() - start;
-        bar.style.width = `${Math.min(100, (el2 / per) * 100)}%`;
-        // odhad zbytku: aktuální případ + zbylé po celém čase (dřív hotové můžou skončit dřív)
-        const left = Math.max(0, per - el2) + (chosen.length - n - 1) * per;
-        live.lastChild.textContent = `${(el2 / 1000).toFixed(1)} / ${per / 1000} s · nalezeno ${count} řešení · celkem ${fmtTime(performance.now() - t0)}, zbývá nejvýš ${fmtTime(left)}`;
+        bar.style.width = `${Math.min(100, (el2 / limit) * 100)}%`;
+        const left = Math.max(0, budget - el2);
+        live.lastChild.textContent = `${(el2 / 1000).toFixed(1)} / ${Math.round(limit / 1000)} s · nalezeno ${count} řešení · celkem ${fmtTime(performance.now() - t0)}, zbývá nejvýš ${fmtTime(left)}`;
       };
       tick();
       const timer = setInterval(tick, 200);
-      const found = await solveOne(x.c, per, (f) => {
+      const { found, optimal } = await solveOne(x.c, limit, (f) => {
         count = f.size;
         x.out.replaceChildren(el('span', { className: 'gen-searching', textContent: `hledám… ${count} řešení` }));
       });
       clearInterval(timer);
+      budget = Math.max(0, budget - (performance.now() - start));
       x.card.classList.remove('busy');
       segs[n].classList.remove('busy');
       if (!running) break;
       if (!found.size) { none++; segs[n].classList.add('none'); x.out.replaceChildren(el('span', { className: 'ko', textContent: 'nenalezeno' })); continue; }
-      // nejlepší podle zvoleného pohledu (hodnocení v rámci držení)
-      const ranked = rankResults([...found.values()].map((it) => {
-        const display = ctx.join(ctx.toHeld(it.pre), ctx.toHeld(it.alg), ctx.toHeld(it.post));
-        return { it, display, m: styleMetrics(ctx.score(display), cube) };
-      }), view.value, { lambda: ctx.lambda });
-      const choices = pickChoices(ranked, x.c.members, opts);
+      const choices = choicesOf(x, found);
       if (choices[0].v.ok) ok++; else warn++;
+      if (optimal) proven++;
       segs[n].classList.add(choices[0].v.ok ? 'ok' : 'warn');
       const id = algs.add({
         alg: choices[0].display,
@@ -202,14 +213,17 @@ export function openGenerator(ctx) {
         set: setId,
         task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) },
       });
-      renderChoices(x, choices, 0, id);
+      if (choices[0].v.ok) learned.push(modelAlg(choices[0].it));
+      x.state = { found, choices, sel: 0, id, optimal };
+      renderChoices(x);
     }
     addParityAlg();
     live.hidden = true;
     running = false;
+    for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
     client.cancel();
     stopBtn.hidden = true; countBtn.disabled = false; openBtn.hidden = false;
-    status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · uloženo do sady „${algSets.get(setId).name}“`;
+    status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${proven ? ` (${proven} dokázaně nejpohodlnějších)` : ''}${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · uloženo do sady „${algSets.get(setId).name}“`;
     toast(`Sada „${algSets.get(setId).name}“: ${ok + warn} algoritmů`);
   };
   /**
@@ -246,11 +260,15 @@ export function openGenerator(ctx) {
   }
 
   /** Nalezené algoritmy u případu: vybraný se uloží do sady, kliknutím se vybere jiný. */
-  function renderChoices(x, choices, sel, id) {
+  function renderChoices(x) {
+    const { choices, sel, id, optimal } = x.state;
     const n = x.c.members.length;
     const c = choices[sel];
+    const more = el('button', { type: 'button', className: 'chip gen-more', textContent: 'Hledat déle (+30 s)', disabled: running, title: 'Naváže na nalezená řešení a hledá dál' });
+    more.onclick = () => searchMore(x);
     x.out.replaceChildren(
       el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ověřeno na ${n}` : `⚠ neřeší ${c.v.failed} z ${n}` }),
+      optimal ? el('span', { className: 'gen-proof', title: 'Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel', textContent: '✓ pohodlnější neexistuje' }) : null,
       el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
         ...choices.map((ch, k) => {
           const m = ch.m;
@@ -263,9 +281,52 @@ export function openGenerator(ctx) {
           ch.best.length ? el('span', { className: 'gen-badges' }, ...ch.best.map((v) => el('span', { className: `gen-badge view-${v}`, textContent: `${VIEWS[v].icon} ${VIEWS[v].label}` }))) : null,
           el('code', { textContent: ch.display }),
           el('small', { textContent: `${m.length} tahů · ${grips ? `${grips}× přehmat` : 'bez přehmatů'} · náročnost ${m.total.toFixed(1)}` })), {
-            onclick: () => { algs.update(id, { alg: ch.display }); renderChoices(x, choices, k, id); },
+            onclick: () => {
+              if (k === x.state.sel) return;
+              // tvoje volba proti nabídnutému: podle ní se dá doladit hodnocení (Tahy a váhy → Kalibrovat)
+              recordPreference(ctx.task.puzzle, ch.display, choices[x.state.sel].display);
+              algs.update(id, { alg: ch.display });
+              x.state.sel = k;
+              renderChoices(x);
+            },
           });
-        })));
+        })),
+      more);
+  }
+
+  /** Hledat u případu déle: naváže na nalezená řešení. */
+  async function searchMore(x) {
+    if (running) return;
+    running = true;
+    for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = true;
+    countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true;
+    x.card.classList.add('busy');
+    x.seg?.classList.add('busy');
+    live.hidden = false;
+    const limit = 30000, start = performance.now();
+    const prev = x.state.choices[x.state.sel].display;
+    const timer = setInterval(() => {
+      const t = performance.now() - start;
+      bar.style.width = `${Math.min(100, (t / limit) * 100)}%`;
+      live.lastChild.textContent = `Případ ${x.i + 1}: hledám déle · ${(t / 1000).toFixed(1)} / 30 s · ${x.state.found.size} řešení`;
+    }, 200);
+    status.textContent = `Případ ${x.i + 1} · hledám déle…`;
+    const seeds = x.state.choices.map((ch) => ({ alg: ch.it.alg, pre: ch.it.pre, post: ch.it.post }));
+    const { found, optimal } = await solveOne(x.c, limit, null, { seeds, found: x.state.found });
+    clearInterval(timer);
+    x.card.classList.remove('busy');
+    x.seg?.classList.remove('busy');
+    live.hidden = true;
+    running = false;
+    stopBtn.hidden = true; countBtn.disabled = false; openBtn.hidden = false;
+    const choices = choicesOf(x, found);
+    // vybraný zůstane vybraný, když je pořád v nabídce
+    const keep = choices.findIndex((ch) => ch.display === prev);
+    x.state = { ...x.state, found, choices, optimal, sel: keep >= 0 && prev !== x.state.choices[0].display ? keep : 0 };
+    algs.update(x.state.id, { alg: choices[x.state.sel].display });
+    status.textContent = `Případ ${x.i + 1}: ${choices[0].display === x.state.choices[0]?.display && keep === 0 ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${optimal ? ' · pohodlnější neexistuje' : ''}`;
+    renderChoices(x);
+    for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
   }
 
   /** Oprava parity jako samostatný algoritmus sady (s obrázkem prvního paritního případu). */

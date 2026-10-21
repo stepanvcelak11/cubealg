@@ -91,6 +91,12 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     stavech případu a uloží je jako novou sadu do trenažéru. Ověřeno na známých
     sadách: OLL 57, PLL 21, CMLL 42, OLL 2×2 7, ZBLL+PLL 493, ELL 29 (testy).
     Volitelně „bílá a žlutá zaměnitelné“ na Startu (barevně neutrální metody).
+    U každého případu je nabídka až 6 algoritmů (nejlepší podle rychlosti, délky
+    a celkově) s počtem tahů, přehmaty a náročností; klepnutím vybereš jiný,
+    „Hledat déle“ naváže na nalezená řešení. Zadaný čas na případ je průměr:
+    případ s dokázaně nejpohodlnějším algoritmem skončí dřív a ušetřený čas
+    dostanou těžší (nejvýš 3× průměr, max. minuta). Tvoje volby se pamatují
+    a „Tahy a váhy → Podle mých voleb“ podle nich doladí hodnocení.
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
     Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým
@@ -198,6 +204,21 @@ s povolenými tahy – je tedy přípustná a respektuje omezení tahů.
 Hledání neskončí u optima: projde délky *optimum … optimum + N* a vrátí všechny
 nalezené sekvence (bez redundantních pořadí tahů na stejné ose a bez zbytečných
 koncových tahů). Ty se pak seřadí podle Discomfort Score.
+
+Zlepšování (`src/search/explore.js`) střídá úlohy: menší sady tahů, úplné
+hledání (důkaz nejkratšího), přeřešení úseků a dále
+
+- **pohodlí** – větve a meze pro jednotlivé délky podle ceny tahů se stavem ruky;
+  ceny jsou snížené o nejvyšší možný bonus za trigger, takže když se projdou
+  všechny délky, do kterých se levnější algoritmus vejde, je nejlepší dokázaně
+  nejpohodlnější („✓ nejpohodlnější možné“) a hledání skončí dřív,
+- **bloky** – triggery a časté úseky tvých algoritmů jako jeden krok hledání
+  (`src/search/library.js`),
+- **knihovna** – tvoje uložené algoritmy (i zrcadla a inverze) s nastavením
+  do 2 tahů a dokončením do 3 tahů.
+
+Kvalitu měří `node bench/quality.mjs [sekund] [filtr] [lib]` na známých PLL, OLL
+a EPBL (porovnání se známými rychlými algoritmy).
 
 ## Discomfort Score
 
