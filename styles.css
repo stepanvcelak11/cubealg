@@ -919,11 +919,16 @@ body.timing .round-panel { visibility: hidden; }
 .gen-actions { align-items: center; }
 .gen-status { font-weight: 650; color: var(--text); }
 .gen-cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.gen-card { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; min-width: 0; }
-.gen-card:has(input:not(:checked)) { opacity: 0.45; }
+.gen-card { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); min-width: 0; }
+.gen-card:has(.gen-card-head input:not(:checked)) { opacity: 0.45; }
 .gen-card.busy { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.gen-card-head { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.gen-card-head { cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
 .gen-card-head small { margin-left: auto; color: var(--muted); }
 .gen-pic .netview { max-height: 110px; }
 .gen-out { display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem; min-height: 1em; }
+.gen-choices { display: flex; flex-direction: column; gap: 3px; }
+.gen-choice { text-align: left; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.gen-choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.gen-choice.bad { border-style: dashed; }
+.gen-fix input { font-family: var(--mono); }
 .gen-out code { font-family: var(--mono); font-size: 0.74rem; overflow-wrap: anywhere; }

@@ -839,7 +839,7 @@ test('trenažér: rozpoznání případu – výběr z možností, správně/šp
   await ctx.close();
 });
 
-test('generátor sady: EPBL – 29 případů, algoritmy ⟨M, U, D⟩ ověřené na všech stavech', async () => {
+test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ověření ⟨M, U, D⟩', async () => {
   const { p, ctx, errors } = await open('lab');
   await p.evaluate(async () => {
     const { labModel } = await import('./src/ui/models.js');
@@ -851,24 +851,32 @@ test('generátor sady: EPBL – 29 případů, algoritmy ⟨M, U, D⟩ ověřen�
     localStorage.setItem('ergocube.v3', JSON.stringify({
       constraints: Object.fromEntries(m.pieceNames.map((n) => [n, 'solved'])), colorsA: A, colorsB: m.home(m.pieceNames), bases: ['M', 'U', 'D'],
     }));
-    localStorage.setItem('ergocube.lab.generator', JSON.stringify({ auf: true, y: true, z2: true, wy: false, name: 'EPBL', time: 3, view: 'balanced' }));
+    localStorage.setItem('ergocube.lab.generator', JSON.stringify({ auf: true, adf: true, y: true, z2: true, wy: false, par: true, fix: 'M2 U2 M2', name: 'EPBL', time: 3, view: 'balanced' }));
   });
   await p.reload();
   await p.locator('#gen-set').tap();
   await p.locator('.gen-dialog button', { hasText: 'Spočítat případy' }).tap();
   await p.waitForFunction(() => /případů/.test(document.querySelector('.gen-status').textContent));
-  assert.match(await p.locator('.gen-status').innerText(), /288 stavů → 29 případů/);
-  assert.equal(await p.locator('.gen-card').count(), 29);
+  assert.match(await p.locator('.gen-status').innerText(), /288 stavů → 14 případů .*· 15 paritních vynecháno \(opraví M2 U2 M2\)/);
+  assert.equal(await p.locator('.gen-card').count(), 14);
   // jen první tři případy
-  const boxes = p.locator('.gen-card input');
-  for (let i = 3; i < 29; i++) await boxes.nth(i).uncheck();
+  const boxes = p.locator('.gen-card-head input');
+  for (let i = 3; i < 14; i++) await boxes.nth(i).uncheck();
   await p.locator('.gen-dialog button', { hasText: 'Generovat' }).tap();
   await p.waitForFunction(() => /Hotovo/.test(document.querySelector('.gen-status').textContent), null, { timeout: 90000 });
   const outs = await p.locator('.gen-card .gen-out').allInnerTexts();
   assert.equal(outs.slice(0, 3).filter((t) => /✓ ověřeno/.test(t)).length, 3, outs.slice(0, 3).join(' | '));
   const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.alg));
-  assert.equal(saved.length, 3);
+  assert.equal(saved.length, 4); // 3 případy + oprava parity
+  assert.equal(saved[3], 'M2 U2 M2');
   assert.ok(saved.every((a) => /^[MUD2' ()]+$/.test(a)), saved.join(' | '));
+  // výběr jiného nalezeného algoritmu u prvního případu
+  const choices = p.locator('.gen-card').first().locator('.gen-choice');
+  assert.ok(await choices.count() > 1);
+  await choices.nth(1).tap();
+  const other = await choices.nth(1).innerText();
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs'))[0].alg), other);
+  assert.equal(await p.locator('.gen-card').first().locator('.gen-choice.on').innerText(), other);
   await p.locator('.gen-dialog button', { hasText: 'Otevřít sadu' }).tap();
   await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden);
   assert.match(await p.locator('#tr-set option:checked').innerText(), /EPBL/);

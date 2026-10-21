@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { enumerateCases } from '../src/core/cases.js';
+import { enumerateCases, layerParity, checkParityFix } from '../src/core/cases.js';
 import { taskOps, EMPTY } from '../src/core/task.js';
 import { getPuzzle } from '../src/puzzles/index.js';
 
@@ -99,6 +99,12 @@ test('EPBL (rohy a pás složené, nahoře bílé a dole žluté hrany): 288 sta
   // natočení spodní vrstvy (D před a po algoritmu): stejný případ dole jen jinak natočený je jeden
   assert.equal(real(enumerateCases(P3, t, { adf: true })), 49);
   assert.equal(real(enumerateCases(P3, t, { adf: true, rotations: ['y', 'z2'] })), 29);
+  // paritní případy (lichá permutace hran ve vrstvě) opraví M2 U2 M2 – zbydou kombinace U/H/Z permů
+  const all = enumerateCases(P3, t, { adf: true, rotations: ['y', 'z2'] }).cases.filter((c) => !c.solved);
+  const odd = all.filter((c) => layerParity(P3, c.rep).odd);
+  assert.ok(odd.every((c) => c.members.every((m) => layerParity(P3, m).odd)), 'parita je v rámci případu stejná');
+  assert.equal(all.length - odd.length, 14);
+  assert.equal(checkParityFix(P3, odd.flatMap((c) => c.members), 'M2 U2 M2', { adf: true }), 0);
 });
 
 test('ADF nemění případy, kde je spodní vrstva složená (PLL zůstává 21)', () => {

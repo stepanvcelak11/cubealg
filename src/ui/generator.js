@@ -3,7 +3,7 @@
 // najde algoritmus stejným hledáním jako Lab, ověří ho na všech stavech případu
 // a uloží výsledky jako novou sadu v trenažéru.
 
-import { enumerateCases, verifyCase, colorsOfState } from '../core/cases.js';
+import { enumerateCases, verifyCase, colorsOfState, layerParity, checkParityFix } from '../core/cases.js';
 import { SearchClient } from '../search/client.js';
 import { styleMetrics, rankResults, VIEWS } from '../ergonomics/style.js';
 import { $, el, storage } from './dom.js';
@@ -12,6 +12,7 @@ import { algs, algSets } from './store.js';
 import { toast } from './share.js';
 
 const OPTS = 'ergocube.lab.generator';
+const CHOICES = 6; // kolik nalezených algoritmů nabídnout u případu
 
 /**
  * @param {object} ctx z Labu: model, task {colorsA, colorsB, constraints, marks, hold, puzzle},
@@ -27,6 +28,7 @@ export function openGenerator(ctx) {
   const check = (id, label, on, title) => el('label', { className: 'check-row', title },
     Object.assign(el('input', { type: 'checkbox', id }), { checked: on }), label);
   const name = el('input', { value: saved.name ?? 'Nová sada', ariaLabel: 'Název sady' });
+  const fix = el('input', { value: saved.fix ?? 'M2 U2 M2', ariaLabel: 'Oprava parity', spellcheck: false });
   const time = el('input', { type: 'number', min: '2', max: '600', value: String(saved.time ?? 10), ariaLabel: 'Čas na případ (s)' });
   const view = el('select', { ariaLabel: 'Vybírat podle' }, ...Object.entries(VIEWS).map(([id, v]) => el('option', { value: id, textContent: `${v.icon} ${v.label}` })));
   view.value = saved.view ?? 'balanced';
@@ -35,6 +37,8 @@ export function openGenerator(ctx) {
     cube ? check('gen-adf', 'Slučovat i natočení spodní vrstvy (D)', saved.adf ?? true, 'Případy, které se liší jen natočením D před nebo po algoritmu, jsou jeden (PBL, EPBL…). Natočení D pak uděláš sám jako AUF.') : null,
     cube ? check('gen-y', 'Stejný případ z jiné strany (otočení y)', saved.y ?? false, 'Případ viděný po otočení celé kostky kolem svislé osy je stejný') : null,
     cube ? check('gen-z2', 'I vzhůru nohama (z2)', saved.z2 ?? false, 'Případ viděný po převrácení kostky je stejný (metody, kde jsou horní a spodní vrstva rovnocenné)') : null,
+    cube ? check('gen-par', 'Vynechat paritní případy (lichá permutace ve vrstvě)', saved.par ?? false, 'Případy, které v jedné vrstvě samy o sobě nejdou (např. prohozené dvě hrany), se předem opraví algoritmem níže a pak jsou jako jiný případ') : null,
+    cube ? el('label', { className: 'field gen-fix' }, 'Oprava parity', fix) : null,
     cube ? check('gen-wy', 'Bílá a žlutá jsou na Startu zaměnitelné', saved.wy ?? false, 'Bílá nálepka na Startu znamená „bílá nebo žlutá“') : null,
     el('div', { className: 'grid-fields' },
       el('label', { className: 'field' }, 'Název sady', name),
@@ -59,13 +63,16 @@ export function openGenerator(ctx) {
   let cards = [];
   let running = false;
   let setId = null;
+  let parity = null; // vynechané paritní případy { cases, fix, bad }
+  const syncFix = () => { fix.closest('label').hidden = !val('gen-par'); };
+  dlg.querySelector('#gen-par')?.addEventListener('change', syncFix);
   const val = (id) => dlg.querySelector(`#${id}`)?.checked ?? false;
-  const settings = () => ({ auf: cube && val('gen-auf'), adf: cube && val('gen-adf'), y: val('gen-y'), z2: val('gen-z2'), wy: val('gen-wy') });
+  const settings = () => ({ auf: cube && val('gen-auf'), adf: cube && val('gen-adf'), y: val('gen-y'), z2: val('gen-z2'), wy: val('gen-wy'), par: val('gen-par') });
   const enumOpts = () => {
     const s = settings();
     return { auf: s.auf, adf: s.adf, rotations: [s.y && 'y', s.z2 && 'z2'].filter(Boolean), interchange: s.wy ? [['U', 'D']] : [] };
   };
-  const remember = () => storage.set(OPTS, { ...settings(), name: name.value, time: Number(time.value), view: view.value });
+  const remember = () => storage.set(OPTS, { ...settings(), fix: fix.value, name: name.value, time: Number(time.value), view: view.value });
 
   close.onclick = () => dlg.close();
   dlg.addEventListener('close', () => { running = false; client.cancel(); resolveCurrent?.(); dlg.remove(); });
@@ -79,9 +86,20 @@ export function openGenerator(ctx) {
       const t0 = performance.now();
       result = enumerateCases(P, ctx.task, enumOpts());
       if (result.error) { status.textContent = `Zadání: ${result.error}`; return; }
-      const todo = result.cases.filter((c) => !c.solved);
+      let todo = result.cases.filter((c) => !c.solved);
       const solved = result.cases.length - todo.length;
-      status.textContent = `${result.signatures} stavů → ${todo.length} případů${solved ? ` (+ ${solved} už splněný)` : ''}`
+      parity = null;
+      let parText = '';
+      if (settings().par) {
+        const odd = todo.filter((c) => layerParity(P, c.rep).odd);
+        todo = todo.filter((c) => !odd.includes(c));
+        let bad = 0;
+        try { bad = fix.value.trim() ? checkParityFix(P, odd.flatMap((c) => c.members), fix.value, enumOpts()) : 0; } catch { bad = -1; }
+        parity = { cases: odd, fix: fix.value.trim(), bad };
+        parText = ` · ${odd.length} paritních vynecháno`
+          + (!odd.length || !parity.fix ? '' : bad === -1 ? ' (opravu parity nejde přečíst)' : bad ? ` (⚠ ${parity.fix} neopraví ${bad} stavů)` : ` (opraví ${parity.fix})`);
+      }
+      status.textContent = `${result.signatures} stavů → ${todo.length} případů${solved ? ` (+ ${solved} jen natočením vrstvy)` : ''}${parText}`
         + `${result.tooMany ? ' · POZOR: moc stavů, výčet není úplný – omez Start' : ''} · ${Math.round(performance.now() - t0)} ms`;
       renderCards(todo);
       goBtn.hidden = !todo.length || result.tooMany;
@@ -95,7 +113,7 @@ export function openGenerator(ctx) {
       const box = el('input', { type: 'checkbox', checked: true, ariaLabel: `Případ ${i + 1}` });
       const pic = el('div', { className: 'gen-pic' });
       const out = el('div', { className: 'gen-out' });
-      const card = el('label', { className: 'gen-card' }, el('div', { className: 'gen-card-head' }, box, el('b', { textContent: `${i + 1}.` }),
+      const card = el('div', { className: 'gen-card' }, el('label', { className: 'gen-card-head' }, box, el('b', { textContent: `${i + 1}.` }),
         el('small', { textContent: `${c.members.length} ${c.members.length === 1 ? 'stav' : c.members.length < 5 ? 'stavy' : 'stavů'}` })), pic, out);
       if (v.type === 'net') {
         const net = new NetView(pic, { label: `Případ ${i + 1}`, viewBox: v.viewBox, polys: v.polys });
@@ -144,28 +162,64 @@ export function openGenerator(ctx) {
         const display = ctx.join(ctx.toHeld(it.pre), ctx.toHeld(it.alg), ctx.toHeld(it.post));
         return { it, display, m: styleMetrics(ctx.score(display), cube) };
       }), view.value, { lambda: ctx.lambda });
-      const best = ranked[0];
-      const modelAlg = [best.it.pre, best.it.alg, best.it.post].filter(Boolean).join(' ');
-      const v = verifyCase(P, result.goal, x.c.members, modelAlg, { auf: opts.auf, adf: opts.adf, rotations: opts.rotations });
-      if (v.ok) ok++; else warn++;
-      x.out.replaceChildren(el('code', { textContent: best.display }),
-        el('span', { className: v.ok ? 'ok' : 'ko', textContent: v.ok ? `✓ ověřeno na ${x.c.members.length}` : `⚠ neřeší ${v.failed} z ${x.c.members.length}` }));
-      algs.add({
-        alg: best.display,
+      // nabídka: nejlepší různé zápisy, ověřené napřed
+      const seen = new Set();
+      const choices = [];
+      for (const r of ranked) {
+        if (seen.has(r.display)) continue;
+        seen.add(r.display);
+        const modelAlg = [r.it.pre, r.it.alg, r.it.post].filter(Boolean).join(' ');
+        choices.push({ ...r, v: verifyCase(P, result.goal, x.c.members, modelAlg, { auf: opts.auf, adf: opts.adf, rotations: opts.rotations }) });
+        if (choices.length >= CHOICES) break;
+      }
+      choices.sort((a, b) => Number(b.v.ok) - Number(a.v.ok));
+      if (choices[0].v.ok) ok++; else warn++;
+      const id = algs.add({
+        alg: choices[0].display,
         name: `${name.value.trim() || 'Případ'} ${x.i + 1}`,
         set: setId,
         task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) },
       });
+      renderChoices(x, choices, 0, id);
     }
+    addParityAlg();
     running = false;
     client.cancel();
     stopBtn.hidden = true; countBtn.disabled = false; openBtn.hidden = false;
     status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · uloženo do sady „${algSets.get(setId).name}“`;
     toast(`Sada „${algSets.get(setId).name}“: ${ok + warn} algoritmů`);
   };
+  /** Nalezené algoritmy u případu: vybraný se uloží do sady, kliknutím se vybere jiný. */
+  function renderChoices(x, choices, sel, id) {
+    const n = x.c.members.length;
+    const c = choices[sel];
+    x.out.replaceChildren(
+      el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ověřeno na ${n}` : `⚠ neřeší ${c.v.failed} z ${n}` }),
+      el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
+        ...choices.map((ch, k) => Object.assign(el('button', {
+          type: 'button', className: `gen-choice${k === sel ? ' on' : ''}${ch.v.ok ? '' : ' bad'}`,
+          role: 'radio', ariaChecked: String(k === sel),
+          title: ch.v.ok ? 'Kliknutím uložit tento algoritmus' : `Neřeší ${ch.v.failed} z ${n} stavů případu`,
+        }, el('code', { textContent: ch.display })), {
+          onclick: () => { algs.update(id, { alg: ch.display }); renderChoices(x, choices, k, id); },
+        }))));
+  }
+
+  /** Oprava parity jako samostatný algoritmus sady (s obrázkem prvního paritního případu). */
+  function addParityAlg() {
+    if (!parity?.cases.length || !parity.fix || parity.bad) return;
+    algs.add({
+      alg: parity.fix,
+      name: `${name.value.trim() || 'Sada'} – parita`,
+      set: setId,
+      task: { ...ctx.task, colorsA: colorsOfState(P, parity.cases[0].rep, result.constraints) },
+    });
+  }
+
   stopBtn.onclick = () => { running = false; client.cancel(); resolveCurrent?.(); };
   openBtn.onclick = () => { dlg.close(); if (setId) ctx.onOpenSet(setId); };
 
+  syncFix();
   dlg.showModal();
   return dlg;
 }

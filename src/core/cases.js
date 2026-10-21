@@ -400,6 +400,40 @@ export function verifyCase(P, goal, members, alg, { auf = true, adf = false, rot
   return { ok: failed === 0, failed };
 }
 
+/**
+ * Parita vrstev: pro horní a spodní vrstvu (U, D) parita permutace jejich dílků
+ * (hrany a rohy zvlášť, výsledek XOR – natočení vrstvy mění obojí stejně, takže
+ * parita se AUF ani otočením kostky nemění). Vrstva, ze které dílky odešly jinam,
+ * paritu nemá (null).
+ * @returns {{U: number|null, D: number|null, odd: boolean}} odd = některá vrstva je lichá
+ */
+export function layerParity(P, loc) {
+  const out = { odd: false };
+  for (const L of ['U', 'D']) {
+    let par = 0;
+    for (const n of [2, 3]) {
+      const slots = P.slots.filter((s) => s.facelets.length === n && s.name.includes(L));
+      const index = new Map(slots.map((s, i) => [s.id, i]));
+      const perm = slots.map((s) => index.get(P.SLOT_OF[loc[s.facelets[0]]]));
+      if (perm.some((v) => v === undefined)) { par = null; break; }
+      par ^= parity(perm);
+    }
+    out[L] = par;
+    if (par === 1) out.odd = true;
+  }
+  return out;
+}
+
+/**
+ * Oprava parity: převede algoritmus `fix` (např. M2 U2 M2), případně s natočením
+ * vrstev před ním, každý paritní stav na nepáritní? Vrací počet stavů, kde ne.
+ */
+export function checkParityFix(P, members, fix, { auf = true, adf = false } = {}) {
+  const moves = P.parseAlg(fix);
+  const pres = adjustSeqs(adjustLayers(P, auf, adf));
+  return members.filter((loc) => !pres.some((pre) => !layerParity(P, P.applyAlg(loc, [...pre, ...moves])).odd)).length;
+}
+
 /** Vybarvení (strana zadání) ze stavu: jen dílky, na kterých cíli záleží (ostatní šedé). */
 export function colorsOfState(P, loc, constraints) {
   const out = new Array(P.size).fill(EMPTY);
