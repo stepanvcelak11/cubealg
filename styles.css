@@ -804,3 +804,7 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .netview .nv-arrow.free { stroke-dasharray: 0.12 0.1; }
 .netview .nv-arrow-halo { stroke: var(--panel); stroke-width: 0.16; fill: none; stroke-linecap: round; opacity: 0.85; }
 .netview .nv-arrowhead { fill: var(--text); }
+.arrow-tools { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-bottom: 4px; }
+.sw.faded { background: var(--c); opacity: 0.4; }
+#arrow-all { display: block; margin: 2px auto 4px; }
+#arrow-all[hidden] { display: none; }

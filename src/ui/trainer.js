@@ -70,7 +70,7 @@ function showCase() {
   if (cube.setHold && cube.hold !== (a.task.hold ?? '')) cube.setHold(a.task.hold ?? '');
   const side = model.deserialize(a.task.colorsA);
   const sideB = model.deserialize(a.task.colorsB);
-  const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints) : side ? model.build(side, a.task.constraints) : { loc: null };
+  const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints, a.task.marks) : side ? model.build(side, a.task.constraints) : { loc: null };
   const { loc } = built;
   if (loc) {
     cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints));

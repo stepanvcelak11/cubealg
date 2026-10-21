@@ -160,3 +160,25 @@ test('částečně vybarvené dílky: barva na místě (orientace bez ohledu na 
   const three = [...B]; three[CUBE3.slotByName('UL').facelets[0]] = EMPTY;
   assert.match(ops.buildTask(A, three, {}).errors.join(), /barva U/);
 });
+
+test('styl jedné nálepky: tečkovaná nálepka = barva na této stěně', async () => {
+  const { taskOps } = await import('../src/core/task.js');
+  const { CUBE3 } = await import('../src/puzzles/cube3.js');
+  const { compileGoal } = await import('../src/core/constraints.js');
+  const ops = taskOps(CUBE3);
+  const colors = ops.homeColors(['UF']);
+  const [top, front] = CUBE3.slotByName('UF').facelets;
+  const base = Object.fromEntries(CUBE3.slots.map((s) => [s.name, s.name === 'UF' ? 'solved' : 'ignore']));
+  // bílá (horní) nálepka tečkovaně, zelená plně → jen UF správně (průnik)
+  let t = ops.buildTask(colors, colors, base, { [top]: 'orientation' });
+  assert.deepEqual(t.errors, []);
+  assert.deepEqual(t.constraints.UF.allow, [top]);
+  // jen bílá tečkovaně, zelená nezáleží (částečně; ostatní horní hrany celé, ale
+  // nesledované) → hrana kdekoli nahoře bílou nahoru
+  const partial = ops.homeColors(['UF', 'UR', 'UB', 'UL']); partial[front] = 'X';
+  t = ops.buildTask(partial, partial, Object.fromEntries(CUBE3.slots.map((s) => [s.name, 'ignore'])), { [top]: 'orientation' });
+  assert.deepEqual(t.errors, []);
+  const goal = compileGoal(t.constraints, t.target, CUBE3);
+  assert.ok(goal.test(CUBE3.applyAlg(t.loc, 'U')));
+  assert.ok(!goal.test(CUBE3.applyAlg(t.loc, 'F')));
+});

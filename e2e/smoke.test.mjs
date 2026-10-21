@@ -613,3 +613,47 @@ test('lab: zadání šipkami (3-cyklus hran nahoře) najde a ověří řešení'
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: šipky – prohození dvou hran potřebuje volné rohy (parita)', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.locator('#task-mode [data-mode="arrows"]').tap();
+  const ref = await p.evaluate(async () => {
+    const { CUBE3 } = await import('./src/puzzles/cube3.js');
+    return Object.fromEntries(['UF', 'UR', 'URF', 'UBR'].map((n) => [n, CUBE3.slotByName(n).facelets[0]]));
+  });
+  const tap = async (pos) => { const bb = await p.locator(`#cube-arrows [data-pos="${pos}"]`).boundingBox(); await p.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); };
+  await tap(ref.UF); await tap(ref.UR);
+  await tap(ref.UR); await tap(ref.UF);
+  assert.match(await p.locator('#task-status').innerText(), /lichá permutace/);
+  // dva rohy nahoře se smí hýbat ve vrstvě
+  await p.locator('#arrow-tools button', { hasText: 'Ve vrstvě' }).tap();
+  await tap(ref.URF); await tap(ref.UBR);
+  assert.match(await p.locator('#task-status').innerText(), /✓/);
+  assert.equal(await p.locator('#cube-arrows [data-pos="' + ref.URF + '"]').getAttribute('data-style'), 'dashed');
+  // stránka se v režimu šipek smí posouvat
+  assert.equal(await p.evaluate(() => document.body.classList.contains('lock')), false);
+  await p.evaluate(() => { document.querySelector('#opt-time').value = '8'; });
+  await p.locator('#go-search').tap();
+  await p.waitForFunction(() => !document.querySelector('#search').disabled, null, { timeout: 60000 });
+  assert.match(await p.locator('#detail .verdict').innerText(), /řeší zadání/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('lab: styl jen jedné nálepky a střed vždy plně', async () => {
+  const { p, ctx, errors } = await open('lab');
+  // hrana UF v cíli plně, pak jen přední nálepka tečkovaně
+  await p.locator('#palette-b [title="Bílá"]').tap();
+  await tapSticker(p, 'cube-b', 7);
+  await p.locator('#palette-b [title="Zelená"]').tap();
+  await tapSticker(p, 'cube-b', 19);
+  await p.locator('#styles button', { hasText: 'Tečkovaná' }).tap();
+  await tapSticker(p, 'cube-b', 19);
+  assert.equal(await p.locator('#cube-b [data-pos="19"]').getAttribute('data-style'), 'dotted');
+  assert.equal(await p.locator('#cube-b [data-pos="7"]').getAttribute('data-style'), 'solid');
+  // střed se tečkovaným nástrojem neztečkuje
+  await tapSticker(p, 'cube-b', 22);
+  assert.notEqual(await p.locator('#cube-b [data-pos="22"]').getAttribute('data-style'), 'dotted');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

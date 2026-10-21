@@ -5,7 +5,7 @@ import { storage } from './dom.js';
 import { initTimer, practiceStep } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
-import { initLab, showLab, labSub, labTask } from './lab.js';
+import { initLab, showLab, labTask, labFixed } from './lab.js';
 import { initSettings } from './settings.js';
 import { initMethods } from './methods.js';
 
@@ -13,9 +13,10 @@ let page = storage.get('ergocube.page') ?? 'timer';
 
 // Stránky, které se nesmí posouvat (otáčení kostkou, stopky).
 function updateLock() {
-  const fixed = page === 'timer' || page === 'trainer' || (page === 'lab' && labSub() === 'task');
+  // zadání šipkami je plochá síť – stránka se smí posouvat (dlouhý seznam šipek)
+  const fixed = page === 'timer' || page === 'trainer' || (page === 'lab' && labFixed());
   document.body.classList.toggle('lock', fixed);
-  document.querySelector('[data-page="lab"]').classList.toggle('fixed', page === 'lab' && labSub() === 'task');
+  document.querySelector('[data-page="lab"]').classList.toggle('fixed', page === 'lab' && labFixed());
 }
 
 function showPage(name) {

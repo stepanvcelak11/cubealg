@@ -31,7 +31,7 @@ function taskView(task, side, label) {
     const model = labModel(task.puzzle ?? '333');
     const data = model.deserialize(side === 'A' ? task.colorsA : task.colorsB);
     if (!data) return null;
-    const stickers = model.stickers(data, task.constraints ?? {});
+    const stickers = model.stickers(data, task.constraints ?? {}, side === 'B' ? task.marks : undefined);
     queueMicrotask(() => {
       const v = model.view;
       const view = v.type === 'cube3d'
@@ -61,7 +61,7 @@ function examplePlayer(task) {
     model = labModel(task.puzzle ?? '333');
     const side = model.deserialize(task.colorsA);
     const sideB = model.deserialize(task.colorsB);
-    const built = side && sideB ? model.buildTask(side, sideB, task.constraints ?? {}) : side ? model.build(side, task.constraints ?? {}) : null;
+    const built = side && sideB ? model.buildTask(side, sideB, task.constraints ?? {}, task.marks) : side ? model.build(side, task.constraints ?? {}) : null;
     start = built?.loc;
     if (built?.constraints) task = { ...task, constraints: built.constraints };
     if (!start) return null;

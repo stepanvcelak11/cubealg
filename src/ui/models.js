@@ -49,15 +49,16 @@ function permModel(P) {
     identify: (side) => ops.identifyPieces(side),
     build: (side, constraints, where) => ops.buildStart(side, constraints, where),
     /** Úplné zadání z obou stran (i částečně vybarvené dílky), viz core/task.js. */
-    buildTask: (A, B, constraints) => ops.buildTask(A, B, constraints),
-    /** Nálepky pro pohled podle vybarvení. */
-    stickers(side, constraints) {
+    buildTask: (A, B, constraints, marks) => ops.buildTask(A, B, constraints, marks),
+    /** Nálepky pro pohled podle vybarvení (marks: vlastní styly nálepek cíle). */
+    stickers(side, constraints, marks = {}) {
       const { pieces } = ops.identifyPieces(side);
       const nameAt = new Map([...pieces].map(([name, p]) => [p.slot, name]));
       return side.map((color, pos) => {
         if (color === EMPTY) return { color, style: 'none' };
         const name = nameAt.get(P.SLOT_OF[pos]);
-        return { color, css: css[color], style: name ? STYLE_OF[constraints[name]] ?? 'faded' : 'solid' };
+        const own = marks[pos] ? STYLE_OF[marks[pos]] : null;
+        return { color, css: css[color], style: own ?? (name ? styleOf(constraints[name]) ?? 'faded' : 'solid') };
       });
     },
     /** Nálepky pro pohled podle stavu (přehrávač, trenažér). */

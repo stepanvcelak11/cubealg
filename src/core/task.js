@@ -3,6 +3,11 @@
 //   vybarvení   – barva (písmeno stěny) každé nálepky, 'X' = nevybarveno
 //   omezení     – u každého dílku styl, co se má vyřešit
 //                 (solved = plná, permutation = čárkovaná, orientation = tečkovaná)
+//   styl nálepky – v cíli může mít jednotlivá nálepka vlastní styl (marks: pozice →
+//                 styl), který přebije styl dílku: plná = tahle barva přesně tady,
+//                 tečkovaná = tahle barva na této stěně (dílek kdekoli, kde to jde),
+//                 čárkovaná = dílek v tomto slotu; dílek s různými styly nálepek
+//                 dostane omezení { allow } (průnik povolených poloh)
 //   částečně vybarvený dílek (jen některé nálepky) – v cíli znamená „tahle barva
 //                 má být tady“ (zachovat orientaci barvy, na tom, který dílek to
 //                 je, nezáleží); ve výchozí straně se za něj dosadí libovolný dílek
@@ -99,6 +104,20 @@ function makeOps(P) {
   };
 
   /**
+   * Kde smí ležet nálepka, která je v cíli na pozici pos se stylem style:
+   * plná – přesně tady, čárkovaná – kdekoli v tomto slotu, tečkovaná – na stejné
+   * stěně (v kterémkoli slotu stejného typu).
+   */
+  const stickerPlaces = (pos, style) => {
+    const slot = slots[SLOT_OF[pos]];
+    if (style === 'permutation') return slot.facelets;
+    if (style === 'orientation') {
+      return slots.filter((s) => s.type === slot.type).flatMap((s) => s.facelets.filter((q) => FACE[q] === FACE[pos]));
+    }
+    return [pos];
+  };
+
+  /**
    * Úplné zadání z obou stran: výchozí stav, cíl a omezení. Celé dílky v cíli mají
    * styl z `constraints`; částečně vybarvené sloty v cíli jsou „barva na místě“:
    * všechny dílky s tou barvou (daného typu, které v cíli nejsou celé) ji musí mít
@@ -106,19 +125,36 @@ function makeOps(P) {
    * Částečně vybarvené sloty ve výchozí straně se obsadí dílky s těmi barvami.
    * @returns {{loc: Uint8Array|null, target: Uint8Array|null, constraints: object, errors: string[], tracked: string[]}}
    */
-  function buildTask(colorsA, colorsB, constraints) {
+  function buildTask(colorsA, colorsB, constraints, marks = {}) {
     const errors = [];
     const B = identifyPieces(colorsB, { partial: true });
     errors.push(...B.errors.map((e) => `Cíl: ${e}`));
     const out = Object.fromEntries(Object.entries(constraints).map(([k, v]) => [k, B.pieces.has(k) ? v : (v === 'ignore' ? v : 'ignore')]));
+    // celé dílky s různými styly nálepek: průnik povolených poloh referenční nálepky
+    for (const [name, p] of B.pieces) {
+      const own = out[name];
+      const styles = p.loc.map((pos) => marks[pos] ?? own);
+      if (styles.every((st) => st === styles[0])) { out[name] = styles[0]; continue; }
+      let set = null;
+      p.loc.forEach((pos, j) => {
+        if (!styles[j] || styles[j] === 'ignore' || typeof styles[j] === 'object') return;
+        const refs = new Set(stickerPlaces(pos, styles[j]).map((q) => refAt(q, j)));
+        set = set ? new Set([...set].filter((r) => refs.has(r))) : refs;
+      });
+      if (!set) { out[name] = 'ignore'; continue; }
+      if (!set.size) errors.push(`Cíl: styly nálepek dílku ${name} si odporují`);
+      out[name] = { allow: [...set] };
+    }
     // barva na místě: skupiny (typ, barva) → povolené pozice nálepky té barvy
     const groups = new Map();
     for (const { slot, colors } of B.partials) {
       slot.facelets.forEach((f, i) => {
         if (colors[i] === EMPTY) return;
         const key = `${slot.type}:${colors[i]}`;
-        if (!groups.has(key)) groups.set(key, { type: slot.type, color: colors[i], at: [] });
-        groups.get(key).at.push(f);
+        if (!groups.has(key)) groups.set(key, { type: slot.type, color: colors[i], at: [], places: new Set() });
+        const g = groups.get(key);
+        g.at.push(f);
+        for (const q of stickerPlaces(f, marks[f] ?? 'solved')) g.places.add(q);
       });
     }
     const allow = new Map(); // název dílku → Set povolených poloh ref
@@ -130,7 +166,7 @@ function makeOps(P) {
       }
       for (const piece of candidates) {
         const j = piece.facelets.findIndex((k) => FACE[k] === g.color);
-        const set = new Set(g.at.map((pos) => refAt(pos, j)));
+        const set = new Set([...g.places].map((pos) => refAt(pos, j)));
         const prev = allow.get(piece.name);
         allow.set(piece.name, prev ? new Set([...prev].filter((r) => set.has(r))) : set);
       }

@@ -34,6 +34,13 @@ const STYLES = [
   { type: 'permutation', label: 'Čárkovaná', title: 'Jen místo (permutace)' },
   { type: 'orientation', label: 'Tečkovaná', title: 'Jen natočení (orientace)' },
 ];
+// Co musí platit pro dílky bez šipky (zadání šipkami); sw = vzhled v síti.
+const REST_STYLES = [
+  { type: 'solved', label: 'Složený', title: 'Dílek zůstane na svém místě správně natočený', sw: 'solid' },
+  { type: 'layer', label: 'Ve vrstvě', title: 'Dílek se smí přesunout jen v rámci své vrstvy a zůstane správně natočený', sw: 'dashed' },
+  { type: 'orientation', label: 'Orientace', title: 'Dílek se smí přesunout kamkoli, ale zůstane správně natočený', sw: 'dotted' },
+  { type: 'ignore', label: 'Nezáleží', title: 'Na dílku nezáleží', sw: 'faded' },
+];
 const AMOUNT_LABELS = { 1: 'po směru', [-1]: "proti (')", 2: 'dvojitě (2)' };
 const SQ1_AMOUNTS = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6];
 const SQ1_PRESETS = {
@@ -57,6 +64,7 @@ const ui = {
   paint: { A: 'U', B: null }, // barva štětce (EMPTY = guma); u cíle null = nástroj styl
   lastPaint: -1,    // naposledy vybarvená nálepka (pos + 1000 u cíle)
   memory: {},       // pamatovaný styl dílků, které z cíle zmizely
+  marks: {},        // vlastní styl jednotlivých nálepek cíle (pozice → styl), core/task.js
   autoA: new Set(), // dílky, které do výchozí strany dala aplikace
   undo: [],
   results: new Map(),
@@ -79,10 +87,10 @@ const unit = () => (model.kind === 'sq1' ? 'řezů' : 'tahů');
 // --- Uložení a načtení zadání ----------------------------------------------------------
 
 function save() {
-  const { constraints, bases, amounts, sq1, hold, mode, arrows, arrowRest, colorBackup } = ui;
+  const { constraints, marks, bases, amounts, sq1, hold, mode, arrows, restStyle, restDefault, colorBackup } = ui;
   storage.set(storageKey(model.id), {
-    constraints, bases, amounts, sq1, hold, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
-    mode, arrows, arrowRest, colorBackup,
+    constraints, marks, bases, amounts, sq1, hold, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
+    mode, arrows, restStyle, restDefault, colorBackup,
   });
 }
 
@@ -90,6 +98,7 @@ function load() {
   const saved = storage.get(storageKey(model.id)) ?? {};
   const names = model.pieceNames;
   ui.constraints = Object.fromEntries(names.map((n) => [n, saved.constraints?.[n] ?? (model.centers.includes(n) ? 'solved' : 'ignore')]));
+  ui.marks = model.kind === 'perm' && saved.marks && typeof saved.marks === 'object' ? { ...saved.marks } : {};
   const tracked = trackedPieces(ui.constraints);
   ui.A = model.deserialize(saved.colorsA) ?? model.home(tracked);
   ui.B = model.deserialize(saved.colorsB) ?? model.home(tracked);
@@ -101,7 +110,9 @@ function load() {
   ui.hold = holdList(model).some((h) => h.id === saved.hold) ? saved.hold : '';
   ui.mode = saved.mode === 'arrows' && arrowsAllowed() ? 'arrows' : 'colors';
   ui.arrows = Array.isArray(saved.arrows) ? saved.arrows : [];
-  ui.arrowRest = saved.arrowRest ?? true;
+  ui.restDefault = REST_STYLES.some((r) => r.type === saved.restDefault) ? saved.restDefault : (saved.arrowRest === false ? 'ignore' : 'solved');
+  ui.restStyle = saved.restStyle && typeof saved.restStyle === 'object' ? { ...saved.restStyle } : {};
+  ui.arrowTool = 'arrow';
   ui.colorBackup = saved.colorBackup ?? null;
   ui.arrowSel = null;
   ui.memory = {};
@@ -139,7 +150,10 @@ const joinAuf = (pre, core, post) => [pre && `(${pre})`, core, post && `(${post}
 const score = (alg) => scoreFor(P(), splitAuf(alg).core, P().ergonomics === 'cube' ? { ...ui.ergo, triggers } : ui.ergo);
 
 function snapshot() {
-  ui.undo.push({ constraints: { ...ui.constraints }, A: model.serialize(ui.A), B: model.serialize(ui.B), arrows: ui.arrows.map((a) => ({ ...a })), mode: ui.mode });
+  ui.undo.push({
+    constraints: { ...ui.constraints }, marks: { ...ui.marks }, A: model.serialize(ui.A), B: model.serialize(ui.B),
+    arrows: ui.arrows.map((a) => ({ ...a })), mode: ui.mode, restStyle: { ...ui.restStyle }, restDefault: ui.restDefault,
+  });
   if (ui.undo.length > 60) ui.undo.shift();
 }
 
@@ -216,6 +230,11 @@ export function labSub() {
   return ui.sub;
 }
 
+/** Nesmí se stránka posouvat (otáčení kostkami v zadání)? */
+export function labFixed() {
+  return ui.sub === 'task' && ui.mode !== 'arrows';
+}
+
 // --- Zadání -----------------------------------------------------------------------------
 
 /**
@@ -229,7 +248,9 @@ function syncTarget() {
   const smart = smartPaint();
   for (const name of model.pieceNames) {
     if (inB.has(name)) {
-      if (!isMarked(name)) ui.constraints[name] = ui.memory[name] ?? ui.style;
+      // středy jen plně (natočení středu se neřeší)
+      if (model.centers.includes(name)) ui.constraints[name] = 'solved';
+      else if (!isMarked(name)) ui.constraints[name] = ui.memory[name] ?? ui.style;
       if (smart && !model.findPiece(ui.A, name) && model.homeEmpty(ui.A, name)) {
         ui.A = model.placeHome(ui.A, name);
         ui.autoA.add(name);
@@ -251,7 +272,7 @@ function paint(side, pos) {
   const last = (ui.lastPaint >= 1000) === (side === 'B') ? ui.lastPaint % 1000 : -1;
   ui.lastPaint = key;
   const smart = smartPaint();
-  if (side === 'B') { ui.B = model.paint(ui.B, pos, ui.paint.B, last, smart); return; }
+  if (side === 'B') { delete ui.marks[pos]; ui.B = model.paint(ui.B, pos, ui.paint.B, last, smart); return; }
   const before = model.pieceAtSticker(ui.A, pos);
   ui.A = model.paint(ui.A, pos, ui.paint.A, last, smart);
   ui.autoA.delete(before);
@@ -274,24 +295,72 @@ function tapB(pos) {
   snapshot();
   if (ui.paint.B !== null) {
     paint('B', pos);
-  } else {
-    // nástroj styl: dílek dostane styl (stejný styl podruhé = odebrat),
-    // prázdné místo se vyplní dílkem, který tam patří
-    const piece = model.pieceAtSticker(ui.B, pos);
-    const home = homePieceAt(pos);
-    if (piece && ui.constraints[piece] === ui.style) {
-      ui.B = model.removePiece(ui.B, piece);
-    } else if (piece) {
-      ui.constraints[piece] = ui.style;
-    } else if (home && !model.findPiece(ui.B, home) && model.homeEmpty(ui.B, home)) {
-      ui.B = model.placeHome(ui.B, home);
-      ui.memory[home] = ui.style;
-    } else {
-      ui.undo.pop();
-      return;
-    }
+  } else if (!styleTap(pos)) {
+    ui.undo.pop();
+    return;
   }
   taskChanged();
+}
+
+/**
+ * Nástroj styl: styl dostane jen klepnutá nálepka (u celého dílku s jedním stylem
+ * všech nálepek se z toho stane styl dílku). Stejný styl podruhé: celý dílek se
+ * stejným stylem zmizí, jinak se nálepka vrátí ke stylu dílku (u částečně
+ * vybarveného dílku se smaže). Prázdné místo se vyplní dílkem, který tam patří.
+ * @returns {boolean} změnilo se něco?
+ */
+function styleTap(pos) {
+  const S = ui.style;
+  const piece = model.pieceAtSticker(ui.B, pos);
+  const home = homePieceAt(pos);
+  if (model.kind !== 'perm') {
+    // Square-1: styl celého dílku
+    if (piece && ui.constraints[piece] === S) ui.B = model.removePiece(ui.B, piece);
+    else if (piece) ui.constraints[piece] = S;
+    else if (home && !model.findPiece(ui.B, home) && model.homeEmpty(ui.B, home)) { ui.B = model.placeHome(ui.B, home); ui.memory[home] = S; }
+    else return false;
+    return true;
+  }
+  if (piece && model.centers.includes(piece)) {
+    // střed: jen plně, klepnutí ho odebere
+    ui.B = model.removePiece(ui.B, piece);
+    return true;
+  }
+  if (piece) {
+    const facelets = P().slots[P().SLOT_OF[pos]].facelets;
+    const eff = (q) => ui.marks[q] ?? ui.constraints[piece];
+    if (eff(pos) === S) {
+      if (facelets.every((q) => eff(q) === S)) {
+        for (const q of facelets) delete ui.marks[q];
+        ui.B = model.removePiece(ui.B, piece);
+      } else {
+        delete ui.marks[pos];
+      }
+    } else {
+      ui.marks[pos] = S;
+    }
+    // všechny nálepky stejně → styl dílku
+    const styles = facelets.map(eff);
+    if (styles.every((st) => st === styles[0])) {
+      ui.constraints[piece] = styles[0];
+      for (const q of facelets) delete ui.marks[q];
+    }
+    return true;
+  }
+  if (ui.B[pos] !== model.EMPTY) {
+    // částečně vybarvený dílek („barva na místě“): styl nálepky, stejný podruhé = smazat
+    const cur = ui.marks[pos] ?? 'solved';
+    if (cur === S) { delete ui.marks[pos]; ui.B = [...ui.B]; ui.B[pos] = model.EMPTY; }
+    else if (S === 'solved') delete ui.marks[pos];
+    else ui.marks[pos] = S;
+    return true;
+  }
+  if (home && !model.findPiece(ui.B, home) && model.homeEmpty(ui.B, home)) {
+    ui.B = model.placeHome(ui.B, home);
+    ui.memory[home] = S;
+    return true;
+  }
+  return false;
 }
 
 // Dílek, který na místo s nálepkou pos patří ve složeném stavu.
@@ -339,12 +408,12 @@ function renderStyles() {
 
 function renderCubes() {
   renderView(cubeA, model.stickers(ui.A, ui.constraints), ui.A.state);
-  renderView(cubeB, model.stickers(ui.B, ui.constraints), ui.B.state);
+  renderView(cubeB, model.stickers(ui.B, ui.constraints, ui.marks), ui.B.state);
 }
 
 /** Zadání pro hledání: výchozí stav, cíl a omezení (i „barva na místě“ z částečných dílků). */
 function taskInfo() {
-  const t = model.buildTask(ui.A, ui.B, ui.constraints);
+  const t = model.buildTask(ui.A, ui.B, ui.constraints, ui.marks);
   return { tracked: t.tracked, loc: t.loc, target: t.target, constraints: t.constraints, errors: t.errors };
 }
 
@@ -374,6 +443,8 @@ function renderTaskStatus() {
 
 function taskChanged() {
   syncTarget();
+  // styly nálepek jen u vybarvených nálepek cíle
+  if (model.kind === 'perm') for (const k of Object.keys(ui.marks)) if (ui.B[k] === model.EMPTY) delete ui.marks[k];
   save();
   renderStyles();
   renderCubes();
@@ -426,27 +497,36 @@ async function scan(side) {
 
 // --- Zadání šipkami ---------------------------------------------------------------------
 // Místo barev se klepnutím zadají přesuny dílků (odkud → kam), u každého zda zachovat
-// orientaci. Ze šipek se sestaví obyčejné zadání (výchozí strana = složené dílky, cíl =
-// dílky na nových místech; čárkovaně, když na orientaci nezáleží), takže hledání,
-// přehrávač i ukládání fungují stejně jako u barev.
+// orientaci. U dílků bez šipky se volí, co pro ně musí platit (zůstat složený, smí se
+// pohnout jen ve své vrstvě, jen zachovat orientaci, nebo nezáleží) – skutečná kostka
+// často samotné prohození neumí (parita), takže se jiné dílky pohnout musí. Ze šipek
+// se sestaví obyčejné zadání (výchozí strana = složené dílky, cíl = dílky na nových
+// místech), takže hledání, přehrávač, trenažér i ukládání fungují jako u barev.
 
 const arrowsAllowed = () => model.kind === 'perm' && !!model.flatView;
 const slotName = (pos) => P().slots[P().SLOT_OF[pos]].name;
 const slotType = (name) => P().slotByName(name).type;
 let arrowView = null;
+// vrstva dílku kostky podle názvu (U…, D…, jinak prostřední)
+const layerOf = (name) => (name[0] === 'U' || name[0] === 'D' ? name[0] : 'E');
+const layersAllowed = () => P().id === '333' || P().id === '222';
+const restOf = (name) => (model.centers.includes(name) ? 'solved' : ui.restStyle[name] ?? ui.restDefault);
 
 function setMode(mode) {
   if (mode === ui.mode || (mode === 'arrows' && !arrowsAllowed())) return;
   snapshot();
   if (mode === 'arrows') {
     // barevné zadání se schová a po návratu obnoví
-    ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints } };
+    ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints }, marks: { ...ui.marks } };
     ui.mode = 'arrows';
     applyArrows();
   } else {
     ui.mode = 'colors';
     const b = ui.colorBackup;
-    if (b) { ui.A = model.deserialize(b.A) ?? ui.A; ui.B = model.deserialize(b.B) ?? ui.B; ui.constraints = { ...b.constraints }; }
+    if (b) {
+      ui.A = model.deserialize(b.A) ?? ui.A; ui.B = model.deserialize(b.B) ?? ui.B;
+      ui.constraints = { ...b.constraints }; ui.marks = { ...(b.marks ?? {}) };
+    }
     ui.colorBackup = null;
     taskChanged();
   }
@@ -460,30 +540,69 @@ function renderMode() {
   $('arrows-panel').hidden = !arrows;
   document.querySelector('.cubes').hidden = arrows;
   if (arrows) renderArrows();
+  onSubChange(ui.sub);
 }
 
-/** Chyba šipek (nebo null): kam se dílek přesouvá, musí být volno. */
+/** Dílky bez šipky, jejichž místo zabere jiný dílek (musí se pohnout jinam). */
+function displacedPieces() {
+  const from = new Set(ui.arrows.map((a) => a.from));
+  return ui.arrows.map((a) => a.to).filter((n) => !from.has(n));
+}
+
+/** Chyba šipek (nebo null). */
 function arrowsError() {
   if (!ui.arrows.length) return 'Přidej aspoň jednu šipku: klepni na dílek a pak na místo, kam se má přesunout.';
-  if (!ui.arrowRest) return null;
-  const from = new Set(ui.arrows.map((a) => a.from));
-  const bad = ui.arrows.find((a) => !from.has(a.to));
-  return bad ? `Na místo ${bad.to} se přesouvá dílek, ale dílek ${bad.to} tam zůstává – přidej šipku i pro něj, nebo vypni „Ostatní dílky nechat na místě“.` : null;
+  const stuck = displacedPieces().find((n) => restOf(n) === 'solved');
+  if (stuck) {
+    const a = ui.arrows.find((x) => x.to === stuck);
+    return `Na místo ${stuck} se přesouvá ${a.from}, ale dílek ${stuck} má zůstat složený – přidej šipku i pro něj, nebo mu nastav „Ve vrstvě“, „Orientace“ či „Nezáleží“.`;
+  }
+  return parityError();
+}
+
+/**
+ * Jsou-li místa všech rohů a hran pevně daná, musí jít o permutaci, kterou kostka
+ * umí (samotné prohození dvou dílků neumí).
+ */
+function parityError() {
+  const t = taskInfo();
+  if (!t.target || !P().validate) return null;
+  const fixed = P().slots.filter((s) => s.facelets.length > 1)
+    .every((s) => t.constraints[s.name] === 'solved' || t.constraints[s.name] === 'permutation');
+  if (!fixed || !P().validate(t.target)) return null;
+  return 'Takové přesuny samy o sobě na kostce nejdou (lichá permutace, např. prohození jen dvou dílků). '
+    + 'Povol pohyb dalších dílků: aspoň dvěma jiným rohům (nebo dvěma hranám) nastav „Ve vrstvě“, „Orientace“ nebo „Nezáleží“.';
+}
+
+/** Povolené polohy referenční nálepky dílku, který se smí hýbat jen ve své vrstvě (správně natočený). */
+function layerAllow(name) {
+  const piece = P().slotByName(name);
+  return P().slots.filter((s) => s.type === piece.type && layerOf(s.name) === layerOf(name)).map((s) => s.facelets[0]);
 }
 
 /** Sestaví zadání (barvy obou stran a styly) ze šipek. */
 function applyArrows() {
   const names = model.pieceNames;
   const moved = new Map(ui.arrows.map((a) => [a.from, a]));
-  const shown = ui.arrowRest ? names : [...new Set([...moved.keys(), ...model.centers])];
-  ui.A = model.home(shown);
-  let B = model.home(shown.filter((n) => !moved.has(n)));
+  const displaced = new Set(displacedPieces());
+  const tracked = names.filter((n) => moved.has(n) || restOf(n) !== 'ignore');
+  ui.A = model.home(tracked);
+  let B = model.home(tracked.filter((n) => !moved.has(n) && !displaced.has(n)));
   for (const a of ui.arrows) B = model.placePiece(B, a.from, a.to, 0);
+  // vytlačené dílky na nějaké volné místo stejného typu (kde přesně, řeší omezení)
+  for (const n of displaced) {
+    if (!tracked.includes(n)) continue;
+    const free = P().slots.find((s) => s.type === slotType(n) && model.homeEmpty(B, s.name));
+    if (free) B = model.placePiece(B, n, free.name, 0);
+  }
   ui.B = B;
+  ui.marks = {};
   ui.constraints = Object.fromEntries(names.map((n) => {
     const a = moved.get(n);
     if (a) return [n, a.keep ? 'solved' : 'permutation'];
-    return [n, shown.includes(n) ? 'solved' : 'ignore'];
+    const r = restOf(n);
+    if (r === 'layer') return [n, { allow: layerAllow(n) }];
+    return [n, r];
   }));
   save();
   renderCubes();
@@ -494,9 +613,17 @@ function applyArrows() {
 
 function tapArrow(pos) {
   const name = slotName(pos);
+  if (ui.arrowTool !== 'arrow') {
+    // styl dílku bez šipky
+    if (model.centers.includes(name) || restOf(name) === ui.arrowTool) return;
+    snapshot();
+    ui.restStyle[name] = ui.arrowTool;
+    applyArrows();
+    return;
+  }
   const sel = ui.arrowSel;
-  if (!sel || sel === name || slotType(sel) !== slotType(name)) {
-    ui.arrowSel = sel === name ? null : name;
+  if (!sel || sel === name || slotType(sel) !== slotType(name) || model.centers.includes(name)) {
+    ui.arrowSel = sel === name || model.centers.includes(name) ? null : name;
     renderArrows();
     return;
   }
@@ -506,6 +633,24 @@ function tapArrow(pos) {
   ui.arrows.push({ from: sel, to: name, keep: $('arrow-keep').checked });
   ui.arrowSel = null;
   applyArrows();
+}
+
+/** Nástroje: šipka a styly dílků bez šipky. */
+function renderArrowTools() {
+  const tools = [{ type: 'arrow', label: '➚ Šipka', title: 'Klepni na dílek a pak na místo, kam se má přesunout' },
+    ...REST_STYLES.filter((r) => r.type !== 'layer' || layersAllowed())];
+  $('arrow-tools').replaceChildren(...tools.map(({ type, label, title, sw }) => {
+    const b = el('button', { type: 'button', className: 'style-btn', title },
+      sw ? el('i', { className: `sw ${sw}` }) : null, el('span', { textContent: label }));
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(ui.arrowTool === type));
+    b.onclick = () => { ui.arrowTool = type; ui.arrowSel = null; renderArrows(); };
+    return b;
+  }));
+  const all = $('arrow-all');
+  const rest = REST_STYLES.find((r) => r.type === ui.arrowTool);
+  all.hidden = !rest;
+  if (rest) all.textContent = `Všem dílkům bez šipky: ${rest.label}`;
 }
 
 /** Střed nálepky v síti (z bodů polygonu). */
@@ -521,22 +666,26 @@ function renderArrows() {
     arrowView = new NetView($('cube-arrows'), { label: 'Přesuny dílků', viewBox: v.viewBox, polys: v.polys, onSticker: tapArrow, fill: true });
     arrowView.puzzle = model.id;
   }
-  const involved = new Set(ui.arrows.flatMap((a) => [a.from, a.to]));
+  const moving = new Set(ui.arrows.map((a) => a.from));
   const home = model.home(model.pieceNames);
   arrowView.render(home.map((color, pos) => {
     const name = slotName(pos);
-    const solid = involved.has(name) || name === ui.arrowSel || model.centers.includes(name);
-    return { color, style: solid ? 'solid' : 'faded', selected: name === ui.arrowSel };
+    const style = moving.has(name) || name === ui.arrowSel ? 'solid' : REST_STYLES.find((r) => r.type === restOf(name))?.sw ?? 'solid';
+    return { color, style, selected: name === ui.arrowSel };
   }));
   // šipky od referenční nálepky zdroje k referenční nálepce cíle
   const ref = (name) => centerOf(v.polys[P().slotByName(name).facelets[0]]);
+  // oblouk doprava od směru šipky – protisměrné šipky (prohození) se nepřekryjí
   const lines = ui.arrows.map((a) => {
     const [x1, y1] = ref(a.from), [x2, y2] = ref(a.to);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-    const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    const bend = Math.min(0.6, len * 0.2);
+    const cx = (x1 + x2) / 2 - ((y2 - y1) / len) * bend, cy = (y1 + y2) / 2 + ((x2 - x1) / len) * bend;
+    const tl = Math.hypot(x2 - cx, y2 - cy) || 1;
+    const ux = (x2 - cx) / tl, uy = (y2 - cy) / tl; // směr hrotu
     const ex = x2 - ux * 0.12, ey = y2 - uy * 0.12; // hrot kousek před středem
     const head = `${ex},${ey} ${ex - ux * 0.22 - uy * 0.12},${ey - uy * 0.22 + ux * 0.12} ${ex - ux * 0.22 + uy * 0.12},${ey - uy * 0.22 - ux * 0.12}`;
-    const d = `M${x1},${y1} L${ex - ux * 0.15},${ey - uy * 0.15}`;
+    const d = `M${x1},${y1} Q${cx},${cy} ${ex - ux * 0.15},${ey - uy * 0.15}`;
     return `<path class="nv-arrow-halo" d="${d}"/><path class="nv-arrow${a.keep ? '' : ' free'}" d="${d}"/><polygon class="nv-arrowhead" points="${head}"/>`;
   });
   arrowView.setOverlay(lines.join(''));
@@ -549,7 +698,7 @@ function renderArrows() {
     return el('li', {}, el('b', { textContent: `${a.from} → ${a.to}` }), ori, del);
   }) : [el('li', { className: 'empty', textContent: ui.arrowSel ? `Vybráno ${ui.arrowSel} – klepni, kam se má přesunout.` : 'Zatím žádná šipka.' })]));
   if (ui.arrowSel && ui.arrows.length) list.append(el('li', { className: 'empty', textContent: `Vybráno ${ui.arrowSel} – klepni, kam se má přesunout.` }));
-  $('arrow-rest').checked = ui.arrowRest;
+  renderArrowTools();
 }
 
 // --- Tahy a váhy -----------------------------------------------------------------------
@@ -717,7 +866,7 @@ function clearResults() {
 
 const FOUND_INDEX = 'ergocube.lab.found';
 function taskKey() {
-  const text = JSON.stringify([model.id, ui.hold, ui.constraints, model.serialize(ui.A), model.serialize(ui.B),
+  const text = JSON.stringify([model.id, ui.hold, ui.constraints, ui.marks, model.serialize(ui.A), model.serialize(ui.B),
     model.kind === 'sq1' ? ui.sq1 : [ui.bases, ui.amounts]]);
   let h1 = 2166136261, h2 = 5381;
   for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
@@ -1030,6 +1179,7 @@ const taskSnapshot = () => ({
   ...(model.id !== '333' ? { puzzle: model.id } : {}),
   ...(ui.hold ? { hold: ui.hold } : {}),
   colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
+  ...(Object.keys(ui.marks).length ? { marks: { ...ui.marks } } : {}),
   ...(model.kind === 'sq1' ? { shape: ui.sq1.shape } : {}),
 });
 // Sada, do které se ukládají algoritmy (záložka u řešení).
@@ -1264,6 +1414,7 @@ export function initLab({ onSub } = {}) {
   $('b-clear').onclick = () => {
     snapshot();
     for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'ignore';
+    ui.marks = {};
     ui.A = model.blank(ui.A);
     ui.B = model.blank(ui.B);
     taskChanged();
@@ -1272,16 +1423,19 @@ export function initLab({ onSub } = {}) {
     const last = ui.undo.pop();
     if (!last) return;
     ui.constraints = last.constraints;
+    ui.marks = last.marks ?? {};
     ui.A = model.deserialize(last.A);
     ui.B = model.deserialize(last.B);
     ui.arrows = last.arrows ?? ui.arrows;
+    ui.restStyle = last.restStyle ?? ui.restStyle;
+    ui.restDefault = last.restDefault ?? ui.restDefault;
     ui.mode = last.mode ?? ui.mode;
     renderMode();
-    taskChanged();
+    if (ui.mode === 'arrows') applyArrows(); else taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
-  $('arrow-rest').onchange = () => { snapshot(); ui.arrowRest = $('arrow-rest').checked; applyArrows(); };
+  $('arrow-all').onclick = () => { snapshot(); ui.restDefault = ui.arrowTool; ui.restStyle = {}; applyArrows(); };
   $('flat').onclick = () => {
     flat = !flat;
     storage.set('ergocube.lab.flat', flat);

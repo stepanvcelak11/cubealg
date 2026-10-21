@@ -179,10 +179,11 @@
           <button type="button" data-mode="arrows">Šipky – přesuny dílků</button>
         </div>
         <article class="panel arrows-panel" id="arrows-panel" hidden>
-          <p class="hint">Klepni na dílek a pak na místo, kam se má přesunout – na barvách nezáleží. Šipku smažeš křížkem v seznamu.</p>
+          <p class="hint">Nástrojem <b>Šipka</b> klepni na dílek a pak na místo, kam se má přesunout – na barvách nezáleží. Ostatními nástroji klepáním na dílky bez šipky zvolíš, co pro ně musí platit (samotné prohození dvou dílků kostka neumí, nějaké další se musí pohnout). Šipku smažeš křížkem v seznamu.</p>
+          <div class="styles arrow-tools tool" id="arrow-tools" role="radiogroup" aria-label="Nástroj"></div>
           <div id="cube-arrows" class="cube-host arrows-host"></div>
+          <button type="button" class="secondary small" id="arrow-all" hidden></button>
           <ul id="arrow-list" class="arrow-list"></ul>
-          <label class="check-row"><input type="checkbox" id="arrow-rest" checked> Ostatní dílky nechat na místě</label>
           <label class="check-row"><input type="checkbox" id="arrow-keep" checked> Nové šipky: zachovat orientaci dílku</label>
         </article>
         <div class="cubes">
@@ -239,9 +240,11 @@
               <span class="legend"><i class="sw solid"></i>plná = místo i natočení</span>
               <span class="legend"><i class="sw dashed"></i>čárkovaná = jen místo</span>
               <span class="legend"><i class="sw dotted"></i>tečkovaná = jen natočení</span>
-              Klepnutím na styl přepneš na nástroj styl: klepnutí na dílek mu styl změní, prázdné místo
-              vyplní dílkem, který tam patří, a stejný styl podruhé dílek odebere. Nově vybarvený dílek
-              dostane naposledy zvolený styl.</li>
+              Klepnutím na styl přepneš na nástroj styl: klepnutí změní styl <b>jen té nálepky</b>
+              (plná = tahle barva přesně tady, tečkovaná = tahle barva na této stěně, čárkovaná = dílek
+              v tomto slotu); mají-li všechny nálepky dílku stejný styl, platí pro celý dílek. Prázdné
+              místo vyplní dílkem, který tam patří, stejný styl podruhé dílek odebere. Nově vybarvený
+              dílek dostane naposledy zvolený styl. Středy jsou vždy plné.</li>
             <li><b>Šedé dílky</b> (nevybarvené) aplikace neřeší. <b>Dílek s jen částí barev</b> (např. jen
               žlutá nahoře) znamená „tahle barva má být tady“: na tom, který dílek to je, nezáleží – jen
               na natočení barvy. Vybarvi ji u všech dílků s touto barvou (u OLL všech osm žlutých

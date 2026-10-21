@@ -51,7 +51,7 @@ export class NetView {
       const blank = st.color === 'X' || st.style === 'none';
       const fill = blank ? 'var(--c-gray)' : (st.css ?? `var(--c-${st.color})`);
       const cls = `nv-sticker${st.style === 'faded' ? ' faded' : ''}${st.selected ? ' selected' : ''}`;
-      parts.push(`<polygon class="${cls}" data-pos="${pos}" points="${points}" style="fill:${fill}"/>`);
+      parts.push(`<polygon class="${cls}" data-pos="${pos}" data-style="${st.style}" points="${points}" style="fill:${fill}"/>`);
       if (!blank && st.style === 'dashed') parts.push(`<polygon class="nv-over" points="${points}" fill="${this.hatch}"/>`);
       if (!blank && st.style === 'dotted') parts.push(`<polygon class="nv-over" points="${points}" fill="${this.dots}"/>`);
     });

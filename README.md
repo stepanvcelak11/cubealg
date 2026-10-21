@@ -53,15 +53,18 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     obarví se jen klepnutá nálepka; chytré vybarvování v Nastavení navíc doplní
     jednoznačnou nálepku a přenese dílek na druhou stranu); 3×3, 2×2, Pyraminx a Skewb jde
     i nafotit stěnu po stěně. Tvar Square-1 se nastavuje tlačítky. Řeší se dílky vybarvené v cíli, každý se stylem: plná = místo
-    i natočení, čárkovaná = jen místo, tečkovaná = jen natočení. 3×3 a 2×2 jsou
+    i natočení, čárkovaná = jen místo, tečkovaná = jen natočení; styl jde dát i jen
+    jedné nálepce (tečkovaná nálepka = tahle barva na této stěně). 3×3 a 2×2 jsou
     ve 3D (nebo plošné síti), ostatní hlavolamy v plošné síti.
   - **Držení kostky:** u 3×3 a 2×2 kostku v 3D natočíš, jak ji držíš v ruce, a zámkem
     pohled „zafixuješ“; u Pyraminxu a Skewbu (a v plošné síti) držení vybereš
     z nabídky. Povolené tahy, ergonomika, nalezené i uložené algoritmy se pak píšou
     podle toho, jak hlavolam držíš (U = stěna nebo špička nahoře).
   - **Zadání šipkami:** místo barev klepneš na dílek a na místo, kam se má přesunout
-    (u každé šipky zvlášť, zda zachovat orientaci); ostatní dílky zůstanou na místě,
-    nebo na nich nezáleží. **Částečně vybarvený dílek** (jen některé barvy) znamená
+    (u každé šipky zvlášť, zda zachovat orientaci); u ostatních dílků zvolíš, zda
+    zůstanou složené, smí se hýbat jen ve své vrstvě, jen zachovat orientaci, nebo na
+    nich nezáleží (samotné prohození dvou dílků kostka neumí – aplikace upozorní na
+    paritu). **Částečně vybarvený dílek** (jen některé barvy) znamená
     „tahle barva má být tady“ – zachová se orientace barvy bez ohledu na to, který
     dílek to je (např. OLL: jen žluté nálepky nahoře).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
