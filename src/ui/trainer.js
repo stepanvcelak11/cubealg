@@ -11,6 +11,7 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
+import { retarget, stripU } from './algedit.js';
 import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
 
 // Trénovaná sada ('all' = všechny).
@@ -140,6 +141,10 @@ function renderList() {
       label: 'Trénovat teď',
       onClick: () => { currentId = a.id; revealed = false; closeSheet(); showCase(); },
     });
+    const edit = iconButton(icon('edit', { size: 18 }), {
+      label: 'Upravit algoritmus',
+      onClick: () => { editing = editing === a.id ? null : a.id; renderList(); },
+    });
     const del = iconButton(icon('trash', { size: 18 }), {
       label: 'Smazat',
       onClick: () => { if (confirm(`Smazat „${a.name}“?`)) { algs.remove(a.id); if (currentId === a.id) next(); } },
@@ -156,10 +161,51 @@ function renderList() {
         el('div', { className: 'alg-meta' },
           el('small', { textContent: st.count ? `${st.count}× · nejlepší ${formatTime(st.best)} · průměr ${formatTime(st.mean)}` : 'zatím netrénováno' },
             el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
-          move)),
-      el('div', { className: 'alg-actions' }, train, del));
+          move),
+        editing === a.id ? editor(a) : null),
+      el('div', { className: 'alg-actions' }, train, edit, del));
   }));
   if (!list.length) $('tr-list').replaceChildren(el('li', { className: 'hint', textContent: 'Žádné uložené algoritmy.' }));
+}
+
+// --- Úprava uloženého algoritmu ------------------------------------------------------------
+let editing = null; // id upravovaného algoritmu
+
+/** Editor algoritmu v seznamu: zápis, smazání úvodního/koncového U, uložení. */
+function editor(a) {
+  const input = el('input', { className: 'alg-edit', value: a.alg, ariaLabel: 'Algoritmus', autocomplete: 'off', spellcheck: false });
+  const msg = el('small', { className: 'hint' });
+  const strip = (first) => {
+    const b = el('button', { type: 'button', className: 'secondary small', textContent: first ? 'Smazat úvodní U' : 'Smazat koncové U' });
+    b.onclick = () => { const s = stripU(input.value, first); if (s !== null) { input.value = s; check(); } };
+    return b;
+  };
+  const check = () => {
+    const r = retarget(a, input.value);
+    msg.className = r.ok ? 'hint ok' : 'hint ko';
+    msg.textContent = r.ok
+      ? (r.pre || r.post
+        ? `✓ řeší případ po posunu: ${[r.pre && `výchozí stav se natočí o ${r.pre}`, r.post && `cíl bude natočený o ${r.post} méně`].filter(Boolean).join(', ')}`
+        : '✓ řeší uložený případ')
+      : `✗ ${r.reason}`;
+    return r;
+  };
+  input.oninput = check;
+  const save = el('button', { type: 'button', className: 'primary small', textContent: 'Uložit' });
+  save.onclick = () => {
+    const alg = input.value.trim().replace(/\s+/g, ' ');
+    if (!alg) return;
+    const r = check();
+    if (!r.ok && !confirm(`${r.reason}\nUložit i tak (případ zůstane stejný)?`)) return;
+    editing = null;
+    algs.update(a.id, r.ok ? { alg, task: r.task } : { alg });
+    if (currentId === a.id) showCase();
+  };
+  const cancel = el('button', { type: 'button', className: 'secondary small', textContent: 'Zrušit' });
+  cancel.onclick = () => { editing = null; renderList(); };
+  check();
+  return el('div', { className: 'alg-editor' }, input,
+    el('div', { className: 'row-btns' }, strip(true), strip(false), save, cancel), msg);
 }
 
 function closeSheet() { $('tr-sheet').hidden = true; }

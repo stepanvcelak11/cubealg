@@ -46,7 +46,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací
-  tahy, stopky, odhalení algoritmu, řazení nejslabších a statistiky.
+  tahy, stopky, odhalení algoritmu, řazení nejslabších a statistiky. Uložený
+  algoritmus jde **upravit** (tužka v seznamu): zápis se ověří proti případu a když
+  se liší jen natočením horní vrstvy na začátku nebo konci (např. smazané úvodní U),
+  případ se posune – algoritmus pak začíná z jinak natočené kostky.
 - **Lab** – vlastní případy a hledání ergonomických algoritmů pro **3×3, 2×2,
   Pyraminx, Skewb a Square-1**:
   - **Zadání:** výchozí stav i cíl se vybarvují po nálepkách paletou barev (dílek

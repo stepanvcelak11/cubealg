@@ -815,3 +815,8 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .edit-tools { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; }
 .edit-tools .chip { min-width: 36px; justify-content: center; }
 .edit-tools .chip:disabled { opacity: 0.4; }
+.alg-editor { display: grid; gap: 6px; margin-top: 6px; }
+.alg-editor .alg-edit { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
+.alg-editor .row-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.alg-editor .ok { color: var(--good); }
+.alg-editor .ko { color: var(--bad); }

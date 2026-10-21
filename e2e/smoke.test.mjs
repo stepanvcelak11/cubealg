@@ -697,3 +697,36 @@ test('lab: úprava nalezeného algoritmu klepáním a přidání do výsledků',
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('trenažér: úprava uloženého algoritmu – smazání úvodního U posune případ', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { algs } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    // Sune s úvodním U: výchozí stav = inverze celého algoritmu
+    const task = { puzzle: '333', constraints, colorsA: m.applyMoves(home, m.invertAlg("U R U R' U R U2 R'")), colorsB: home };
+    algs.add({ alg: "U R U R' U R U2 R'", task, name: 'Sune s U' });
+  });
+  await p.reload();
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  await p.locator('#tr-open').tap();
+  await p.locator('#tr-list [aria-label="Upravit algoritmus"]').tap();
+  assert.match(await p.locator('.alg-editor .hint').innerText(), /řeší uložený případ/);
+  await p.locator('.alg-editor button', { hasText: 'Smazat úvodní U' }).tap();
+  assert.equal(await p.locator('.alg-edit').inputValue(), "R U R' U R U2 R'");
+  assert.match(await p.locator('.alg-editor .hint').innerText(), /natočí o U/);
+  await p.locator('.alg-editor button', { hasText: 'Uložit' }).tap();
+  const ok = await p.evaluate(async () => {
+    const { retarget } = await import('./src/ui/algedit.js');
+    const a = JSON.parse(localStorage.getItem('ergocube.algs'))[0];
+    const r = retarget(a, a.alg);
+    return [a.alg, r.ok, r.pre];
+  });
+  assert.deepEqual(ok, ["R U R' U R U2 R'", true, null]);
+  assert.equal(await p.locator('.alg-editor').count(), 0);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

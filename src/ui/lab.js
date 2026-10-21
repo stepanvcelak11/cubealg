@@ -1560,7 +1560,12 @@ export function initLab({ onSub } = {}) {
   $('p-fwd').onclick = () => { stopPlaying(); step(1); };
   $('p-save').onclick = () => {
     const steps = playerSteps();
-    if (steps?.length) toggleSave(model.algToString(steps));
+    if (!steps?.length) return;
+    // AUF v závorkách zůstává (jako u uložení ze seznamu výsledků)
+    const parts = splitAuf(ui.chosen);
+    let text;
+    try { text = joinAuf(parts.pre, model.algToString(parts.core), parts.post); } catch { text = model.algToString(steps); }
+    toggleSave(text);
   };
   $('p-play').onclick = async () => {
     if (ui.playing) { stopPlaying(); return; }
