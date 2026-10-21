@@ -57,7 +57,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   tahy, stopky, odhalení algoritmu, řazení nejslabších a statistiky. Uložený
   algoritmus jde **upravit** (tužka v seznamu): zápis se ověří proti případu a když
   se liší jen natočením horní vrstvy na začátku nebo konci (např. smazané úvodní U),
-  případ se posune – algoritmus pak začíná z jinak natočené kostky.
+  případ se posune – algoritmus pak začíná z jinak natočené kostky. Ikona kopírování
+  dá zápis do schránky; **Upravit** v seznamu zapne výběr: vybrané algoritmy jde
+  zkopírovat nebo přesunout do jiné sady, zkopírovat jako text nebo smazat.
   **Rozpoznání:** režim, kde aplikace ukáže případ (s náhodným natočením horní
   vrstvy) a ty vybereš správný algoritmus ze čtyř možností (klepnutím nebo
   klávesami 1–4); měří se správnost a čas a častěji se vrací, co poznáváš špatně.

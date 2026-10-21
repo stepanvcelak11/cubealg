@@ -12,7 +12,7 @@ import { NetView } from './netview.js';
 import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
 import { retarget, stripU } from './algedit.js';
-import { sendLink, algsPayload } from './share.js';
+import { sendLink, algsPayload, toast } from './share.js';
 import { recogStats, recordRecog, pickRecog, optionsFor } from './recog.js';
 import { holdFor } from './holds.js';
 import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
@@ -227,14 +227,75 @@ function next() {
   showCase();
 }
 
+// --- Hromadné úpravy: výběr algoritmů, kopírování a přesun mezi sadami, smazání ---------
+let selecting = false;
+const selected = new Set();
+
+/** Zkopíruje text do schránky (a dá vědět). */
+async function copyText(text, what) {
+  try { await navigator.clipboard.writeText(text); toast(`Zkopírováno: ${what}`); } catch { prompt('Zkopíruj:', text); }
+}
+const algLine = (a) => `${a.name}: ${a.alg}`;
+
+/** Lišta hromadných úprav (dole v seznamu, když je zapnutý výběr). */
+function renderBulk(list) {
+  const bar = $('tr-bulk');
+  bar.hidden = !selecting;
+  $('tr-sheet').classList.toggle('selecting', selecting);
+  $('tr-select').setAttribute('aria-pressed', String(selecting));
+  $('tr-select').textContent = selecting ? 'Hotovo' : 'Upravit';
+  $('tr-all').hidden = selecting;
+  if (!selecting) return;
+  for (const id of [...selected]) if (!list.some((a) => a.id === id)) selected.delete(id);
+  const picked = list.filter((a) => selected.has(a.id));
+  const n = picked.length;
+  const target = el('select', { className: 'small-select', ariaLabel: 'Cílová sada' },
+    ...algSets.list().map((st) => el('option', { value: st.id, textContent: st.name })));
+  if (trainSet !== 'all') target.value = algSets.list().find((st) => st.id !== trainSet)?.id ?? trainSet;
+  const btn = (text, cls, fn, title) => Object.assign(el('button', { type: 'button', className: `${cls} small`, textContent: text, disabled: !n, title }), { onclick: fn });
+  const setName = () => algSets.get(target.value).name;
+  bar.replaceChildren(
+    el('div', { className: 'bulk-row' },
+      el('b', { textContent: n ? `Vybráno ${n}` : 'Vyber algoritmy' }),
+      Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: n === list.length && n ? 'Zrušit výběr' : 'Vybrat vše' }), {
+        onclick: () => { if (n === list.length) selected.clear(); else for (const a of list) selected.add(a.id); renderList(); },
+      })),
+    el('div', { className: 'bulk-row' }, target,
+      btn('Kopírovat', 'secondary', () => {
+        for (const a of picked) algs.add({ alg: a.alg, task: structuredClone(a.task), name: a.name, set: target.value });
+        toast(`${n}× zkopírováno do „${setName()}“`);
+      }, 'Přidá kopie do vybrané sady (originály zůstanou)'),
+      btn('Přesunout', 'secondary', () => {
+        const name = setName();
+        for (const a of picked) a.set = target.value;
+        selected.clear();
+        algs.save();
+        toast(`${n}× přesunuto do „${name}“`);
+      }, 'Přesune do vybrané sady (i se statistikami)')),
+    el('div', { className: 'bulk-row' },
+      btn('Kopírovat text', 'secondary', () => copyText(picked.map(algLine).join('\n'), `${n} ${n === 1 ? 'algoritmus' : n < 5 ? 'algoritmy' : 'algoritmů'}`), 'Zkopíruje názvy a zápisy do schránky'),
+      btn('Smazat', 'danger', () => {
+        if (!confirm(`Smazat ${n} ${n === 1 ? 'algoritmus' : n < 5 ? 'algoritmy' : 'algoritmů'} i se statistikami?`)) return;
+        for (const a of picked) algs.remove(a.id);
+        selected.clear();
+        if (currentId && !algs.get(currentId)) next();
+      })));
+}
+
 function renderList() {
   const list = [...inTraining()].sort(SORTS[sortKey].cmp);
+  renderBulk(list);
   $('tr-sheet-title').textContent = trainSet === 'all' ? `Všechny algoritmy · ${methods.get(methods.active()).name}` : algSets.get(trainSet).name;
   $('tr-count').textContent = `v tréninku ${list.filter((x) => x.enabled).length} z ${list.length}`;
   $('tr-list').replaceChildren(...list.map((a) => {
     const st = algStats(a);
-    const cb = el('input', { type: 'checkbox', checked: a.enabled, title: 'Zařadit do tréninku' });
-    cb.onchange = () => algs.update(a.id, { enabled: cb.checked });
+    // při úpravách zaškrtávátko vybírá algoritmus, jinak zařazuje do tréninku
+    const cb = selecting
+      ? el('input', { type: 'checkbox', checked: selected.has(a.id), title: 'Vybrat', ariaLabel: `Vybrat ${a.name}` })
+      : el('input', { type: 'checkbox', checked: a.enabled, title: 'Zařadit do tréninku' });
+    cb.onchange = selecting
+      ? () => { if (cb.checked) selected.add(a.id); else selected.delete(a.id); renderBulk(list); }
+      : () => algs.update(a.id, { enabled: cb.checked });
     const name = el('input', { className: 'alg-name', value: a.name, ariaLabel: 'Název' });
     name.onchange = () => algs.update(a.id, { name: name.value.trim() || a.name });
     const train = iconButton(icon('trainer', { size: 18 }), {
@@ -244,6 +305,10 @@ function renderList() {
     const edit = iconButton(icon('edit', { size: 18 }), {
       label: 'Upravit algoritmus',
       onClick: () => { editing = editing === a.id ? null : a.id; renderList(); },
+    });
+    const copy = iconButton(icon('copy', { size: 18 }), {
+      label: 'Kopírovat algoritmus',
+      onClick: () => copyText(a.alg, a.name),
     });
     const share = iconButton(icon('share', { size: 18 }), {
       label: 'Sdílet odkazem',
@@ -258,7 +323,7 @@ function renderList() {
       ...algSets.list().map((st) => el('option', { value: st.id, textContent: st.name })));
     move.value = algSets.list().some((x) => x.id === a.set) ? a.set : defaultSetId();
     move.onchange = () => algs.update(a.id, { set: move.value });
-    return el('li', { className: 'alg-item' },
+    return el('li', { className: `alg-item${selecting && selected.has(a.id) ? ' picked' : ''}` },
       cb,
       el('div', { className: 'alg-main' }, name,
         el('code', { textContent: `${a.task.puzzle && a.task.puzzle !== '333' ? `[${labModel(a.task.puzzle).P.name}] ` : ''}${a.alg}` }),
@@ -267,7 +332,7 @@ function renderList() {
             el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
           move),
         editing === a.id ? editor(a) : null),
-      el('div', { className: 'alg-actions' }, train, edit, share, del));
+      el('div', { className: 'alg-actions' }, train, edit, copy, share, del));
   }));
   if (!list.length) $('tr-list').replaceChildren(el('li', { className: 'hint', textContent: 'Žádné uložené algoritmy.' }));
 }
@@ -312,7 +377,7 @@ function editor(a) {
     el('div', { className: 'row-btns' }, strip(true), strip(false), save, cancel), msg);
 }
 
-function closeSheet() { $('tr-sheet').hidden = true; }
+function closeSheet() { $('tr-sheet').hidden = true; selecting = false; selected.clear(); }
 
 let stopwatch;
 
@@ -355,6 +420,7 @@ export function initTrainer({ isActive }) {
   sortSel.replaceChildren(...Object.entries(SORTS).map(([k, v]) => el('option', { value: k, textContent: v.label })));
   sortSel.value = sortKey;
   sortSel.onchange = () => { sortKey = sortSel.value; storage.set('ergocube.trainer.sort', sortKey); renderList(); };
+  $('tr-select').onclick = () => { selecting = !selecting; selected.clear(); renderList(); };
   $('tr-all').onclick = () => {
     const all = inTraining().every((a) => a.enabled);
     for (const a of inTraining()) a.enabled = !all;

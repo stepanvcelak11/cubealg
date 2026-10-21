@@ -905,3 +905,53 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr co uložit, ov
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('trenažér: hromadně kopírovat a přesouvat mezi sadami, kopírovat text, smazat', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const ids = await p.evaluate(async () => {
+    const { algs, algSets } = await import('./src/ui/store.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const home = m.home(['URF', 'U', 'F', 'R']);
+    const task = { puzzle: '333', constraints: {}, colorsA: home, colorsB: home };
+    const a = algSets.add('Sada A');
+    const b = algSets.add('Sada B');
+    for (const [i, alg] of ["R U R'", "R U' R'", 'R U2 R\''].entries()) algs.add({ alg, task, name: `Alg ${i + 1}`, set: a });
+    localStorage.setItem('ergocube.trainer.set', JSON.stringify(a));
+    return { a, b };
+  });
+  await p.reload();
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  await p.locator('#tr-open').tap();
+  // jeden algoritmus do schránky
+  await p.locator('#tr-list .alg-item').first().getByRole('button', { name: 'Kopírovat algoritmus' }).tap();
+  assert.equal(await p.evaluate(() => navigator.clipboard.readText()), "R U R'");
+  // výběr dvou: kopie do sady B
+  await p.locator('#tr-select').tap();
+  const boxes = p.locator('#tr-list .alg-item input[type="checkbox"]');
+  await boxes.nth(0).check(); await boxes.nth(1).check();
+  assert.match(await p.locator('#tr-bulk').innerText(), /Vybráno 2/);
+  await p.locator('#tr-bulk select').selectOption(ids.b);
+  await p.locator('#tr-bulk button', { hasText: /^Kopírovat$/ }).tap();
+  const count = (set) => p.evaluate((s) => JSON.parse(localStorage.getItem('ergocube.algs')).filter((x) => x.set === s).length, set);
+  assert.equal(await count(ids.a), 3);
+  assert.equal(await count(ids.b), 2);
+  // text vybraných
+  await p.locator('#tr-bulk button', { hasText: 'Kopírovat text' }).tap();
+  assert.equal(await p.evaluate(() => navigator.clipboard.readText()), "Alg 1: R U R'\nAlg 2: R U' R'");
+  // přesun jednoho do sady B
+  await boxes.nth(1).uncheck();
+  await p.locator('#tr-bulk select').selectOption(ids.b);
+  await p.locator('#tr-bulk button', { hasText: 'Přesunout' }).tap();
+  assert.equal(await count(ids.a), 2);
+  assert.equal(await count(ids.b), 3);
+  // smazat zbylé dva v sadě A
+  p.once('dialog', (d) => d.accept());
+  await p.locator('#tr-bulk button', { hasText: 'Vybrat vše' }).tap();
+  await p.locator('#tr-bulk button', { hasText: 'Smazat' }).tap();
+  assert.equal(await count(ids.a), 0);
+  assert.equal(await count(ids.b), 3);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

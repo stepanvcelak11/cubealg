@@ -24,6 +24,7 @@ const P = {
   prev: '<path d="m15 5-7 7 7 7"/>',
   next: '<path d="m9 5 7 7-7 7"/>',
   help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9v.3"/><circle cx="12" cy="16.8" r=".9" fill="currentColor"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   bookmark: '<path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/>',
   bookmarked: '<path d="M6.5 3.5h11v17l-5.5-4-5.5 4z" fill="currentColor"/>',
