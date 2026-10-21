@@ -13,6 +13,25 @@ import { toast } from './share.js';
 import { recordPreference } from './store.js';
 
 const OPTS = 'ergocube.lab.generator';
+// paměť hledání po případech: nejlepší algoritmy a prohledané délky (příště se navazuje,
+// u dokázaně nejpohodlnějších se už nehledá)
+const MEMORY = 'ergocube.gen.memory';
+const MEMORY_MAX = 400;
+const hash = (text) => {
+  let h1 = 2166136261, h2 = 5381;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
+  return `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
+};
+const memory = {
+  get: (key) => (storage.get(MEMORY) ?? {})[key] ?? null,
+  set(key, value) {
+    const all = storage.get(MEMORY) ?? {};
+    all[key] = { ...value, at: Date.now() };
+    const keys = Object.keys(all);
+    if (keys.length > MEMORY_MAX) keys.sort((a, b) => all[a].at - all[b].at).slice(0, keys.length - MEMORY_MAX).forEach((k) => delete all[k]);
+    storage.set(MEMORY, all);
+  },
+};
 const fmtTime = (ms) => { const t = Math.round(ms / 1000); return t < 60 ? `${t} s` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const CHOICES = 6; // kolik nalezených algoritmů nabídnout u případu
 const CHECK = 40; // kolik nejlepších řešení ověřit při výběru nabídky
@@ -135,11 +154,29 @@ export function openGenerator(ctx) {
   /** Najde algoritmus pro jeden případ (Promise → { alg, pre, post, display } | null). */
   let resolveCurrent = null; // zastavení ukončí i probíhající hledání
   // vrací { found: Map, optimal: dokázaně nejpohodlnější }; seeds = dosavadní řešení (navázání)
+  const keyOf = (c) => hash(JSON.stringify([ctx.signature, result.constraints, Array.from(result.target), Array.from(c.rep)]));
   const solveOne = (c, timeLimit, onFound, { seeds = [], found = new Map() } = {}) => new Promise((resolve) => {
+    const key = keyOf(c);
+    const mem = memory.get(key);
+    const add = (it) => found.set(`${it.pre}|${it.alg}|${it.post}`, it);
+    // z paměti: dřívější nejlepší jako výchozí body; dokázané optimum se už nehledá
+    if (mem && !seeds.length) for (const it of mem.seeds ?? []) add(it);
+    if (mem?.optimal && found.size) { onFound?.(found); resolve({ found, optimal: true, cached: true }); return; }
+    const remember = (d) => {
+      // nejlepší podle rychlosti musí být mezi výchozími body (z jeho hodnocení vychází mez
+      // prohledaných délek), k němu nabídka případu
+      const fastest = rankResults([...found.values()].map((it) => ({ it, m: styleMetrics(ctx.score(ctx.join(ctx.toHeld(it.pre), ctx.toHeld(it.alg), ctx.toHeld(it.post))), cube) })), 'speed')[0].it;
+      const list = [fastest, ...choicesOf({ c }, found).map((ch) => ch.it)].filter((it, i, a) => a.indexOf(it) === i);
+      memory.set(key, { seeds: list.slice(0, 10).map(({ alg, pre, post }) => ({ alg, pre, post })),
+        progress: { cleared: d.cleared ?? 0, comfortDone: d.comfortDone ?? [] }, optimal: !!d.speedOptimal });
+    };
     resolveCurrent = () => resolve({ found, optimal: false });
-    client.start(ctx.job(c.rep, result.target, result.constraints, timeLimit, { seeds, library: [...ctx.library(), ...learned] }), {
-      onSolutions: (items) => { for (const it of items) found.set(`${it.pre}|${it.alg}|${it.post}`, it); onFound?.(found); },
-      onDone: (d) => resolve({ found, optimal: !!d.speedOptimal }),
+    const allSeeds = [...seeds, ...(seeds.length ? [] : mem?.seeds ?? [])];
+    client.start(ctx.job(c.rep, result.target, result.constraints, timeLimit, {
+      seeds: allSeeds, library: [...ctx.library(), ...learned], resume: allSeeds.length ? mem?.progress : undefined,
+    }), {
+      onSolutions: (items) => { for (const it of items) add(it); onFound?.(found); },
+      onDone: (d) => { if (found.size) remember(d); resolve({ found, optimal: !!d.speedOptimal }); },
       onError: () => resolve({ found, optimal: false }),
     });
   });
@@ -193,7 +230,7 @@ export function openGenerator(ctx) {
       };
       tick();
       const timer = setInterval(tick, 200);
-      const { found, optimal } = await solveOne(x.c, limit, (f) => {
+      const { found, optimal, cached } = await solveOne(x.c, limit, (f) => {
         count = f.size;
         x.out.replaceChildren(el('span', { className: 'gen-searching', textContent: `hledám… ${count} řešení` }));
       });
@@ -214,7 +251,7 @@ export function openGenerator(ctx) {
         task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) },
       });
       if (choices[0].v.ok) learned.push(modelAlg(choices[0].it));
-      x.state = { found, choices, sel: 0, id, optimal };
+      x.state = { found, choices, sel: 0, id, optimal, cached };
       renderChoices(x);
     }
     addParityAlg();
@@ -252,6 +289,14 @@ export function openGenerator(ctx) {
       tops.get(top).push(id);
     }
     const out = [...tops.keys()];
+    // další nabídka: napřed jinak postavené algoritmy – varianty, které se liší jen
+    // tahy U/D na začátku a konci (natočení vrstev), přijdou na řadu až nakonec
+    const skeleton = (r) => r.display.replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).join(' ').replace(/^((?:[UD][2']?\s+)+)/, '').replace(/((?:\s+[UD][2']?)+)$/, '');
+    const used = new Set(out.map(skeleton));
+    for (const r of pool) {
+      if (out.length >= CHOICES) break;
+      if (!out.includes(r) && !used.has(skeleton(r))) { out.push(r); used.add(skeleton(r)); }
+    }
     for (const r of [...pool, ...checked]) {
       if (out.length >= CHOICES) break;
       if (!out.includes(r)) out.push(r);
@@ -268,7 +313,7 @@ export function openGenerator(ctx) {
     more.onclick = () => searchMore(x);
     x.out.replaceChildren(
       el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ověřeno na ${n}` : `⚠ neřeší ${c.v.failed} z ${n}` }),
-      optimal ? el('span', { className: 'gen-proof', title: 'Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel', textContent: '✓ pohodlnější neexistuje' }) : null,
+      optimal ? el('span', { className: 'gen-proof', title: 'Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel', textContent: `✓ pohodlnější neexistuje${x.state.cached ? ' (z paměti)' : ''}` }) : null,
       el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
         ...choices.map((ch, k) => {
           const m = ch.m;
@@ -322,7 +367,7 @@ export function openGenerator(ctx) {
     const choices = choicesOf(x, found);
     // vybraný zůstane vybraný, když je pořád v nabídce
     const keep = choices.findIndex((ch) => ch.display === prev);
-    x.state = { ...x.state, found, choices, optimal, sel: keep >= 0 && prev !== x.state.choices[0].display ? keep : 0 };
+    x.state = { ...x.state, found, choices, optimal, cached: false, sel: keep >= 0 && prev !== x.state.choices[0].display ? keep : 0 };
     algs.update(x.state.id, { alg: choices[x.state.sel].display });
     status.textContent = `Případ ${x.i + 1}: ${choices[0].display === x.state.choices[0]?.display && keep === 0 ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${optimal ? ' · pohodlnější neexistuje' : ''}`;
     renderChoices(x);

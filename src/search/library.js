@@ -9,6 +9,7 @@
 //              jeden krok hledání: hledá se v krocích, takže dosáhne do větších
 //              délek a výsledky jsou složené z plynulých celků.
 
+import { clock } from './clock.js';
 import { encode, evaluator, search } from './engine.js';
 import { mirrorAlg } from '../core/notation.js';
 
@@ -80,9 +81,10 @@ export function searchLibrary(P, problem, roots, library, { deadline, fix = 3, s
   for (const root of roots) {
     const v0 = encode(problem, Uint8Array.from(root.loc));
     for (const s of setups) {
-      if (Date.now() > deadline) return hits;
+      if (clock.now() > deadline) return hits;
       const vs = apply(v0, s);
       for (const a of variants) {
+        clock.tick(0.002);
         const v = apply(vs, a);
         if (estimate(v) > fix) continue;
         const prefix = [...s, ...a].map((i) => names[i]);

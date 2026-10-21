@@ -73,6 +73,8 @@ export class SearchClient {
         cleared: Math.min(...ds.map((d) => d.cleared ?? 0)),
         // nejpohodlnější je dokázané, jen když to dokázal každý díl
         speedOptimal: ds.every((d) => d.speedOptimal),
+        // délky prohledané podle pohodlí ve všech dílech (pro navázání příště)
+        comfortDone: ds.reduce((acc, d) => acc.filter((L) => (d.comfortDone ?? []).includes(L)), ds[0]?.comfortDone ?? []),
         nodes: ds.reduce((a, d) => a + (d.nodes ?? 0), 0),
         elapsed: Math.max(...ds.map((d) => d.elapsed ?? 0)),
         workers: count,

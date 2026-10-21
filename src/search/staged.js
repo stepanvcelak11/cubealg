@@ -6,6 +6,7 @@
 // cíle). Výsledek bývá dlouhý, ale přijde rychle – zlepšování (worker.js) ho pak
 // zkracuje a zpříjemňuje.
 
+import { clock } from './clock.js';
 import { encode, groupTable, search } from './engine.js';
 
 const GROUP = 3; // dílků v jedné pattern databázi hotových dílků (24³ hodnot – hned)
@@ -14,7 +15,7 @@ const GROUP = 3; // dílků v jedné pattern databázi hotových dílků (24³ h
  * @param {ReturnType<import('./engine.js').prepare>} problem úplná úloha (všechny sledované dílky)
  * @param {Uint8Array} start výchozí stav (loc)
  * @param {object} opts
- * @param {number} opts.deadline čas (Date.now()), do kdy skončit
+ * @param {number} opts.deadline čas (clock.now()), do kdy skončit
  * @param {number} [opts.finish] kolik zbývajících dílků už dokončit úplným hledáním
  * @param {number} [opts.stageDepth] nejdelší etapa
  * @param {number} [opts.seed] jiné pořadí zkoušených tahů (víc workerů → různá řešení)
@@ -83,7 +84,7 @@ export function stagedSolve(problem, start, { deadline, finish = 4, stageDepth =
         const m = order[q];
         if (prev >= 0 && redundant[prev * moveCount + m]) continue;
         for (let i = 0; i < n; i++) next[i] = tr[i][m * sizes[i] + cur[i]];
-        if (++nodes % 4096 === 0 && Date.now() > deadline) { timeUp = true; return false; }
+        if (++nodes % 4096 === 0) { clock.nodes(4096); if (clock.now() > deadline) { timeUp = true; return false; } }
         moves[depth] = m;
         if (depth + 1 === bound) { if (goal(next)) return true; continue; }
         if (lower(next) > bound - depth - 1) continue;
@@ -101,7 +102,7 @@ export function stagedSolve(problem, start, { deadline, finish = 4, stageDepth =
   };
 
   while (n - done.size > finish) {
-    if (Date.now() > deadline) return { alg: null, reason: 'time' };
+    if (clock.now() > deadline) return { alg: null, reason: 'time' };
     const seq = stage(path.length ? path[path.length - 1] : -1);
     if (!seq) return { alg: null, reason: timeUp ? 'time' : 'not-found' };
     for (const m of seq) {
@@ -115,7 +116,7 @@ export function stagedSolve(problem, start, { deadline, finish = 4, stageDepth =
   const prefix = path.map((m) => names[m]).join(' ');
   if (n - done.size > 0 || pieces.some((_, i) => ok[i][v[i]] !== 1)) {
     loc = prefix ? puzzle.applyAlg(start, prefix) : loc;
-    const res = search(problem, loc, { maxLength: 20, extraDepth: 0, maxResults: 1, timeLimit: Math.max(0, deadline - Date.now()) });
+    const res = search(problem, loc, { maxLength: 20, extraDepth: 0, maxResults: 1, timeLimit: Math.max(0, deadline - clock.now()) });
     if (!res.solutions.length) return { alg: null, reason: res.reason === 'time' ? 'time' : 'not-found' };
     return { alg: [prefix, res.solutions[0]].filter(Boolean).join(' '), reason: 'done' };
   }

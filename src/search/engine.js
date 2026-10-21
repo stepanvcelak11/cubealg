@@ -17,6 +17,7 @@
 // Hledání nevrací jen optimum: projde délky optimum … optimum + extraDepth
 // a vrátí všechny nalezené sekvence, které se pak řadí podle ergonomie.
 
+import { clock } from './clock.js';
 import { MoveSet } from '../core/moveset.js';
 import { CUBE3 } from '../puzzles/cube3.js';
 
@@ -603,13 +604,15 @@ export function search(problem, start, {
   const { pieces, moveCount, redundant, names } = problem;
   const { goalOf, heuristic, estimate, advance, near, nearRadius } = evaluator(problem);
   const n = pieces.length;
-  const t0 = Date.now();
+  const t0 = clock.now();
   const solutions = [];
 
   const roots = rootsOf(problem, start);
-  const result = (reason, extra = {}) => ({
-    reason, solutions, nodes, elapsed: Date.now() - t0, ...extra,
-  });
+  clock.tick(0.02);
+  const result = (reason, extra = {}) => {
+    clock.nodes(nodes % 8192); // zbytek práce do virtuálního času
+    return { reason, solutions, nodes, elapsed: clock.now() - t0, ...extra };
+  };
   let nodes = 0;
   if (roots.some((r) => goalOf(r.v) >= 0)) return result('already-solved', { optimal: 0, cleared: 0 });
   if (roots.every((r) => heuristic(r.v) >= UNREACHABLE)) return result('unsolvable', { cleared: Infinity });
@@ -635,7 +638,8 @@ export function search(problem, start, {
         if (idx < skipNow || (shard && idx % shard.count !== shard.index)) { doneBranches = Math.max(doneBranches, idx + 1); continue; }
       }
       if (++nodes % 8192 === 0) {
-        if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
+        clock.nodes(8192);
+        if (clock.now() - t0 > timeLimit) { stopped = 'time'; return; }
         onProgress?.({ depth: bound, nodes, found: solutions.length });
       }
       const remaining = bound - depth - 1;
@@ -713,10 +717,11 @@ export function search(problem, start, {
  * @param {(info:{nodes:number}) => void} [opts.onProgress]
  */
 export function searchCost(problem, start, { cost, minMove, bound, length, hcost, finish, timeLimit = 5000, shard, skip = 0, onSolution, onProgress }) {
+  clock.tick(0.02);
   const { pieces, moveCount, redundant, names } = problem;
   const { goalOf, advance, near, nearRadius } = evaluator(problem);
   const n = pieces.length;
-  const t0 = Date.now();
+  const t0 = clock.now();
   const roots = rootsOf(problem, start);
   const stack = Array.from({ length: length + 1 }, () => new Uint8Array(n));
   const path = new Int16Array(length);
@@ -748,7 +753,8 @@ export function searchCost(problem, start, { cost, minMove, bound, length, hcost
       const g2 = g + cs[m];
       if (g2 + rest >= bound) break; // další tahy jsou ještě dražší
       if (++nodes % 8192 === 0) {
-        if (Date.now() - t0 > timeLimit) { stopped = 'time'; return; }
+        clock.nodes(8192);
+        if (clock.now() - t0 > timeLimit) { stopped = 'time'; return; }
         onProgress?.({ nodes });
       }
       path[depth] = m;
@@ -777,7 +783,8 @@ export function searchCost(problem, start, { cost, minMove, bound, length, hcost
     dfs(0, -1, cost.start, r.g0 ?? 0);
     if (stopped) break;
   }
-  return { reason: stopped ?? 'done', nodes, found, bound, branch: done, elapsed: Date.now() - t0 };
+  clock.nodes(nodes % 8192);
+  return { reason: stopped ?? 'done', nodes, found, bound, branch: done, elapsed: clock.now() - t0 };
 }
 
 /** Pohodlná varianta: vše v jednom volání. */

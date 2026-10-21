@@ -1,6 +1,7 @@
 // Průběh hledání (mimo Square-1): nejdřív jakékoli řešení, pak kola zlepšování.
 // Odděleno od workeru, aby šlo spustit i v Node (testy a měření kvality).
 
+import { clock } from './clock.js';
 import { prepare, search, searchCost, costTables, NEAR_LIMIT } from './engine.js';
 import { ergoStep, ERGO_START, fullConfig } from '../ergonomics/score.js';
 import { moveWeight } from '../ergonomics/weights.js';
@@ -166,7 +167,7 @@ const MAX_COMFORT = 40; // nejdelší délka pro hledání podle pohodlí
 export function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, aufOf = () => 0, onTable, t0, full: prepared, cache }) {
   const timeLimit = options.timeLimit ?? 15000;
   const deadline = t0 + timeLimit;
-  const left = () => deadline - Date.now();
+  const left = () => deadline - clock.now();
   const extra = options.extraDepth ?? 0;
   // „Max. tahů“ omezuje jen úplné prohledávání; etapy a zlepšování délku neomezují
   const maxLength = Math.min(30, options.maxLength ?? 20);
@@ -202,7 +203,10 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   // krátké úlohy (do 8 tahů) najde úplné hledání rychle samo
   const probe = search(full, roots, { maxLength: Math.min(8, maxLength), extraDepth: 0, maxResults: 1, timeLimit: 300, onSolution: found });
   const proof = handlers.proof;
-  proof.cleared = probe.cleared ?? 0;
+  // navázání na dřívější hledání stejného zadání: délky pod `cleared` řešení nemají,
+  // délky v `comfortDone` jsou podle pohodlí prohledané (s mezí, kterou dnešní nejlepší nepřekročí)
+  const resume = options.resume ?? {};
+  proof.cleared = Math.max(probe.cleared ?? 0, resume.cleared ?? 0);
   const library = (options.library ?? []).filter(Boolean);
   const hard = !probe.solutions.length && probe.reason !== 'already-solved' && probe.reason !== 'unsolvable';
   // pořadí: menší sady (rychlé první řešení, když případ jde jimi), první řešení po
@@ -219,9 +223,9 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   // knihovna: tvoje algoritmy s nastavením a dokončením (jednou, po prvních úlohách)
   if (library.length && probe.reason !== 'already-solved' && probe.reason !== 'unsolvable' && (!shard || shard.index === 0)) tasks.push({ label: 'knihovna', library: true });
   tasks.push({ label: 'úseky', refine: true });
-  const fullTask = { label: null, moves, problem: full, full: true, shard };
+  const fullTask = { label: null, moves, problem: full, full: true, shard, ...(proof.cleared > 1 ? { resume: proof.cleared } : {}) };
   tasks.push(fullTask);
-  const comfort = P.ergonomics === 'cube' && options.comfort !== false ? { label: 'pohodlí', comfort: true, rounds: 0, doneLengths: new Set(), cur: null } : null;
+  const comfort = P.ergonomics === 'cube' && options.comfort !== false ? { label: 'pohodlí', comfort: true, rounds: 0, doneLengths: new Set(resume.comfortDone ?? []), cur: null } : null;
   if (comfort) tasks.push(comfort);
   const costs = comfort ? costModel(held, config) : null;
   const lowCosts = costs && lowerCosts(costs, config);
@@ -255,7 +259,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
     const per = Math.min(400, Math.max(80, 900 / jobs.length));
     for (const [id, b] of jobs) {
       if (left() < 1000) break;
-      improve(table, b.alg, valueOf(id, b.pre, b.post), { deadline: Math.min(deadline - 500, Date.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
+      improve(table, b.alg, valueOf(id, b.pre, b.post), { deadline: Math.min(deadline - 500, clock.now() + per), onImproved: (alg) => emit(alg, b.pre, b.post) });
     }
     tracker.takeChanged();
   };
@@ -293,7 +297,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
       onSolution: found, onProgress: (p) => handlers.onProgress({ depth: L, nodes: p.nodes }),
     });
     comfort.rounds++;
-    if (res.reason === 'done') { comfort.doneLengths.add(L); comfort.cur = null; } else comfort.cur = { length: L, branch: res.branch };
+    if (res.reason === 'done') { comfort.doneLengths.add(L); comfort.cur = null; proof.comfortDone = [...comfort.doneLengths]; } else comfort.cur = { length: L, branch: res.branch };
   };
 
   // bloky: hledání po krocích (tah nebo blok), délky v krocích od nejkratších, mez =
@@ -327,8 +331,8 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   const refine = Object.fromEntries(views.map((id) => [id, { w: 6, i: 0, alg: null, better: false }]));
   let refineView = 0;
   const runRefine = (slice) => {
-    const end = Date.now() + slice;
-    for (let tries = 0; tries < views.length && Date.now() < end; tries++) {
+    const end = clock.now() + slice;
+    for (let tries = 0; tries < views.length && clock.now() < end; tries++) {
       const id = views[refineView];
       refineView = (refineView + 1) % views.length;
       const b = tracker.best(id);
@@ -340,8 +344,8 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
       const value = valueOf(id, b.pre, b.post);
       let curValue = value(b.alg);
       const s0 = startOf(b.pre);
-      const viewEnd = Math.min(end, Date.now() + slice / views.length);
-      while (Date.now() < viewEnd) {
+      const viewEnd = Math.min(end, clock.now() + slice / views.length);
+      while (clock.now() < viewEnd) {
         const w = st.w;
         if (w > Math.min(MAX_WINDOW, cur.length)) { st.exhausted = true; break; }
         // úplné sledování: okna po celé délce; jinak jen konec algoritmu
@@ -354,7 +358,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
         }
         handlers.context = { label: `${w}`, task: 'refine', view: id, round: 0, current: cur.length };
         handlers.onProgress({ depth: w, nodes: 0 });
-        const per = Math.max(300, Math.min(viewEnd - Date.now(), 800 * 1.7 ** Math.max(0, w - 8)));
+        const per = Math.max(300, Math.min(viewEnd - clock.now(), 800 * 1.7 ** Math.max(0, w - 8)));
         // efektivita jen kratší; ostatní pohledy i stejně dlouhé, rozhodne hodnota
         const opts = { maxLength: id === 'efficient' ? w - 1 : w + 2, maxResults: id === 'efficient' ? 1 : 20, timeLimit: per };
         const candidates = resolver.full
@@ -386,6 +390,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   const SLICE = { library: 4000, staged: 90000, subset: 10000, full: 8000, comfort: 6000, refine: 6000, blocks: 6000 };
   for (let round = 0; left() > 300 && tasks.some((t) => !t.done); round++) {
     for (const task of tasks) {
+      clock.tick(0.01); // i úloha, která nic neprohledá, posune virtuální čas
       if (task.done || left() < 300) continue;
       const active = tasks.filter((t) => !t.done).length;
       const kind = task.library ? 'library' : task.staged ? 'staged' : task.comfort ? 'comfort' : task.blocks ? 'blocks' : task.refine ? 'refine' : task.full ? 'full' : 'subset';
@@ -400,7 +405,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
         handlers.context = { label: 'knihovna', task: 'library', round };
         handlers.onProgress({ depth: 0, nodes: 0 });
         searchLibrary(P, full, roots, library, {
-          deadline: Date.now() + Math.min(4000, Math.max(500, left() * 0.08)),
+          deadline: clock.now() + Math.min(4000, Math.max(500, left() * 0.08)),
           onSolution: (alg, pre) => emit(alg, pre, null),
         });
         task.done = true;
@@ -412,7 +417,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
         if (has) { task.done = true; continue; }
         handlers.context = { label: task.label, task: 'staged', round };
         const res = stagedSolve(full, roots[0].loc, {
-          deadline: Date.now() + slice, seed: shard ? shard.index : 0,
+          deadline: clock.now() + slice, seed: shard ? shard.index : 0,
           onStage: (info) => handlers.onProgress({ depth: info.length, nodes: 0, stage: info }),
         });
         if (res.alg) emit(res.alg, null, null);

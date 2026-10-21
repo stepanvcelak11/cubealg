@@ -2,19 +2,24 @@
 // (jedno vlákno, stejný průběh jako worker) a porovná nejlepší nalezený algoritmus
 // podle rychlosti se známým rychlým algoritmem. Nižší náročnost = lepší.
 //
-//   node bench/quality.mjs [sekund na případ] [filtr názvu] [lib]
-//   lib = knihovna ze známých algoritmů ostatních případů (ne toho hledaného)
+//   node bench/quality.mjs [sekund na případ] [filtr názvu] [lib] [real]
+//   lib  = knihovna ze známých algoritmů ostatních případů (ne toho hledaného)
+//   real = skutečný čas (jinak virtuální: čas podle prohledaných stavů – výsledky jsou
+//          při každém spuštění stejné, nezávisle na rychlosti a zatížení počítače)
 
 import { getPuzzle } from '../src/puzzles/index.js';
 import { prepare, NEAR_LIMIT } from '../src/search/engine.js';
 import { explore, makeTracker, targetsOf } from '../src/search/explore.js';
 import { scoreFor } from '../src/ergonomics/puzzles.js';
 import { buildTriggers } from '../src/ergonomics/triggers.js';
+import { clock } from '../src/search/clock.js';
 
 const P = getPuzzle('333');
 const seconds = Number(process.argv[2] ?? 10);
 const filter = process.argv[3] ?? '';
-const useLib = process.argv[4] === 'lib';
+const flags = process.argv.slice(4);
+const useLib = flags.includes('lib');
+const realTime = flags.includes('real');
 const config = { triggers: buildTriggers() };
 const score = (alg) => scoreFor(P, alg, config).total;
 
@@ -50,14 +55,15 @@ export const CASES = [
 ];
 
 /** Jedno hledání jako worker (bez shardů). */
-export function solve(cs, { seconds: sec = seconds, options = {} } = {}) {
+export function solve(cs, { seconds: sec = seconds, options = {}, real = realTime } = {}) {
+  clock.setVirtual(!real, 1);
   const start = P.applyAlg(P.solved(), P.invertAlg(P.parseAlg(cs.ref)));
   const target = P.solved();
   const auf = { pre: movesOf(['U']), post: movesOf(['U']) };
   const seen = new Map();
   const tracker = makeTracker(P, 0.5);
-  const t0 = Date.now();
-  let firstBest = null;
+  const t0 = clock.now();
+  const wall = Date.now();
   const handlers = {
     onSolution: (alg, pre = null, post = null) => {
       const key = `${pre ?? ''}|${alg}|${post ?? ''}`;
@@ -75,7 +81,8 @@ export function solve(cs, { seconds: sec = seconds, options = {} } = {}) {
     config, handlers, tracker, scoreOf: (alg) => scoreFor(P, alg, config), onTable: () => {}, t0, full,
   });
   const best = tracker.best('speed');
-  return { best, total: best ? score(best.alg) : Infinity, found: seen.size, ms: Date.now() - t0, res, proof: handlers.proof.speedOptimal ?? false };
+  clock.setVirtual(false);
+  return { best, total: best ? score(best.alg) : Infinity, found: seen.size, ms: Date.now() - wall, res, proof: handlers.proof.speedOptimal ?? false };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,3 +1,4 @@
+import { clock, random } from './clock.js';
 // Vylepšování nalezeného algoritmu: úsek (okno) algoritmu se nahradí jinou
 // sekvencí povolených tahů, která s hlavolamem udělá přesně totéž – algoritmus
 // tedy dál řeší zadání – ale je kratší nebo pohodlnější. Opakuje se, dokud
@@ -161,6 +162,7 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
   if (cur.some((i) => i === undefined)) return { alg, value: value(alg), steps: 0 };
   const cache = new Map();
   const evaluate = (text) => {
+    clock.tick(0.005);
     let v = cache.get(text);
     if (!v) { v = value(text); if (cache.size < 200000) cache.set(text, v); }
     return v;
@@ -209,14 +211,15 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
 
   /** Stoupání: první lepší soused, dokud nějaký je. */
   const climb = () => {
-    for (let improved = true; improved && Date.now() < deadline;) {
+    for (let improved = true; improved && clock.now() < deadline;) {
+      clock.tick(0.01);
       improved = false;
       // okna od delších (větší změny) po kratší, v náhodném pořadí poloh
       outer:
       for (let len = Math.min(maxW, cur.length); len >= 1; len--) {
-        const starts = Array.from({ length: cur.length - len + 1 }, (_, i) => i).sort(() => Math.random() - 0.5);
+        const starts = Array.from({ length: cur.length - len + 1 }, (_, i) => i).sort(() => random() - 0.5);
         for (const i of starts) {
-          if (Date.now() > deadline) break outer;
+          if (clock.now() > deadline) break outer;
           const hit = replacements(i, len, (seq, text) => {
             const v = evaluate(text);
             if (!less(v, curValue)) return false;
@@ -233,14 +236,14 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
   /** Postrčení: náhodná jiná náhrada náhodného okna (nejvýš o 2 tahy delší). */
   const kick = () => {
     for (let tries = 0; tries < 8; tries++) {
-      const len = Math.min(cur.length, 2 + Math.floor(Math.random() * (maxW - 1)));
-      const i = Math.floor(Math.random() * (cur.length - len + 1));
+      const len = Math.min(cur.length, 2 + Math.floor(random() * (maxW - 1)));
+      const i = Math.floor(random() * (cur.length - len + 1));
       const before = toString(cur);
       const hit = replacements(i, len, (seq, text) => {
         if (text === before || seq.length > cur.length + 2) return false;
         cur = seq; curValue = evaluate(text);
         return true;
-      }, Math.floor(Math.random() * entries.length));
+      }, Math.floor(random() * entries.length));
       if (hit) return true;
     }
     return false;
@@ -248,7 +251,8 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
 
   climb();
   let fails = 0;
-  while (kicks && Date.now() < deadline) {
+  while (kicks && clock.now() < deadline) {
+    clock.tick(0.01);
     const was = bestValue;
     if (!kick()) break;
     climb();

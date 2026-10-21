@@ -137,7 +137,7 @@ async function run({ puzzle: id = '333', start, target, constraints, moves, held
   flush();
   self.postMessage({
     type: 'done', reason: res.reason, optimal: res.optimal, nodes: res.nodes, cleared: res.cleared ?? 0,
-    speedOptimal: !!handlers.proof.speedOptimal,
+    speedOptimal: !!handlers.proof.speedOptimal, comfortDone: handlers.proof.comfortDone ?? [],
     found: seen.size || res.solutions.length, elapsed: Date.now() - t0,
   });
 }

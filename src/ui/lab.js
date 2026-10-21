@@ -797,6 +797,7 @@ const ERGO_FIELDS = {
     ['regripPenalty', 'Přehmat zápěstí', 0.1],
     ['gripChangePenalty', 'Změna úchopu', 0.1],
     ['triggerBonusScale', 'Násobič bonusů triggerů', 0.1],
+    ['aufScale', 'AUF před a po algoritmu (násobek ceny U)', 0.1],
     ['maxWristTurn', 'Max. ¼ zápěstím bez přehmatu', 1],
     ['flowScale', 'Návaznost tahů – prstoklad (násobek)', 0.1],
     ['reuse', 'Stejný prst dvakrát po sobě', 0.1],
@@ -874,6 +875,7 @@ function clearResults() {
   ui.results.clear();
   ui.chosen = null;
   ui.proof = 0;
+  ui.progress = null;
   searchUi(false);
   $('status').textContent = loadFound() ? `Uložená řešení z minulého hledání (${ui.results.size}) – „Hledat“ na ně naváže a dál je zlepšuje.` : '';
   renderResults();
@@ -894,6 +896,14 @@ function taskKey() {
   return `${FOUND_INDEX}.${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 
+/** Podpis nastavení, na kterém závisí průběh hledání (hodnocení, AUF) – pro navázání. */
+function progressSig(useAuf) {
+  const text = JSON.stringify([ui.ergo, useAuf]);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
 /** Nejlepší řešení v každém pohledu (sjednocení prvních `per`). */
 function topResults(per) {
   const { list, ranks } = rankedResults();
@@ -906,7 +916,7 @@ function saveFound(now = false) {
   const doSave = () => {
     if (!ui.results.size) return;
     const key = taskKey();
-    storage.set(key, { at: Date.now(), algs: topResults(40), proof: ui.proof });
+    storage.set(key, { at: Date.now(), algs: topResults(40), proof: ui.proof, progress: ui.progress ?? null });
     const index = [key, ...(storage.get(FOUND_INDEX) ?? []).filter((k) => k !== key)];
     for (const old of index.splice(12)) storage.remove(old);
     storage.set(FOUND_INDEX, index);
@@ -919,6 +929,7 @@ function loadFound() {
   if (!data?.algs?.length) return false;
   for (const alg of data.algs) { try { ui.results.set(alg, score(alg)); } catch { /* neplatný zápis */ } }
   ui.proof = data.proof ?? 0;
+  ui.progress = data.progress ?? null;
   return ui.results.size > 0;
 }
 
@@ -970,6 +981,9 @@ function startSearch() {
     timeLimit: num('opt-time', 1, 3600) * 1000,
     library: model.kind === 'perm' ? libraryAlgs() : [],
   };
+  // navázání: co už bylo prohledané (jen se stejným hodnocením a AUF – na nich průběh závisí)
+  const sig = progressSig(useAuf);
+  if (seeds.length && ui.progress?.sig === sig) opts.resume = { cleared: ui.progress.cleared, comfortDone: ui.progress.comfortDone };
   searchUi(true);
   $('status').textContent = seeds.length ? `Navazuji na ${seeds.length} dosavadních řešení…` : 'Spouštím…';
   let pending = false;
@@ -1008,6 +1022,7 @@ function startSearch() {
       keepAwake(false);
       ui.proof = Math.max(ui.proof, d.cleared ?? 0);
       ui.speedProof = !!d.speedOptimal;
+      ui.progress = { sig, cleared: ui.proof, comfortDone: d.comfortDone ?? [] };
       const why = {
         done: 'Hotovo', time: 'Vypršel časový limit', results: 'Dosažen max. počet kandidátů',
         'not-found': `Do ${opts.maxLength} ${unit()} nic nenalezeno`,
@@ -1700,11 +1715,13 @@ function generateSet() {
     score,
     join: joinAuf,
     toHeld: (alg) => (alg && ui.hold ? held().toHeldString(alg) : alg),
-    job: (start, target, constraints, timeLimit, { seeds = [], library = [] } = {}) => ({
+    job: (start, target, constraints, timeLimit, { seeds = [], library = [], resume } = {}) => ({
       puzzle: model.id, start, target, constraints, moves: moveSet.engineMoves, ergonomics: ui.ergo,
       held: moveSet.moves, auf: aufMoves ? { pre: aufMoves, post: aufMoves } : null, seeds,
-      options: { lambda, maxLength: num('opt-max', 1, 30), extraDepth: num('opt-extra', 0, 6), maxResults: 2000, timeLimit, library },
+      options: { lambda, maxLength: num('opt-max', 1, 30), extraDepth: num('opt-extra', 0, 6), maxResults: 2000, timeLimit, library, resume },
     }),
+    // na čem závisí výsledky hledání (kromě případu): hlavolam, držení, tahy, hodnocení, AUF
+    signature: JSON.stringify([model.id, ui.hold, moveSet.engineMoves, progressSig(useAuf)]),
     library: libraryAlgs,
     onOpenSet: (id) => onOpenSet(id),
   });

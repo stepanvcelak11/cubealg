@@ -217,8 +217,28 @@ hledání (důkaz nejkratšího), přeřešení úseků a dále
 - **knihovna** – tvoje uložené algoritmy (i zrcadla a inverze) s nastavením
   do 2 tahů a dokončením do 3 tahů.
 
-Kvalitu měří `node bench/quality.mjs [sekund] [filtr] [lib]` na známých PLL, OLL
-a EPBL (porovnání se známými rychlými algoritmy).
+Rychlost a síla odhadu:
+
+- další stav se počítá po skupinách databází a odřízne se hned, jak první (nejsilnější)
+  databáze ukáže, že je moc daleko,
+- **databáze ceny** (Dijkstra s dolními mezemi cen tahů) dávají hledání podle pohodlí
+  dolní mez ceny do cíle – zhruba poloviční počet prohledaných stavů,
+- **velké databáze** (skupiny 5–6 dílků, po 4 bitech) na zařízeních s ≥ 8 GB paměti:
+  použijí se, když už jsou uložené, nebo při hledání aspoň 30 s; úplné hledání je
+  s nimi zhruba 2× rychlejší,
+- workery si rozdělí pohledy pro přeřešení úseků (nedělají totéž).
+
+Hodnocení počítá i **AUF** před a po algoritmu (cena U × „AUF před a po“ v Tahy
+a váhy); do délky se nepočítá.
+
+Paměť: Lab si u zadání pamatuje i to, co už je prohledané (délky bez řešení, délky
+prohledané podle pohodlí), a další hledání na to naváže. Generátor sad si to pamatuje
+u každého případu; případ s dokázaně nejpohodlnějším algoritmem se příště už nehledá.
+
+Měření: `node bench/quality.mjs [sekund] [filtr] [lib] [real]` porovná nalezené
+algoritmy se známými rychlými (PLL, OLL, EPBL); `node bench/speed.mjs` měří rychlost.
+Měření běží na **virtuálních hodinách** (`src/search/clock.js`: čas podle odvedené
+práce, pevné semínko náhody), takže dává při každém spuštění stejný výsledek.
 
 ## Discomfort Score
 

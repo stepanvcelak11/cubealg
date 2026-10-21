@@ -8,6 +8,9 @@ import { scoreFor } from '../src/ergonomics/puzzles.js';
 import { buildTriggers } from '../src/ergonomics/triggers.js';
 import { learnPreferences } from '../src/ergonomics/calibrate.js';
 import { compileGoal } from '../src/core/constraints.js';
+import { clock } from '../src/search/clock.js';
+
+const clockNow = () => clock.now();
 
 const P = getPuzzle('333');
 const movesOf = (bases) => bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
@@ -34,7 +37,7 @@ function run(start, constraints, moves, options) {
   explore({
     P, start, target: P.solved(), constraints, moves, held: moves, auf, config, handlers, tracker, full,
     options: { lambda: 0.5, maxLength: 14, extraDepth: 1, maxResults: 2000, timeLimit: 20000, ...options },
-    scoreOf: (alg) => scoreFor(P, alg, config), onTable: () => {}, t0: Date.now(),
+    scoreOf: (alg) => scoreFor(P, alg, config), onTable: () => {}, t0: clockNow(),
   });
   return { best: tracker.best('speed'), proof: handlers.proof };
 }
@@ -161,4 +164,18 @@ test('AUF se počítá do pohodlí (U2 dráž než U), do délky ne', async () =
   assert.ok(aufCost('U2', null) > aufCost('U', null));
   assert.equal(aufCost('U', "U'"), aufCost("U'", 'U'));
   assert.equal(aufCost('U', null, { aufScale: 0 }), 0);
+});
+
+test('virtuální hodiny: stejné zadání dá stejný výsledek', async () => {
+  const { clock } = await import('../src/search/clock.js');
+  const start = caseOf("R U R' U' R' F R2 U' R' U' R U R' F'");
+  const once = () => {
+    clock.setVirtual(true, 7);
+    const r = run(start, SOLVED, movesOf(['R', 'U', 'F']), { timeLimit: 1500 });
+    clock.setVirtual(false);
+    return r.best && [r.best.pre, r.best.alg, r.best.post].join('|');
+  };
+  const a = once();
+  assert.ok(a);
+  assert.equal(once(), a);
 });
