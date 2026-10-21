@@ -7,6 +7,7 @@ import { EVENTS } from '../timer/events.js';
 import { $, el, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups, methods } from './store.js';
+import { roundsOf } from './compround.js';
 import { eventOptions, timerEvent, timerGroup, groupOptions, pickGroup, timerPractice, practiceSteps, stepOptions, stepSuffix } from './timer.js';
 
 // Období, ze kterého se počítají statistiky (ms zpět, 0 = vše).
@@ -128,6 +129,20 @@ function records(all, result) {
   }));
 }
 
+// Simulovaná soutěžní kola skupiny (nejlepší zvýrazněné).
+function roundList(result) {
+  const list = roundsOf(key());
+  $('s-rounds-panel').hidden = !list.length || result !== 'time';
+  if (!list.length) return;
+  const best = Math.min(...list.map((r) => r.main).filter(Number.isFinite));
+  const name = { ao5: 'Ao5', mo3: 'Mo3', bo3: 'Bo3' };
+  const f = (v) => (v === null || v === undefined ? 'DNF' : formatValue(v, result));
+  $('s-rounds').replaceChildren(...list.slice(0, 15).map((r) => el('li', { className: `round-row${r.main === best ? ' best' : ''}` },
+    el('b', { textContent: r.cut ? 'cutoff' : f(r.main) }),
+    el('small', { textContent: `${name[r.kind] ?? ''} · ${r.values.map(f).join('  ')}` }),
+    el('small', { textContent: dateText(r.d) }))));
+}
+
 // Porovnání s jinou metodou nebo skupinou téže disciplíny (za zvolené období).
 const comboName = (m, g) => {
   const group = groups.get(event, g)?.name ?? 'Hlavní';
@@ -219,6 +234,7 @@ function render() {
   $('s-tiles').replaceChildren(...tiles(summary(list), ev.result));
   chart(list, ev.result);
   records(all, ev.result);
+  roundList(ev.result);
   compare(list, ev.result);
   histogram(list, ev.result);
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });

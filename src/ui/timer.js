@@ -9,6 +9,7 @@ import { Stopwatch } from './stopwatch.js';
 import { renderPreview } from './preview.js';
 import { partsBefore, describeParts } from './parts.js';
 import { showGuide } from './methods.js';
+import { activeRound, recordAttempt, roundPenalty, renderRound, openRoundSetup, initRounds, endRound } from './compround.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
@@ -144,6 +145,7 @@ function updatePreview() {
 }
 
 function render() {
+  renderRound(key());
   const ev = EVENT_BY_ID[settings.event];
   const list = solves.list(key());
   const s = summary(list);
@@ -271,12 +273,21 @@ export function initTimer({ isActive }) {
     insp.blur();
   };
   $('t-new').onclick = () => { newScramble(); $('t-new').blur(); };
+  initRounds({ changed: render, again: () => openRoundSetup(settings.event, key()) });
+  $('t-comp').onclick = () => {
+    $('t-comp').blur();
+    if (activeRound(key())) {
+      if (confirm('Ukončit soutěžní kolo? Dokončené pokusy zůstanou ve složeních.')) endRound();
+      return;
+    }
+    openRoundSetup(settings.event, key());
+  };
 
   stopwatch = new Stopwatch({
     pad: $('t-pad'),
     display: $('t-display'),
     isActive: () => isActiveFn() && EVENT_BY_ID[settings.event].result === 'time',
-    inspection: () => settings.inspection,
+    inspection: () => settings.inspection || !!activeRound(key()),
     voice: () => !!settings.voice,
     onStop: (ms, p) => {
       // Multi-Blind: čas se jen předvyplní, výsledek se doplní ve formuláři
@@ -285,7 +296,10 @@ export function initTimer({ isActive }) {
         $('t-mbf-solved').focus();
         return;
       }
-      solves.add(key(), { t: ms, p, s: current, d: Date.now() });
+      const d = Date.now();
+      const comp = activeRound(key());
+      solves.add(key(), { t: ms, p: comp ? roundPenalty(ms, p) : p, s: current, d });
+      if (comp) recordAttempt(key(), d);
       newScramble();
     },
     onState: (s) => {

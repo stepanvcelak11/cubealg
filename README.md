@@ -43,6 +43,14 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
+- **Simulace soutěže** (tlačítko Soutěž v Timeru): kolo podle pravidel WCA –
+  Average of 5, Mean of 3 (6×6, 7×7) nebo Best of 3 (naslepo), povinná inspekce,
+  volitelný cutoff, časový limit a cíl. Během kola pokusy, po čtvrtém pokusu
+  nejlepší a nejhorší možný průměr (BPA/WPA) a čas potřebný na cíl; na konci
+  výsledek jako na soutěži. Kola se ukládají a jsou vidět ve Statistikách.
+- **Sdílení odkazem:** algoritmus, celou sadu (i s případy) nebo případ z Labu
+  pošleš odkazem – data jsou přímo v něm, bez serveru. Příjemce je přidá do sady
+  nebo případ otevře v Labu.
 - **Trenažér** – vlastní algoritmy uložené z Labu (všechny hlavolamy) v **sadách**
   (např. podle situace nebo metody): trénuje se vybraná sada, náhodný případ
   podle zvládnutí (špatné se vracejí brzy, dobré čím dál vzácněji), nastavovací

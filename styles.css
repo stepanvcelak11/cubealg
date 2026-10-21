@@ -237,7 +237,7 @@ body.timing .last-actions, body.timing .mini-stats, body.timing .trainer-head, b
 body.timing .practice-bar, body.timing .preview { visibility: hidden; }
 
 /* --- Timer ------------------------------------------------------------------------------ */
-@media (max-width: 480px) { #t-inspection span, #s-clear span { display: none; } }
+@media (max-width: 480px) { #t-inspection span, #t-comp span, #s-clear span { display: none; } }
 .step-select { min-height: 34px; font-size: 0.85rem; font-weight: 650; color: var(--accent); background-color: var(--accent-soft); border-color: transparent; }
 .page[data-page="timer"] > .step-select { align-self: center; max-width: min(100%, 420px); }
 .scramble {
@@ -259,8 +259,10 @@ body[data-practice] .scramble::before { content: "Zamíchání pro nácvik kroku
   position: relative; container-type: size;
 }
 .timer-pad > .time, .timer-pad > .timer-hint { flex: none; }
+/* čas se vejde do volného místa (container query: výška plochy stopek) */
+.timer-pad > .time { font-size: clamp(2.4rem, min(23vw, 15vh, 46cqh), 10rem); }
 .time {
-  font-size: clamp(3.6rem, min(23vw, 15vh), 10rem); font-weight: 800; font-variant-numeric: tabular-nums;
+  font-size: clamp(2.4rem, min(23vw, 15vh), 10rem); font-weight: 800; font-variant-numeric: tabular-nums;
   letter-spacing: -0.055em; line-height: 0.95; transition: color 0.1s;
 }
 .time.small { font-size: clamp(2.6rem, 12vw, 4.4rem); }
@@ -850,3 +852,39 @@ textarea.guide-input { resize: vertical; min-height: 80px; line-height: 1.45; }
 .share-list code { font-family: var(--mono); font-size: 0.82rem; }
 .share-actions { justify-content: flex-end; margin-top: 14px; }
 .share-dialog .field select { width: 100%; }
+
+/* --- Simulace soutěže ---------------------------------------------------------------------- */
+.round-panel {
+  flex: none; display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid var(--accent-line); box-shadow: inset 3px 0 0 var(--accent);
+}
+.round-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; }
+.round-head .chip { min-height: 28px; }
+.round-chips { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.round-chip {
+  text-align: center; padding: 6px 2px; border-radius: 10px; background: var(--panel-2); font-weight: 800;
+  font-variant-numeric: tabular-nums; font-size: 0.92rem; white-space: nowrap;
+}
+.round-chip.empty { color: var(--faint); font-weight: 600; }
+.round-chip.next { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+.round-info { font-size: 0.76rem; color: var(--muted); }
+.round-extra { font-size: 0.82rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+body[data-comp] #t-inspection, body[data-comp] .practice-bar { display: none; }
+.round-dialog { width: min(440px, calc(100vw - 32px)); }
+.round-actions { justify-content: flex-end; margin-top: 16px; }
+.round-result { text-align: center; }
+.round-kicker { margin: 0; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.round-big { font-size: 3.6rem; font-weight: 800; letter-spacing: -0.05em; line-height: 1.05; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+.round-big.cut { font-size: 1.8rem; letter-spacing: -0.02em; color: var(--bad); }
+.round-sub { margin: 0 0 6px; color: var(--muted); }
+.round-record { font-weight: 800; color: var(--good); margin: 6px 0; }
+.round-result .round-chips { margin-top: 10px; }
+.round-result .round-actions { justify-content: center; }
+body.timing .round-panel { visibility: hidden; }
+
+.round-list { list-style: none; margin: 0; padding: 0; }
+.round-row { display: grid; grid-template-columns: 5.5em 1fr auto; gap: 8px; align-items: baseline; padding: 8px 2px; border-bottom: 1px solid var(--border); }
+.round-row:last-child { border-bottom: 0; }
+.round-row b { font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+.round-row.best b { color: var(--good); }
+.round-row small { color: var(--muted); font-size: 0.76rem; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

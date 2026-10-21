@@ -58,8 +58,10 @@
         <select id="t-event" aria-label="Disciplína"></select>
         <select id="t-group" class="group-select" aria-label="Skupina"></select>
         <button type="button" id="t-inspection" class="toggle" data-icon="inspect" aria-pressed="false" title="Inspekce 15 s"><span>Inspekce</span></button>
+        <button type="button" id="t-comp" class="toggle" data-icon="flag" aria-pressed="false" title="Simulace soutěžního kola (WCA)"><span>Soutěž</span></button>
         <button type="button" id="t-new" class="icon-btn" data-icon="refresh" title="Nové zamíchání" aria-label="Nové zamíchání"></button>
       </div>
+      <div id="t-round" class="round-panel" aria-live="polite" hidden></div>
       <div id="t-practice" class="practice-bar" hidden>
         <select id="t-step" class="step-select" aria-label="Nácvik kroku metody" hidden></select>
         <button type="button" id="t-step-info" class="practice-info" title="Upravit části metody" hidden></button>
@@ -103,6 +105,10 @@
       <article class="panel" id="s-records-panel">
         <h2>Osobní rekordy</h2>
         <div id="s-records"></div>
+      </article>
+      <article class="panel" id="s-rounds-panel" hidden>
+        <h2>Soutěžní kola</h2>
+        <ol id="s-rounds" class="round-list"></ol>
       </article>
       <article class="panel" id="s-compare-panel">
         <div class="panel-head">

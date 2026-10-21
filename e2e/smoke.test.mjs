@@ -776,3 +776,31 @@ test('sdílení odkazem: sada algoritmů a případ v Labu', async () => {
   assert.deepEqual([...errors, ...b.errors], []);
   await b.ctx.close();
 });
+
+test('simulace soutěže: kolo Ao5 s inspekcí, výsledek a přehled kol', async () => {
+  const { p, ctx, errors } = await open('timer');
+  await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading'), null, { timeout: 15000 });
+  await p.locator('#t-comp').tap();
+  await p.locator('.round-dialog input').last().fill('10');
+  await p.locator('.round-dialog button[value="start"]').tap();
+  await p.waitForFunction(() => !document.querySelector('.round-dialog'));
+  assert.match(await p.locator('#t-round').innerText(), /Average of 5[\s\S]*Pokus 1 z 5/);
+  for (let i = 0; i < 5; i++) {
+    if (i === 4) assert.match(await p.locator('#t-round .round-extra').innerText(), /BPA .* WPA .* cíl 10\.00 máš jistý/);
+    await p.keyboard.down('Space'); await p.keyboard.up('Space');             // inspekce
+    await p.waitForFunction(() => document.querySelector('#t-pad').dataset.state === 'inspecting');
+    await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space'); // start
+    await p.waitForTimeout(150 + i * 40);
+    await p.keyboard.press('KeyA');                                            // stop
+    await p.waitForFunction(() => document.querySelector('#t-pad').dataset.state === 'idle');
+    await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading'), null, { timeout: 15000 });
+  }
+  await p.waitForSelector('.round-result[open]');
+  assert.match(await p.locator('.round-result').innerText(), /Průměr[\s\S]*Nejlepší kolo[\s\S]*Cíl 10\.00 splněn/);
+  await p.locator('.round-result button[value="close"]').tap();
+  assert.equal(await p.locator('#t-round').isVisible(), false);
+  await p.locator('.tabbar [data-tab="stats"]').tap();
+  assert.equal(await p.locator('#s-rounds .round-row').count(), 1);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
