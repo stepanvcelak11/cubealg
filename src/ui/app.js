@@ -19,9 +19,13 @@ function updateLock() {
   document.querySelector('[data-page="lab"]').classList.toggle('fixed', page === 'lab' && labFixed());
 }
 
+const TITLES = { timer: 'Timer', stats: 'Statistiky', trainer: 'Trenažér', lab: 'Lab' };
+
 function showPage(name) {
   page = name;
   storage.set('ergocube.page', name);
+  document.body.dataset.view = name;
+  document.getElementById('page-title').textContent = TITLES[name] ?? '';
   for (const p of document.querySelectorAll('.page')) p.hidden = p.dataset.page !== name;
   for (const b of document.querySelectorAll('.tabbar button')) {
     b.classList.toggle('active', b.dataset.tab === name);

@@ -33,8 +33,20 @@ async function open(page = 'timer', storage = {}) {
   return { p, ctx, errors };
 }
 
+/** Na úzkém displeji se upravuje jedna strana zadání – přepne na ni. */
+async function showSide(p, side) {
+  if (await p.locator('#side-switch').isVisible()) await p.locator(`#side-switch [data-side="${side.toUpperCase()}"]`).tap();
+}
+
+/** Výběr barvy na paletě strany a/b. */
+async function paintColor(p, side, title) {
+  await showSide(p, side);
+  await p.locator(`#palette-${side} [title="${title}"]`).tap();
+}
+
 /** Klepnutí na nálepku 3D kostky (pozice podle indexu nálepky). */
 async function tapSticker(p, cube, pos) {
+  if (cube === 'cube-a' || cube === 'cube-b') await showSide(p, cube.slice(-1));
   const bb = await p.locator(`#${cube} [data-pos="${pos}"]`).boundingBox();
   await p.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2);
 }
@@ -79,21 +91,21 @@ test('nastavení: záloha jde stáhnout', async () => {
 
 test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async () => {
   const { p, ctx, errors } = await open('lab');
-  await p.locator('#palette-b [title="Bílá"]').tap();
+  await paintColor(p, 'b', 'Bílá');
   await tapSticker(p, 'cube-b', 8);
-  await p.locator('#palette-b [title="Zelená"]').tap();
+  await paintColor(p, 'b', 'Zelená');
   await tapSticker(p, 'cube-b', 20);
   // obarví se jen klepnuté nálepky (bez chytrého vybarvování se nic nedoplní)
   assert.doesNotMatch(await p.locator('#task-status').innerText(), /URF/);
-  await p.locator('#palette-b [title="Červená"]').tap();
+  await paintColor(p, 'b', 'Červená');
   await tapSticker(p, 'cube-b', 9);
   assert.match(await p.locator('#task-status').innerText(), /URF/);
   // výchozí: roh natočený (U červená, R zelená, F bílá)
-  await p.locator('#palette-a [title="Červená"]').tap();
+  await paintColor(p, 'a', 'Červená');
   await tapSticker(p, 'cube-a', 8);
-  await p.locator('#palette-a [title="Zelená"]').tap();
+  await paintColor(p, 'a', 'Zelená');
   await tapSticker(p, 'cube-a', 9);
-  await p.locator('#palette-a [title="Bílá"]').tap();
+  await paintColor(p, 'a', 'Bílá');
   await tapSticker(p, 'cube-a', 20);
   await p.locator('#go-search').tap();
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
@@ -296,6 +308,8 @@ test('držení kostky: po otočení pohledu se algoritmy píšou podle něj a ř
   assert.match(note, /nahoře/);
   assert.doesNotMatch(note, /bílá nahoře, zelená vpředu/);
   // hledání v držení: řešení zapsané podle držení musí v přehrávači splnit zadání
+  // (bez AUF – „horní vrstva“ držení může případ vyřešit sama, podle toho, kam se kostka otočila)
+  await p.evaluate(() => { document.querySelector('#opt-auf').checked = false; });
   await p.locator('#go-search').tap();
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 })
     .catch(async (e) => { throw new Error(`${e.message}: ${await p.locator('#status').innerText()}`); });
@@ -643,9 +657,9 @@ test('lab: šipky – prohození dvou hran potřebuje volné rohy (parita)', asy
 test('lab: styl jen jedné nálepky a střed vždy plně', async () => {
   const { p, ctx, errors } = await open('lab');
   // hrana UF v cíli plně, pak jen přední nálepka tečkovaně
-  await p.locator('#palette-b [title="Bílá"]').tap();
+  await paintColor(p, 'b', 'Bílá');
   await tapSticker(p, 'cube-b', 7);
-  await p.locator('#palette-b [title="Zelená"]').tap();
+  await paintColor(p, 'b', 'Zelená');
   await tapSticker(p, 'cube-b', 19);
   await p.locator('#styles button', { hasText: 'Tečkovaná' }).tap();
   await tapSticker(p, 'cube-b', 19);
@@ -660,17 +674,17 @@ test('lab: styl jen jedné nálepky a střed vždy plně', async () => {
 
 test('lab: úprava nalezeného algoritmu klepáním a přidání do výsledků', async () => {
   const { p, ctx, errors } = await open('lab');
-  await p.locator('#palette-b [title="Bílá"]').tap();
+  await paintColor(p, 'b', 'Bílá');
   await tapSticker(p, 'cube-b', 8);
-  await p.locator('#palette-b [title="Zelená"]').tap();
+  await paintColor(p, 'b', 'Zelená');
   await tapSticker(p, 'cube-b', 20);
-  await p.locator('#palette-b [title="Červená"]').tap();
+  await paintColor(p, 'b', 'Červená');
   await tapSticker(p, 'cube-b', 9);
-  await p.locator('#palette-a [title="Červená"]').tap();
+  await paintColor(p, 'a', 'Červená');
   await tapSticker(p, 'cube-a', 8);
-  await p.locator('#palette-a [title="Zelená"]').tap();
+  await paintColor(p, 'a', 'Zelená');
   await tapSticker(p, 'cube-a', 9);
-  await p.locator('#palette-a [title="Bílá"]').tap();
+  await paintColor(p, 'a', 'Bílá');
   await tapSticker(p, 'cube-a', 20);
   await p.evaluate(() => { document.querySelector('#opt-time').value = '3'; });
   await p.locator('#go-search').tap();

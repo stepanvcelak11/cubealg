@@ -74,6 +74,7 @@ const ui = {
   ergo: null,
   hold: '',         // držení kostky (core/hold.js): algoritmy jsou psané podle natočení
   sub: 'task',
+  side: 'A',        // upravovaná strana zadání na úzkém displeji (A = start, B = cíl)
 };
 const triggers = buildTriggers();
 const client = new SearchClient();
@@ -535,8 +536,16 @@ function setMode(mode) {
   renderMode();
 }
 
+/** Úzký displej: upravuje se jedna strana zadání (velká kostka), přepínač Start / Cíl. */
+function setSide(side) {
+  ui.side = side;
+  document.querySelector('.cubes').dataset.side = side;
+  for (const b of $('side-switch').querySelectorAll('button')) b.classList.toggle('active', b.dataset.side === side);
+}
+
 function renderMode() {
   const arrows = ui.mode === 'arrows';
+  $('side-switch').hidden = arrows;
   $('task-mode').hidden = !arrowsAllowed();
   for (const b of $('task-mode').querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === ui.mode);
   $('arrows-panel').hidden = !arrows;
@@ -1243,6 +1252,8 @@ function choose(alg, scroll) {
   if (scroll && window.matchMedia('(max-width: 760px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+const narrow = () => window.matchMedia('(max-width: 759px)').matches;
+
 function playerSteps() {
   try { return ui.chosen ? model.steps(ui.chosen) : []; } catch { return null; }
 }
@@ -1321,7 +1332,7 @@ function renderPlayer() {
       }) : null),
     el('div', {}, el('span', { className: 'score-big', textContent: s.total.toFixed(1) }), el('span', { className: 'hint', textContent: '  nepohodlnost (nižší = lepší)' })),
     styleNote(algText, s),
-    el('table', { className: 'breakdown' },
+    el('details', { className: 'breakdown-box', open: !narrow() }, el('summary', { textContent: 'Rozpis nepohodlnosti' }), el('table', { className: 'breakdown' },
       row('#7d8fb3', model.kind === 'sq1' ? 'Řezy a otočení' : 'Váha tahů', b.moves.toFixed(2)),
       cube ? row('var(--bad)', 'Rotace', b.rotations.toFixed(2)) : null,
       cube ? row('var(--warn)', 'Přehmaty zápěstí', b.regrips.toFixed(2)) : null,
@@ -1330,7 +1341,7 @@ function renderPlayer() {
       cube ? row('var(--good)', `Triggery${s.triggers.length ? ` (${s.triggers.map((t) => t.name).join(', ')})` : ''}`, b.triggerBonus.toFixed(2)) : null,
       model.kind === 'sq1'
         ? row(null, 'Řezů / tahů celkem', `${s.metrics.htm} / ${s.metrics.qtm}`)
-        : row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`)),
+        : row(null, 'HTM / QTM / STM', `${s.metrics.htm} / ${s.metrics.qtm} / ${s.metrics.stm}`))),
   ].filter(Boolean));
 }
 
@@ -1497,6 +1508,8 @@ export function initLab({ onSub } = {}) {
   };
   $('help').onclick = () => $('help-dialog').showModal();
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
+  for (const b of $('side-switch').querySelectorAll('button')) b.onclick = () => setSide(b.dataset.side);
+  setSide(ui.side);
   $('arrow-all').onclick = () => { snapshot(); ui.restDefault = ui.arrowTool; ui.restStyle = {}; applyArrows(); };
   $('flat').onclick = () => {
     flat = !flat;

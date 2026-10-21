@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="description" content="Speedcubing timer, statistiky, trenažér algoritmů a generátor ergonomických algoritmů">
-  <meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0c0f14" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)">
   <title>ErgoCube Lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' rx='.3' fill='%23222'/%3E%3Crect x='.1' y='.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='1.1' y='.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3Crect x='2.1' y='.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='.1' y='1.1' width='.8' height='.8' rx='.12' fill='%232563d9'/%3E%3Crect x='1.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23fff'/%3E%3Crect x='2.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23f08a1c'/%3E%3Crect x='.1' y='2.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='1.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='2.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
@@ -15,7 +15,7 @@
 </head>
 <body>
   <header class="topbar">
-    <h1><span class="logo" aria-hidden="true"></span><span>ErgoCube <span class="brand-lab">Lab</span></span></h1>
+    <h1><span class="logo" aria-hidden="true"></span><span class="brand">ErgoCube <span class="brand-lab">Lab</span></span><span class="page-title" id="page-title">Timer</span></h1>
     <label class="method-pick" title="Metoda – složení i algoritmy se ukládají k ní">
       <span class="method-label">Metoda</span>
       <select id="method" aria-label="Metoda skládání"></select>
@@ -165,18 +165,24 @@
     <section class="page" data-page="lab" hidden>
       <div class="lab-head">
         <select id="lab-puzzle" aria-label="Hlavolam"></select>
-        <nav class="segmented" aria-label="Lab">
-          <button type="button" data-sub="task" class="active" data-icon="task" data-icon-size="18"><span>Zadání</span></button>
-          <button type="button" data-sub="moves" data-icon="sliders" data-icon-size="18"><span class="long-label">Tahy a váhy</span><span class="short-label">Tahy</span></button>
-          <button type="button" data-sub="results" data-icon="list" data-icon-size="18"><span>Řešení <b id="results-count" class="count" hidden></b></span></button>
+        <nav class="segmented steps" aria-label="Lab">
+          <button type="button" data-sub="task" class="active"><i class="step-n">1</i><span>Zadání</span></button>
+          <button type="button" data-sub="moves"><i class="step-n">2</i><span class="long-label">Tahy a váhy</span><span class="short-label">Tahy</span></button>
+          <button type="button" data-sub="results"><i class="step-n">3</i><span>Řešení <b id="results-count" class="count" hidden></b></span></button>
         </nav>
       </div>
 
       <!-- Zadání -->
       <div class="sub fixed-sub" data-sub="task">
-        <div class="segmented task-mode" id="task-mode" role="group" aria-label="Způsob zadání">
-          <button type="button" data-mode="colors" class="active">Barvy</button>
-          <button type="button" data-mode="arrows">Šipky – přesuny dílků</button>
+        <div class="task-bar">
+          <div class="segmented side-switch" id="side-switch" role="group" aria-label="Upravovaná strana">
+            <button type="button" data-side="A" class="active"><i class="side-dot a"></i>Start</button>
+            <button type="button" data-side="B"><i class="side-dot b"></i>Cíl</button>
+          </div>
+          <div class="segmented task-mode" id="task-mode" role="group" aria-label="Způsob zadání">
+            <button type="button" data-mode="colors" class="active" title="Zadání barvami">Barvy</button>
+            <button type="button" data-mode="arrows" title="Zadání šipkami – přesuny dílků">Šipky</button>
+          </div>
         </div>
         <article class="panel arrows-panel" id="arrows-panel" hidden>
           <p class="hint">Nástrojem <b>Šipka</b> klepni na dílek a pak na místo, kam se má přesunout – na barvách nezáleží. Ostatními nástroji klepáním na dílky bez šipky zvolíš, co pro ně musí platit (samotné prohození dvou dílků kostka neumí, nějaké další se musí pohnout). Šipku smažeš křížkem v seznamu.</p>
@@ -336,6 +342,7 @@
   </main>
 
   <nav class="tabbar" aria-label="Sekce">
+    <div class="rail-brand" aria-hidden="true"><span class="logo"></span><span>ErgoCube <span class="brand-lab">Lab</span></span></div>
     <button type="button" data-tab="timer" class="active" data-icon="timer"><span>Timer</span></button>
     <button type="button" data-tab="stats" data-icon="stats"><span>Statistiky</span></button>
     <button type="button" data-tab="trainer" data-icon="trainer"><span>Trenažér</span></button>

@@ -68,7 +68,7 @@ export class Cube3D {
     const w = this.scene.clientWidth || 240;
     const h = this.fill ? this.container.clientHeight : Infinity;
     if (this.fill && !h) return;
-    this.size = Math.max(16, Math.min(64, Math.floor(Math.min(w / 4.3, h / 5))));
+    this.size = Math.max(16, Math.min(72, Math.floor(Math.min(w / 4, h / 4.5))));
     this.scene.style.height = this.fill ? '100%' : `${Math.round(this.size * 4.6)}px`;
     this.cube.style.setProperty('--s', `${this.size * this.scale}px`);
     this.stickers.forEach((s, i) => { s.style.transform = this.baseTransform(i); });
