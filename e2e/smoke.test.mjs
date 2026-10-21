@@ -744,3 +744,35 @@ test('trenažér: úprava uloženého algoritmu – smazání úvodního U posun
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('sdílení odkazem: sada algoritmů a případ v Labu', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  const [algsUrl, taskUrl] = await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { shareUrl, algsPayload, packTask } = await import('./src/ui/share.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    const task = (alg) => ({ puzzle: '333', constraints, colorsA: m.applyMoves(home, m.invertAlg(alg)), colorsB: home });
+    const list = [['Sune', "R U R' U R U2 R'"], ['T-perm', "R U R' U' R' F R2 U' R' U' R U R' F'"]].map(([name, alg]) => ({ name, alg, task: task(alg) }));
+    return [await shareUrl(algsPayload(list, 'Moje OLL')), await shareUrl({ v: 1, kind: 'task', task: packTask(task("R U R' U'")) })];
+  });
+  assert.ok(algsUrl.length < 1200, `odkaz je krátký (${algsUrl.length})`);
+  await ctx.close();
+  // příjemce: jiný prohlížeč bez dat
+  const b = await open('timer');
+  await b.p.goto(algsUrl);
+  await b.p.waitForSelector('.share-dialog[open]');
+  assert.match(await b.p.locator('.share-dialog').innerText(), /Moje OLL[\s\S]*Sune[\s\S]*T-perm/);
+  await b.p.locator('.share-dialog button[value="add"]').tap();
+  await b.p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden);
+  const got = await b.p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.name));
+  assert.deepEqual(got, ['Sune', 'T-perm']);
+  assert.match(await b.p.locator('#tr-set option:checked').innerText(), /Moje OLL/);
+  // případ: otevře se v Labu
+  await b.p.goto(taskUrl);
+  await b.p.waitForFunction(() => !document.querySelector('[data-page="lab"]').hidden);
+  assert.match(await b.p.locator('#task-status').innerText(), /✓ 20 dílků/);
+  assert.deepEqual([...errors, ...b.errors], []);
+  await b.ctx.close();
+});

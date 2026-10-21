@@ -28,6 +28,7 @@ import { NetView } from './netview.js';
 import { STYLE_OF } from './cubeview.js';
 import { labModel } from './models.js';
 import { holdList, holdFor } from './holds.js';
+import { sendLink, algsPayload, packTask, toast } from './share.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -1324,6 +1325,10 @@ function renderPlayer() {
       model.kind === 'perm' ? Object.assign(el('button', { type: 'button', className: `secondary small${editing ? ' on' : ''}`, textContent: editing ? '✓ Hotovo' : '✎ Upravit' }), {
         onclick: () => { ui.editing = !editing; ui.editSel = -1; renderPlayer(); },
       }) : null,
+      Object.assign(el('button', { type: 'button', className: 'secondary small', title: 'Poslat algoritmus i s případem odkazem' }), {
+        innerHTML: `${icon('share', { size: 15 })}<span>Sdílet</span>`,
+        onclick: () => sendLink(algsPayload([{ name: 'Algoritmus z Labu', alg: algText, task: { ...taskSnapshot(), puzzle: model.id } }]), 'Algoritmus z ErgoCube Lab'),
+      }),
       exact && !known ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '+ Přidat do výsledků', title: 'Upravený algoritmus se zařadí mezi nalezená řešení (a uloží se s nimi)' }), {
         onclick: () => { ui.results.set(algText, score(algText)); saveFound(true); choose(algText, false); },
       }) : null,
@@ -1507,6 +1512,7 @@ export function initLab({ onSub } = {}) {
     if (ui.mode === 'arrows') applyArrows(); else taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
+  $('share-task').onclick = shareTask;
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
   for (const b of $('side-switch').querySelectorAll('button')) b.onclick = () => setSide(b.dataset.side);
   setSide(ui.side);
@@ -1611,6 +1617,32 @@ export function initLab({ onSub } = {}) {
 /** Současné zadání Labu (pro obrázek kroku v průvodci metodou). */
 export function labTask() {
   return { ...taskSnapshot(), puzzle: model.id, ...(ui.chosen ? { alg: ui.chosen } : {}) };
+}
+
+/** Otevře sdílený případ (zadání) v Labu; předchozí zadání jde vrátit tlačítkem Zpět. */
+export function openTask(task) {
+  const id = PUZZLES.some((p) => p.id === task.puzzle) ? task.puzzle : '333';
+  if (id !== model.id) selectPuzzle(id);
+  snapshot();
+  if (ui.mode === 'arrows') { ui.mode = 'colors'; ui.colorBackup = null; }
+  ui.A = model.deserialize(task.colorsA) ?? ui.A;
+  ui.B = model.deserialize(task.colorsB) ?? ui.B;
+  ui.constraints = { ...Object.fromEntries(model.pieceNames.map((n) => [n, 'ignore'])), ...(task.constraints ?? {}) };
+  ui.marks = { ...(task.marks ?? {}) };
+  ui.memory = {};
+  ui.autoA = new Set();
+  if (model.kind === 'sq1' && task.shape !== undefined) ui.sq1 = { ...ui.sq1, shape: task.shape };
+  setHold(holdList(model).some((h) => h.id === task.hold) ? task.hold : '');
+  renderMode();
+  taskChanged();
+  showSub('task');
+}
+
+/** Sdílet současné zadání odkazem. */
+function shareTask() {
+  const info = taskInfo();
+  if (!info.loc) { toast('Zadání ještě není kompletní'); return; }
+  sendLink({ v: 1, kind: 'task', task: packTask({ ...taskSnapshot(), puzzle: model.id }) }, 'Případ z ErgoCube Lab');
 }
 
 export function showLab() {

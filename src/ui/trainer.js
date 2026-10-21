@@ -12,6 +12,7 @@ import { NetView } from './netview.js';
 import { labModel } from './models.js';
 import { randomInt } from '../timer/scramble.js';
 import { retarget, stripU } from './algedit.js';
+import { sendLink, algsPayload } from './share.js';
 import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
 
 // Trénovaná sada ('all' = všechny).
@@ -145,6 +146,10 @@ function renderList() {
       label: 'Upravit algoritmus',
       onClick: () => { editing = editing === a.id ? null : a.id; renderList(); },
     });
+    const share = iconButton(icon('share', { size: 18 }), {
+      label: 'Sdílet odkazem',
+      onClick: () => sendLink(algsPayload([a]), a.name),
+    });
     const del = iconButton(icon('trash', { size: 18 }), {
       label: 'Smazat',
       onClick: () => { if (confirm(`Smazat „${a.name}“?`)) { algs.remove(a.id); if (currentId === a.id) next(); } },
@@ -163,7 +168,7 @@ function renderList() {
             el('b', { className: `mastery ${mastery(a)}`, textContent: MASTERY[mastery(a)] })),
           move),
         editing === a.id ? editor(a) : null),
-      el('div', { className: 'alg-actions' }, train, edit, del));
+      el('div', { className: 'alg-actions' }, train, edit, share, del));
   }));
   if (!list.length) $('tr-list').replaceChildren(el('li', { className: 'hint', textContent: 'Žádné uložené algoritmy.' }));
 }
@@ -247,6 +252,12 @@ export function initTrainer({ isActive }) {
     const all = inTraining().every((a) => a.enabled);
     for (const a of inTraining()) a.enabled = !all;
     algs.save();
+  };
+  $('tr-share').onclick = () => {
+    const list = inTraining();
+    if (!list.length) return;
+    const name = trainSet === 'all' ? methods.get(methods.active()).name : algSets.get(trainSet).name;
+    sendLink(algsPayload(list, name), `Sada ${name}`);
   };
   $('tr-set').onchange = () => {
     trainSet = pickSet($('tr-set'), trainSet);

@@ -8,6 +8,10 @@ import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
 import { initLab, showLab, labTask, labFixed } from './lab.js';
 import { initSettings } from './settings.js';
 import { initMethods } from './methods.js';
+import { takeShared, unpackTask, toast } from './share.js';
+import { algs, algSets } from './store.js';
+import { openTask } from './lab.js';
+import { el } from './dom.js';
 
 let page = storage.get('ergocube.page') ?? 'timer';
 
@@ -53,6 +57,45 @@ initTrainer({ isActive: () => page === 'trainer' });
 initLab({ onSub: () => updateLock() });
 initSettings();
 showPage(page);
+
+// --- Sdílený odkaz (#s=…): přidat algoritmy do sady, nebo otevřít případ v Labu ---------
+async function receiveShared() {
+  const data = await takeShared();
+  if (!data) return;
+  if (data.kind === 'task' && data.task) {
+    openTask(unpackTask(data.task));
+    showPage('lab');
+    toast('Sdílený případ je otevřený v Labu (Zpět vrátí původní zadání)');
+    return;
+  }
+  if (data.kind !== 'algs' || !Array.isArray(data.algs) || !data.algs.length) return;
+  const list = data.algs.filter((a) => a && typeof a.alg === 'string' && a.task);
+  const NEW = '__new__';
+  const target = el('select', { ariaLabel: 'Sada' },
+    el('option', { value: NEW, textContent: `Nová sada „${data.name ?? 'Sdílené'}“` }),
+    ...algSets.list().map((s) => el('option', { value: s.id, textContent: s.name })));
+  const add = el('button', { className: 'primary', value: 'add', textContent: `Přidat ${list.length}` });
+  const dlg = el('dialog', { className: 'help-dialog share-dialog' },
+    el('h2', { textContent: list.length === 1 ? 'Sdílený algoritmus' : `Sdílená sada${data.name ? ` „${data.name}“` : ''}` }),
+    el('ul', { className: 'share-list' }, ...list.slice(0, 8).map((a) => el('li', {}, el('b', { textContent: a.name ?? 'Algoritmus' }), el('code', { textContent: a.alg }))),
+      ...(list.length > 8 ? [el('li', { className: 'hint', textContent: `… a dalších ${list.length - 8}` })] : [])),
+    el('label', { className: 'field' }, 'Přidat do sady', target),
+    el('form', { method: 'dialog', className: 'row-btns share-actions' }, el('button', { className: 'secondary', value: 'cancel', textContent: 'Zrušit' }), add));
+  document.body.append(dlg);
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue === 'add') {
+      const set = target.value === NEW ? algSets.add(data.name ?? 'Sdílené') : target.value;
+      for (const a of list) algs.add({ alg: a.alg, task: unpackTask(a.task), name: a.name, set });
+      trainSetTo(set);
+      showPage('trainer');
+      toast(`Přidáno ${list.length} ${list.length === 1 ? 'algoritmus' : list.length < 5 ? 'algoritmy' : 'algoritmů'}`);
+    }
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+receiveShared();
+window.addEventListener('hashchange', receiveShared);
 
 // Offline režim (jen přes http/https, ne z file://).
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
