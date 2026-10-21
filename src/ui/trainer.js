@@ -265,7 +265,7 @@ function renderBulk(list) {
         for (const a of picked) algs.add({ alg: a.alg, task: structuredClone(a.task), name: a.name, set: target.value });
         toast(`${n}× zkopírováno do „${setName()}“`);
       }, 'Přidá kopie do vybrané sady (originály zůstanou)'),
-      btn('Přesunout', 'secondary', () => {
+      btn('Přesunout', 'secondary move', () => {
         const name = setName();
         for (const a of picked) a.set = target.value;
         selected.clear();

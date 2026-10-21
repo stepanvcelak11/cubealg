@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="description" content="Speedcubing timer, statistiky, trenažér algoritmů a generátor ergonomických algoritmů">
-  <meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e0f15" media="(prefers-color-scheme: dark)">
   <title>ErgoCube Lab</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 3 3'%3E%3Crect width='3' height='3' rx='.3' fill='%23222'/%3E%3Crect x='.1' y='.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='1.1' y='.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3Crect x='2.1' y='.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='.1' y='1.1' width='.8' height='.8' rx='.12' fill='%232563d9'/%3E%3Crect x='1.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23fff'/%3E%3Crect x='2.1' y='1.1' width='.8' height='.8' rx='.12' fill='%23f08a1c'/%3E%3Crect x='.1' y='2.1' width='.8' height='.8' rx='.12' fill='%231f9d4c'/%3E%3Crect x='1.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23f5d20b'/%3E%3Crect x='2.1' y='2.1' width='.8' height='.8' rx='.12' fill='%23d62d2d'/%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
@@ -15,7 +15,10 @@
 </head>
 <body>
   <header class="topbar">
-    <h1><span class="logo" aria-hidden="true"></span><span class="brand">ErgoCube <span class="brand-lab">Lab</span></span><span class="page-title" id="page-title">Timer</span></h1>
+    <div class="topbar-title">
+      <span class="kicker"><span class="logo" aria-hidden="true"></span>ErgoCube Lab</span>
+      <h1 class="page-title" id="page-title">Timer</h1>
+    </div>
     <label class="method-pick" title="Metoda – složení i algoritmy se ukládají k ní">
       <span class="method-label">Metoda</span>
       <select id="method" aria-label="Metoda skládání"></select>
@@ -360,10 +363,10 @@
 
   <nav class="tabbar" aria-label="Sekce">
     <div class="rail-brand" aria-hidden="true"><span class="logo"></span><span>ErgoCube <span class="brand-lab">Lab</span></span></div>
-    <button type="button" data-tab="timer" class="active" data-icon="timer"><span>Timer</span></button>
-    <button type="button" data-tab="stats" data-icon="stats"><span>Statistiky</span></button>
-    <button type="button" data-tab="trainer" data-icon="trainer"><span>Trenažér</span></button>
-    <button type="button" data-tab="lab" data-icon="lab"><span>Lab</span></button>
+    <button type="button" data-tab="timer" aria-label="Timer" class="active" data-icon="timer"><span>Timer</span></button>
+    <button type="button" data-tab="stats" aria-label="Statistiky" data-icon="stats"><span>Statistiky</span></button>
+    <button type="button" data-tab="trainer" aria-label="Trenažér" data-icon="trainer"><span>Trenažér</span></button>
+    <button type="button" data-tab="lab" aria-label="Lab" data-icon="lab"><span>Lab</span></button>
   </nav>
 
   <script type="module" src="src/ui/app.js"></script>

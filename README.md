@@ -14,6 +14,10 @@ npm test    # node --test
 npm run e2e # testy v prohlížeči (potřebují playwright a Chromium)
 ```
 
+Vzhled („Sticker“) je celý ve `styles.css`: barvy jako proměnné na `:root` (světlý i tmavý
+režim), písma Bricolage Grotesque (nadpisy, časy), Manrope (text) a JetBrains Mono (algoritmy)
+jsou přibalená ve `fonts/`, takže fungují i offline.
+
 ## Jak se používá
 
 Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zálohu dat.
