@@ -29,6 +29,7 @@ import { STYLE_OF } from './cubeview.js';
 import { labModel } from './models.js';
 import { holdList, holdFor } from './holds.js';
 import { sendLink, algsPayload, packTask, toast } from './share.js';
+import { openGenerator } from './generator.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -1471,8 +1472,11 @@ function selectPuzzle(id) {
 
 // --- Inicializace -----------------------------------------------------------------------
 
-export function initLab({ onSub } = {}) {
+let onOpenSet = () => {};
+
+export function initLab({ onSub, openSet } = {}) {
   onSubChange = onSub ?? onSubChange;
+  onOpenSet = openSet ?? onOpenSet;
   $('lab-puzzle').replaceChildren(...PUZZLES.map((p) => el('option', { value: p.id, textContent: p.name })));
   $('lab-puzzle').onchange = () => { selectPuzzle($('lab-puzzle').value); $('lab-puzzle').blur(); };
 
@@ -1513,6 +1517,7 @@ export function initLab({ onSub } = {}) {
   };
   $('help').onclick = () => $('help-dialog').showModal();
   $('share-task').onclick = shareTask;
+  $('gen-set').onclick = generateSet;
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
   for (const b of $('side-switch').querySelectorAll('button')) b.onclick = () => setSide(b.dataset.side);
   setSide(ui.side);
@@ -1636,6 +1641,31 @@ export function openTask(task) {
   renderMode();
   taskChanged();
   showSub('task');
+}
+
+/** Generátor sady pro krok metody (všechny případy zadání). */
+function generateSet() {
+  if (model.kind !== 'perm') { toast('Generátor sady zatím umí jen kostky, Pyraminx a Skewb (ne Square-1)'); return; }
+  if (ui.mode === 'arrows') { toast('Generátor sady pracuje se zadáním barvami'); return; }
+  const moveSet = currentMoveSet();
+  if (!moveSet.moves.length) { toast('Nejsou povolené žádné tahy (Tahy a váhy)'); return; }
+  const useAuf = aufAllowed() && $('opt-auf').checked;
+  const aufMoves = useAuf ? toModelSteps([1, -1, 2].map((amount) => ({ base: 'U', amount }))) : null;
+  openGenerator({
+    model,
+    cube: P().ergonomics === 'cube',
+    task: { ...taskSnapshot(), puzzle: model.id },
+    lambda,
+    score,
+    join: joinAuf,
+    toHeld: (alg) => (alg && ui.hold ? held().toHeldString(alg) : alg),
+    job: (start, target, constraints, timeLimit) => ({
+      puzzle: model.id, start, target, constraints, moves: moveSet.engineMoves, ergonomics: ui.ergo,
+      held: moveSet.moves, auf: aufMoves ? { pre: aufMoves, post: aufMoves } : null,
+      options: { lambda, maxLength: num('opt-max', 1, 30), extraDepth: num('opt-extra', 0, 6), maxResults: 2000, timeLimit },
+    }),
+    onOpenSet: (id) => onOpenSet(id),
+  });
 }
 
 /** Sdílet současné zadání odkazem. */

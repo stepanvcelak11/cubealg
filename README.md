@@ -81,6 +81,16 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     paritu). **Částečně vybarvený dílek** (jen některé barvy) znamená
     „tahle barva má být tady“ – zachová se orientace barvy bez ohledu na to, který
     dílek to je (např. OLL: jen žluté nálepky nahoře).
+  - **Generátor sady pro krok metody** (tlačítko se seznamem v Zadání): krok popíšeš
+    jako zadání – Start = co je hotové před krokem (nevybarvené = cokoli, dílek jen
+    s částí barev = „tahle barva tady“), Cíl = co má být po kroku, tahy z „Tahy a
+    váhy“. Aplikace projde všechny dosažitelné stavy, které Startu odpovídají,
+    sloučí ty, které řeší stejný algoritmus (podle toho, na čem cíli záleží;
+    natočení U před a po algoritmu; volitelně otočení celé kostky y a z2),
+    ukáže případy s obrázky, pro vybrané najde algoritmy, ověří každý na všech
+    stavech případu a uloží je jako novou sadu do trenažéru. Ověřeno na známých
+    sadách: OLL 57, PLL 21, CMLL 42, OLL 2×2 7, ZBLL+PLL 493, ELL 29 (testy).
+    Volitelně „bílá a žlutá zaměnitelné“ na Startu (barevně neutrální metody).
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
     Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým

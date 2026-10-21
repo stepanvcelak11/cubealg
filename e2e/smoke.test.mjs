@@ -838,3 +838,40 @@ test('trenažér: rozpoznání případu – výběr z možností, správně/šp
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('generátor sady: EPBL – 29 případů, algoritmy ⟨M, U, D⟩ ověřené na všech stavech', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const P = m.P;
+    const ud = P.slots.filter((s) => s.facelets.length === 2 && /[UD]/.test(s.name)).map((s) => s.name);
+    const A = m.home(P.slots.filter((s) => !ud.includes(s.name)).map((s) => s.name));
+    for (const n of ud) for (const f of P.slotByName(n).facelets) if (P.stickerFace[f] === 'U' || P.stickerFace[f] === 'D') A[f] = P.stickerFace[f];
+    localStorage.setItem('ergocube.v3', JSON.stringify({
+      constraints: Object.fromEntries(m.pieceNames.map((n) => [n, 'solved'])), colorsA: A, colorsB: m.home(m.pieceNames), bases: ['M', 'U', 'D'],
+    }));
+    localStorage.setItem('ergocube.lab.generator', JSON.stringify({ auf: true, y: true, z2: true, wy: false, name: 'EPBL', time: 3, view: 'balanced' }));
+  });
+  await p.reload();
+  await p.locator('#gen-set').tap();
+  await p.locator('.gen-dialog button', { hasText: 'Spočítat případy' }).tap();
+  await p.waitForFunction(() => /případů/.test(document.querySelector('.gen-status').textContent));
+  assert.match(await p.locator('.gen-status').innerText(), /288 stavů → 29 případů/);
+  assert.equal(await p.locator('.gen-card').count(), 29);
+  // jen první tři případy
+  const boxes = p.locator('.gen-card input');
+  for (let i = 3; i < 29; i++) await boxes.nth(i).uncheck();
+  await p.locator('.gen-dialog button', { hasText: 'Generovat' }).tap();
+  await p.waitForFunction(() => /Hotovo/.test(document.querySelector('.gen-status').textContent), null, { timeout: 90000 });
+  const outs = await p.locator('.gen-card .gen-out').allInnerTexts();
+  assert.equal(outs.slice(0, 3).filter((t) => /✓ ověřeno/.test(t)).length, 3, outs.slice(0, 3).join(' | '));
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.alg));
+  assert.equal(saved.length, 3);
+  assert.ok(saved.every((a) => /^[MUD2' ()]+$/.test(a)), saved.join(' | '));
+  await p.locator('.gen-dialog button', { hasText: 'Otevřít sadu' }).tap();
+  await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden);
+  assert.match(await p.locator('#tr-set option:checked').innerText(), /EPBL/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

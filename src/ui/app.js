@@ -54,7 +54,7 @@ initMethods({
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });
-initLab({ onSub: () => updateLock() });
+initLab({ onSub: () => updateLock(), openSet: (id) => { trainSetTo(id); showPage('trainer'); } });
 initSettings();
 showPage(page);
 
