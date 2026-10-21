@@ -874,9 +874,10 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ov�
   const choices = p.locator('.gen-card').first().locator('.gen-choice');
   assert.ok(await choices.count() > 1);
   await choices.nth(1).tap();
-  const other = await choices.nth(1).innerText();
+  const other = await choices.nth(1).locator('code').innerText();
+  assert.equal(await p.locator('.gen-seg.ok').count(), 3);
   assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs'))[0].alg), other);
-  assert.equal(await p.locator('.gen-card').first().locator('.gen-choice.on').innerText(), other);
+  assert.equal(await p.locator('.gen-card').first().locator('.gen-choice.on code').innerText(), other);
   await p.locator('.gen-dialog button', { hasText: 'Otevřít sadu' }).tap();
   await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden);
   assert.match(await p.locator('#tr-set option:checked').innerText(), /EPBL/);

@@ -926,6 +926,25 @@ body.timing .round-panel { visibility: hidden; }
 .gen-card-head small { margin-left: auto; color: var(--muted); }
 .gen-pic .netview { max-height: 110px; }
 .gen-out { display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem; min-height: 1em; }
+.gen-progress { position: sticky; top: -12px; z-index: 2; display: grid; gap: 6px; margin: 0 -16px; padding: 8px 16px; background: var(--panel); }
+.gen-progress:has(.gen-timeline[hidden]):has(.gen-status:empty) { display: none; }
+.gen-timeline { display: flex; gap: 2px; }
+.gen-seg { flex: 1; height: 10px; min-height: 0; min-width: 3px; box-shadow: none; padding: 0; border: 0; border-radius: 3px; background: var(--border); cursor: pointer; }
+.gen-seg.busy { background: var(--accent); animation: gen-pulse 1s ease-in-out infinite alternate; }
+.gen-seg.ok { background: var(--good); }
+.gen-seg.warn { background: var(--warn); }
+.gen-seg.none { background: var(--bad); }
+@keyframes gen-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+.gen-live { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.gen-track { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.gen-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.2s linear; }
+.gen-searching { color: var(--accent); }
+.gen-choice { display: flex; flex-direction: column; gap: 1px; }
+.gen-choice small { font-size: 0.68rem; color: var(--muted); }
+.gen-badges { display: flex; flex-wrap: wrap; gap: 4px; font-size: 0.66rem; font-weight: 650; }
+.gen-badge.view-speed { color: var(--warn); }
+.gen-badge.view-efficient { color: var(--accent); }
+.gen-badge.view-balanced { color: var(--good); }
 .gen-choices { display: flex; flex-direction: column; gap: 3px; }
 .gen-choice { text-align: left; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
 .gen-choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
