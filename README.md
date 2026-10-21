@@ -88,7 +88,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     sloučí ty, které řeší stejný algoritmus (podle toho, na čem cíli záleží;
     natočení U před a po algoritmu; volitelně otočení celé kostky y a z2),
     ukáže případy s obrázky, pro vybrané najde algoritmy, ověří každý na všech
-    stavech případu a uloží je jako novou sadu do trenažéru. Ověřeno na známých
+    stavech případu. Nic se neukládá samo: u každého případu zaškrtneš varianty
+    k uložení (i víc než jednu; nabídnutá je zaškrtnutá), celý případ jde vynechat,
+    a „Uložit vybrané“ je uloží do nové nebo existující sady v trenažéru. Ověřeno na známých
     sadách: OLL 57, PLL 21, CMLL 42, OLL 2×2 7, ZBLL+PLL 493, ELL 29 (testy).
     Volitelně „bílá a žlutá zaměnitelné“ na Startu (barevně neutrální metody).
     U každého případu je nabídka až 6 algoritmů (nejlepší podle rychlosti, délky

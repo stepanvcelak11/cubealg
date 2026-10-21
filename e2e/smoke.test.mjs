@@ -839,7 +839,7 @@ test('trenažér: rozpoznání případu – výběr z možností, správně/šp
   await ctx.close();
 });
 
-test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ověření ⟨M, U, D⟩', async () => {
+test('generátor sady: EPBL – 14 případů bez parity, výběr co uložit, ověření ⟨M, U, D⟩', async () => {
   const { p, ctx, errors } = await open('lab');
   await p.evaluate(async () => {
     const { labModel } = await import('./src/ui/models.js');
@@ -866,31 +866,39 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr algoritmu, ov�
   await p.waitForFunction(() => /Hotovo/.test(document.querySelector('.gen-status').textContent), null, { timeout: 90000 });
   const outs = await p.locator('.gen-card .gen-out').allInnerTexts();
   assert.equal(outs.slice(0, 3).filter((t) => /✓ \d/.test(t)).length, 3, outs.slice(0, 3).join(' | '));
-  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.alg));
-  assert.equal(saved.length, 4); // 3 případy + oprava parity
-  assert.equal(saved[3], 'M2 U2 M2');
-  assert.ok(saved.every((a) => /^[MUD2' ()]+$/.test(a)), saved.join(' | '));
-  // výběr jiného nalezeného algoritmu u prvního případu
+  // nic se neukládá samo: vybíráš, co uložit
+  assert.equal(await p.evaluate(() => (JSON.parse(localStorage.getItem('ergocube.algs') ?? '[]')).length), 0);
+  assert.equal(await p.locator('.gen-seg.ok').count(), 3);
+  const saveBtn = p.locator('.gen-save button', { hasText: 'Uložit vybrané' });
+  assert.match(await saveBtn.innerText(), /\(4\)/); // 3 nabídnuté + oprava parity
   // varianty jsou sbalené; rozbalit jde vždy jen jeden případ
   await p.locator('.gen-card').nth(1).locator('.gen-alt summary').tap();
   await p.locator('.gen-card').first().locator('.gen-alt summary').tap();
   assert.equal(await p.locator('.gen-alt[open]').count(), 1);
+  // u prvního případu přidat k uložení i druhou variantu
   const choices = p.locator('.gen-card').first().locator('.gen-choice');
   assert.ok(await choices.count() > 1);
-  await choices.nth(1).tap();
+  await choices.nth(1).locator('input').check();
   const other = await choices.nth(1).locator('code').innerText();
-  assert.equal(await p.locator('.gen-seg.ok').count(), 3);
-  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs'))[0].alg), other);
-  assert.equal(await p.locator('.gen-card').first().locator('.gen-choice.on code').innerText(), other);
-  assert.equal(await p.locator('.gen-card').first().locator('.gen-chosen code').innerText(), other);
+  assert.equal(await p.locator('.gen-card').first().locator('.gen-chosen').count(), 2);
+  assert.match(await saveBtn.innerText(), /\(5\)/);
   // volba jiného než nabídnutého se zapíše (kalibrace „Podle mých voleb“)
   const prefs = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.prefs')));
   assert.equal(prefs.length, 1);
   assert.equal(prefs[0].better, other);
-  // hledat déle: naváže na nalezená řešení a vybraný algoritmus zůstane
+  // třetí případ celý vynechat
+  await p.locator('.gen-card').nth(2).locator('.gen-card-head input').uncheck();
+  assert.match(await saveBtn.innerText(), /\(4\)/);
+  await saveBtn.tap();
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')).map((a) => a.alg));
+  assert.equal(saved.length, 4); // 1. případ 2×, 2. případ, oprava parity
+  assert.ok(saved.includes(other));
+  assert.equal(saved.at(-1), 'M2 U2 M2');
+  assert.ok(saved.every((a) => /^[MUD2' ()]+$/.test(a)), saved.join(' | '));
+  // hledat déle: naváže na nalezená řešení, vybrané zůstanou
   await p.locator('.gen-card').first().locator('.gen-more').tap();
   await p.waitForFunction(() => /Případ 1:/.test(document.querySelector('.gen-status').textContent), null, { timeout: 60000 });
-  assert.ok(await p.locator('.gen-card').first().locator('.gen-choice').count() >= 1);
+  assert.ok(await p.locator('.gen-card').first().locator('.gen-chosen').count() >= 2);
   await p.locator('.gen-dialog button', { hasText: 'Otevřít sadu' }).tap();
   await p.waitForFunction(() => !document.querySelector('[data-page="trainer"]').hidden);
   assert.match(await p.locator('#tr-set option:checked').innerText(), /EPBL/);

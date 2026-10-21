@@ -947,13 +947,20 @@ body.timing .round-panel { visibility: hidden; }
 .gen-chosen small, .gen-choice small { font-size: 0.68rem; color: var(--muted); }
 .gen-alt summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 4px 0 2px; list-style-position: inside; }
 .gen-card:has(.gen-alt[open]) { grid-column: 1 / -1; }
+.gen-choice-body { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.gen-choice input { margin-top: 2px; flex: none; }
+.gen-kept { display: grid; gap: 3px; }
+.gen-none { margin: 0; color: var(--muted); font-size: 0.75rem; }
+.gen-save { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding-top: 2px; }
+.gen-save select { min-width: 0; padding-block: 6px; }
+.gen-save .check-row { grid-column: 1 / -1; font-size: 0.8rem; color: var(--muted); }
 .gen-choice-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; width: 100%; text-align: left; }
 .gen-badges { display: inline-flex; gap: 3px; font-size: 0.8rem; font-weight: 650; flex: none; }
 .gen-badge.view-speed { color: var(--warn); }
 .gen-badge.view-efficient { color: var(--accent); }
 .gen-badge.view-balanced { color: var(--good); }
 .gen-choices { display: flex; flex-direction: column; gap: 3px; }
-.gen-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.gen-choice { display: flex; flex-direction: row; align-items: flex-start; gap: 6px; text-align: left; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
 .gen-choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .gen-choice.bad { border-style: dashed; }
 .gen-fix input { font-family: var(--mono); }

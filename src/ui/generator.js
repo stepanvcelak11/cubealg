@@ -76,12 +76,18 @@ export function openGenerator(ctx) {
   const goBtn = el('button', { type: 'button', className: 'primary', textContent: 'Generovat', hidden: true });
   const stopBtn = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
   const openBtn = el('button', { type: 'button', className: 'secondary', textContent: 'Otevřít sadu v Trenažéru', hidden: true });
+  // uložení: nic se neukládá samo – vybereš algoritmy (u každého případu jeden nebo víc) a sadu
+  const target = el('select', { ariaLabel: 'Uložit do sady' });
+  const parityBox = Object.assign(el('input', { type: 'checkbox' }), { checked: true });
+  const parityRow = el('label', { className: 'check-row', hidden: true }, parityBox, el('span', { className: 'gen-parity-label' }));
+  const saveBtn = el('button', { type: 'button', className: 'primary small', textContent: 'Uložit vybrané' });
+  const saveBar = el('div', { className: 'gen-save', hidden: true }, target, saveBtn, parityRow);
   const close = el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít', textContent: '✕' });
   const dlg = el('dialog', { className: 'help-dialog gen-dialog' },
     el('div', { className: 'gen-head' }, el('h2', { textContent: 'Generátor sady' }), close),
     el('div', { className: 'gen-body' },
       el('p', { className: 'hint', textContent: 'Krok metody podle zadání: Start = co je hotové před krokem (nevybarvené dílky můžou být jakkoli, dílek jen s částí barev = „tahle barva tady“), Cíl = co má být hotové po kroku. Tahy a ergonomie podle „Tahy a váhy“. Aplikace projde všechny stavy, které Startu odpovídají, sloučí stejné případy, pro každý najde algoritmus a ověří ho na všech jeho stavech. Hledání zkouší i tvoje uložené algoritmy a ty, které už v tomto běhu našlo.' }),
-      opts, el('div', { className: 'row-btns gen-actions' }, countBtn, goBtn, stopBtn, openBtn), el('div', { className: 'gen-progress' }, status, timeline, live), list));
+      opts, el('div', { className: 'row-btns gen-actions' }, countBtn, goBtn, stopBtn, openBtn), el('div', { className: 'gen-progress' }, status, timeline, live, saveBar), list));
   document.body.append(dlg);
 
   const client = new SearchClient();
@@ -105,6 +111,7 @@ export function openGenerator(ctx) {
 
   countBtn.onclick = () => {
     remember();
+    saveBar.hidden = true; openBtn.hidden = true; setId = null;
     status.textContent = 'Počítám případy…';
     list.replaceChildren();
     goBtn.hidden = true;
@@ -193,7 +200,7 @@ export function openGenerator(ctx) {
     if (!result || running) return;
     remember();
     running = true;
-    goBtn.hidden = true; countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true;
+    goBtn.hidden = true; countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true; saveBar.hidden = true;
     for (const x of cards) x.box.disabled = true;
     const chosen = cards.filter((x) => x.box.checked);
     // čas: zadaný čas na případ je průměr; případ, u kterého je nejpohodlnější
@@ -201,7 +208,7 @@ export function openGenerator(ctx) {
     const per = Math.max(2, Math.min(600, Number(time.value) || 10)) * 1000;
     const cap = Math.max(per, Math.min(60000, per * 3));
     let budget = per * chosen.length;
-    setId = algSets.add(name.value.trim() || 'Nová sada');
+    setId = null;
     let ok = 0, warn = 0, none = 0, proven = 0;
     const n0 = (all, done) => (done < all ? `Zastaveno po ${done} z ${all} · ` : '');
     const segs = chosen.map((x) => Object.assign(el('button', { type: 'button', className: 'gen-seg', role: 'listitem', title: `Případ ${x.i + 1}`, ariaLabel: `Případ ${x.i + 1}` }), {
@@ -244,24 +251,19 @@ export function openGenerator(ctx) {
       if (choices[0].v.ok) ok++; else warn++;
       if (optimal) proven++;
       segs[n].classList.add(choices[0].v.ok ? 'ok' : 'warn');
-      const id = algs.add({
-        alg: choices[0].display,
-        name: `${name.value.trim() || 'Případ'} ${x.i + 1}`,
-        set: setId,
-        task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) },
-      });
       if (choices[0].v.ok) learned.push(modelAlg(choices[0].it));
-      x.state = { found, choices, sel: 0, id, optimal, cached };
+      // k uložení: nabídnutý (nejlepší), když řeší celý případ
+      x.state = { found, choices, keep: new Set(choices[0].v.ok ? [choices[0].display] : []), optimal, cached };
       renderChoices(x);
+      updateSave();
     }
-    addParityAlg();
     live.hidden = true;
     running = false;
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
     client.cancel();
-    stopBtn.hidden = true; countBtn.disabled = false; openBtn.hidden = false;
-    status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${proven ? ` (${proven} dokázaně nejpohodlnějších)` : ''}${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · uloženo do sady „${algSets.get(setId).name}“`;
-    toast(`Sada „${algSets.get(setId).name}“: ${ok + warn} algoritmů`);
+    stopBtn.hidden = true; countBtn.disabled = false;
+    status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${proven ? ` (${proven} dokázaně nejpohodlnějších)` : ''}${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · vyber, co uložit`;
+    showSave();
   };
   /**
    * Nabídka u případu: nejlepší v každém pohledu (★ všestranné, ⚡ rychlost,
@@ -306,35 +308,43 @@ export function openGenerator(ctx) {
 
   /** Nalezené algoritmy u případu: vybraný se uloží do sady, kliknutím se vybere jiný. */
   function renderChoices(x) {
-    const { choices, sel, id, optimal } = x.state;
+    const { choices, keep, optimal } = x.state;
     const n = x.c.members.length;
-    const c = choices[sel];
     const facts = (m) => `${m.length} tahů · ${m.regrips + m.rotations ? `${m.regrips + m.rotations}× přehmat` : 'bez přehmatů'} · náročnost ${m.total.toFixed(1)}`;
     // štítky jen ikonami (název v popisku), ať se vejdou na řádek
     const badges = (ch) => (ch.best.length ? el('span', { className: 'gen-badges' }, ...ch.best.map((v) => el('span', { className: `gen-badge view-${v}`, title: `Nejlepší: ${VIEWS[v].label}`, textContent: VIEWS[v].icon }))) : null);
+    const kept = choices.filter((ch) => keep.has(ch.display));
+    const top = choices[0];
     const status = el('div', { className: 'gen-status-row' },
-      el('span', { className: c.v.ok ? 'ok' : 'ko', textContent: c.v.ok ? `✓ ${n}` : `⚠ ${c.v.failed}/${n}`, title: c.v.ok ? `Ověřeno na všech ${n} stavech případu` : `Neřeší ${c.v.failed} z ${n} stavů případu` }),
-      optimal ? el('span', { className: 'gen-proof', title: `Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel${x.state.cached ? ' (z paměti)' : ''}`, textContent: '✓ nejpohodlnější' }) : null,
-      badges(c));
-    // vybraný algoritmus; ostatní varianty až po rozbalení (jen u jednoho případu najednou)
-    const chosen = el('div', { className: 'gen-chosen' }, el('code', { textContent: c.display }), el('small', { textContent: facts(c.m) }));
+      el('span', { className: top.v.ok ? 'ok' : 'ko', textContent: top.v.ok ? `✓ ${n}` : `⚠ ${top.v.failed}/${n}`, title: top.v.ok ? `Ověřeno na všech ${n} stavech případu` : `Neřeší ${top.v.failed} z ${n} stavů případu` }),
+      optimal ? el('span', { className: 'gen-proof', title: `Prohledány všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel${x.state.cached ? ' (z paměti)' : ''}`, textContent: '✓ nejpohodlnější' }) : null);
+    // k uložení vybrané algoritmy; ostatní varianty až po rozbalení (jen u jednoho případu najednou)
+    const chosen = kept.length
+      ? el('div', { className: 'gen-kept' }, ...kept.map((ch) => el('div', { className: 'gen-chosen' },
+        el('span', { className: 'gen-choice-head' }, el('code', { textContent: ch.display }), badges(ch)), el('small', { textContent: facts(ch.m) }))))
+      : el('p', { className: 'gen-none', textContent: 'Nic k uložení – vyber ve variantách' });
     const more = el('button', { type: 'button', className: 'chip gen-more', textContent: 'Hledat déle (+30 s)', disabled: running, title: 'Naváže na nalezená řešení a hledá dál' });
     more.onclick = () => searchMore(x);
-    const list = el('div', { className: 'gen-choices', role: 'radiogroup', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
-      ...choices.map((ch, k) => Object.assign(el('button', {
-        type: 'button', className: `gen-choice${k === sel ? ' on' : ''}${ch.v.ok ? '' : ' bad'}`,
-        role: 'radio', ariaChecked: String(k === sel),
-        title: ch.v.ok ? 'Klepnutím uložit tento algoritmus' : `Neřeší ${ch.v.failed} z ${n} stavů případu`,
-      }, el('span', { className: 'gen-choice-head' }, el('code', { textContent: ch.display }), badges(ch)), el('small', { textContent: facts(ch.m) })), {
-        onclick: () => {
-          if (k === x.state.sel) return;
-          // tvoje volba proti nabídnutému: podle ní se dá doladit hodnocení (Tahy a váhy → Podle mých voleb)
-          recordPreference(ctx.task.puzzle, ch.display, choices[x.state.sel].display);
-          algs.update(id, { alg: ch.display });
-          x.state.sel = k;
+    const list = el('div', { className: 'gen-choices', role: 'group', ariaLabel: `Algoritmy pro případ ${x.i + 1}` },
+      ...choices.map((ch) => {
+        const on = keep.has(ch.display);
+        const box = Object.assign(el('input', { type: 'checkbox', ariaLabel: `Uložit ${ch.display}` }), { checked: on });
+        const row = el('label', {
+          className: `gen-choice${on ? ' on' : ''}${ch.v.ok ? '' : ' bad'}`,
+          title: ch.v.ok ? 'Zaškrtni, co chceš uložit (může jich být víc)' : `Neřeší ${ch.v.failed} z ${n} stavů případu`,
+        }, box, el('span', { className: 'gen-choice-body' },
+          el('span', { className: 'gen-choice-head' }, el('code', { textContent: ch.display }), badges(ch)), el('small', { textContent: facts(ch.m) })));
+        box.onchange = () => {
+          if (box.checked) {
+            keep.add(ch.display);
+            // tvoje volba proti nabídnutému: podle ní se dá doladit hodnocení (Tahy a váhy → Podle mých voleb)
+            if (ch !== top) recordPreference(ctx.task.puzzle, ch.display, top.display);
+          } else keep.delete(ch.display);
           renderChoices(x);
-        },
-      })),
+          updateSave();
+        };
+        return row;
+      }),
       more);
     const summary = el('summary', { textContent: choices.length > 1 ? `Varianty (${choices.length})` : 'Varianty' });
     const alt = el('details', { className: 'gen-alt', open: !!x.open }, summary, list);
@@ -347,17 +357,63 @@ export function openGenerator(ctx) {
     x.out.replaceChildren(status, chosen, alt);
   }
 
+  /** Algoritmy k uložení: zaškrtnuté případy × vybrané varianty. */
+  const toSave = () => cards.filter((x) => x.state && x.box.checked).flatMap((x) => x.state.choices.filter((ch) => x.state.keep.has(ch.display)).map((ch) => ({ x, ch })));
+
+  function updateSave() {
+    const count = toSave().length + (parity?.cases.length && parity.fix && !parity.bad && parityBox.checked ? 1 : 0);
+    saveBtn.textContent = `Uložit vybrané (${count})`;
+    saveBtn.disabled = !count || running;
+  }
+
+  /** Lišta uložení: nová sada (název z nastavení) nebo existující sada. */
+  function showSave() {
+    const fresh = name.value.trim() || 'Nová sada';
+    target.replaceChildren(el('option', { value: '', textContent: `Do nové sady „${fresh}“` }),
+      ...algSets.list().map((st) => el('option', { value: st.id, textContent: `Do sady „${st.name}“` })));
+    if (setId) target.value = setId;
+    const showParity = !!(parity?.cases.length && parity.fix && !parity.bad);
+    parityRow.hidden = !showParity;
+    parityRow.querySelector('.gen-parity-label').textContent = `Přidat opravu parity ${parity?.fix ?? ''}`;
+    // po zapnutí výběru případů zase jde odškrtnout celý případ (neuloží se)
+    for (const x of cards) if (x.state) { x.box.disabled = false; x.box.onchange = updateSave; }
+    saveBar.hidden = false;
+    updateSave();
+  }
+
+  saveBtn.onclick = () => {
+    const items = toSave();
+    const id = target.value || algSets.add(name.value.trim() || 'Nová sada');
+    const base = name.value.trim() || 'Případ';
+    const count = new Map();
+    for (const { x, ch } of items) {
+      const k = (count.get(x) ?? 0) + 1;
+      count.set(x, k);
+      algs.add({ alg: ch.display, name: `${base} ${x.i + 1}${k > 1 ? ` (${k})` : ''}`, set: id, task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) } });
+    }
+    const withParity = !parityRow.hidden && parityBox.checked;
+    if (withParity) addParityAlg(id);
+    setId = id;
+    showSave();
+    openBtn.hidden = false;
+    const total = items.length + (withParity ? 1 : 0);
+    status.textContent = `Uloženo ${total} ${total === 1 ? 'algoritmus' : total < 5 ? 'algoritmy' : 'algoritmů'} do sady „${algSets.get(id).name}“`;
+    toast(`Sada „${algSets.get(id).name}“: +${total}`);
+  };
+  parityBox.onchange = updateSave;
+  name.addEventListener('input', () => { if (!saveBar.hidden && !target.value) target.options[0].textContent = `Do nové sady „${name.value.trim() || 'Nová sada'}“`; });
+
   /** Hledat u případu déle: naváže na nalezená řešení. */
   async function searchMore(x) {
     if (running) return;
     running = true;
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = true;
-    countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true;
+    countBtn.disabled = true; stopBtn.hidden = false;
+    updateSave();
     x.card.classList.add('busy');
     x.seg?.classList.add('busy');
     live.hidden = false;
     const limit = 30000, start = performance.now();
-    const prev = x.state.choices[x.state.sel].display;
     const timer = setInterval(() => {
       const t = performance.now() - start;
       bar.style.width = `${Math.min(100, (t / limit) * 100)}%`;
@@ -371,24 +427,28 @@ export function openGenerator(ctx) {
     x.seg?.classList.remove('busy');
     live.hidden = true;
     running = false;
-    stopBtn.hidden = true; countBtn.disabled = false; openBtn.hidden = false;
+    stopBtn.hidden = true; countBtn.disabled = false;
     const choices = choicesOf(x, found);
-    // vybraný zůstane vybraný, když je pořád v nabídce
-    const keep = choices.findIndex((ch) => ch.display === prev);
-    x.state = { ...x.state, found, choices, optimal, cached: false, sel: keep >= 0 && prev !== x.state.choices[0].display ? keep : 0 };
-    algs.update(x.state.id, { alg: choices[x.state.sel].display });
-    status.textContent = `Případ ${x.i + 1}: ${choices[0].display === x.state.choices[0]?.display && keep === 0 ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${optimal ? ' · pohodlnější neexistuje' : ''}`;
+    const before = x.state.choices[0].display;
+    // vybrané zůstanou vybrané (i když z nabídky vypadly); nový nejlepší se přidá, jen když
+    // byl k uložení vybraný dosavadní nejlepší
+    const keep = new Set(x.state.keep);
+    if (choices[0].display !== before && keep.has(before) && choices[0].v.ok) { keep.delete(before); keep.add(choices[0].display); }
+    const lost = x.state.choices.filter((ch) => keep.has(ch.display) && !choices.some((c2) => c2.display === ch.display));
+    x.state = { ...x.state, found, choices: [...choices, ...lost], keep, optimal, cached: false };
+    status.textContent = `Případ ${x.i + 1}: ${choices[0].display === before ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${optimal ? ' · pohodlnější neexistuje' : ''}`;
     renderChoices(x);
+    updateSave();
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
   }
 
   /** Oprava parity jako samostatný algoritmus sady (s obrázkem prvního paritního případu). */
-  function addParityAlg() {
+  function addParityAlg(set) {
     if (!parity?.cases.length || !parity.fix || parity.bad) return;
     algs.add({
       alg: parity.fix,
       name: `${name.value.trim() || 'Sada'} – parita`,
-      set: setId,
+      set,
       task: { ...ctx.task, colorsA: colorsOfState(P, parity.cases[0].rep, result.constraints) },
     });
   }
