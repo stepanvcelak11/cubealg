@@ -53,9 +53,10 @@ const UNREACHABLE = 255;
  * @param {number} [p.tableLimit] max. velikost jedné pattern databáze
  * @param {number} [p.nearLimit] max. počet stavů v tabulce „blízko cíle“ (0 = bez ní)
  * @param {(info:{table:number, tables:number}) => void} [p.onTable]
+ * @param {{get:(key:string) => Uint8Array|undefined, set:(key:string, dist:Uint8Array) => void}} [p.cache]
+ *   uložené pattern databáze (podle obsahu: hlavolam, tahy, cíle dílků skupiny)
  */
-export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), targets = [target], moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable }) {
-  const { SLOT_OF, ORI_AT } = puzzle;
+export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), targets = [target], moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable, cache }) {
   const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
   const moveCount = moves.length;
   const perms = moves.map((m) => puzzle.perm(m));
@@ -63,7 +64,58 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   const movingTypes = new Set(Object.keys(TYPE_POSITIONS).filter((type) =>
     perms.some((to) => TYPE_POSITIONS[type].some((pos) => to[pos] !== pos))));
 
-  // Sledované dílky a pro každý množina hodnot, které cíl splňují.
+  const pieces = trackedPieces(puzzle, constraints, targets);
+  // Přechody: trans[type][m * size + v] = hodnota po tahu m.
+  const trans = {};
+  const invTrans = {};
+  for (const type of Object.keys(TYPE_POSITIONS)) {
+    const positions = TYPE_POSITIONS[type];
+    const size = positions.length;
+    const t = new Uint8Array(moveCount * size);
+    const inv = new Uint8Array(moveCount * size);
+    perms.forEach((to, m) => positions.forEach((pos, v) => {
+      const w = LOCAL[to[pos]];
+      t[m * size + v] = w;
+      inv[m * size + w] = v;
+    }));
+    trans[type] = t;
+    invTrans[type] = inv;
+  }
+
+  // Dílky, se kterými povolené tahy nehýbou, se do heuristiky nezahrnují.
+  const tracked = pieces.filter((p) => movingTypes.has(p.kind));
+  // s tabulkou blízko cíle stačí jedno rozdělení (druhé skoro nezlepší odhad, jen zdržuje)
+  const groups = makeGroups(tracked, tableLimit, nearLimit > 0);
+  const tables = groups.map((g, i) => {
+    onTable?.({ table: i + 1, tables: groups.length + 1 });
+    const key = cache && tableKey(puzzle, moves, g);
+    const hit = key && cache.get(key);
+    if (hit && hit.length === g.reduce((a, p) => a * p.size, 1)) return { pieces: g.map((p) => p.name), sizes: g.map((p) => p.size), dist: hit };
+    const t = buildTable(g, moveCount, invTrans);
+    if (key) cache.set(key, t.dist);
+    return t;
+  });
+  onTable?.({ table: groups.length + 1, tables: groups.length + 1 });
+  const near = buildNear(pieces, moveCount, invTrans, nearLimit);
+
+  // Kanonické pořadí tahů a jejich zápis.
+  const redundant = new Uint8Array(moveCount * moveCount);
+  for (let a = 0; a < moveCount; a++) for (let b = 0; b < moveCount; b++) {
+    redundant[a * moveCount + b] = puzzle.redundant(moves[a], moves[b]) ? 1 : 0;
+  }
+
+  return {
+    puzzle, local: LOCAL, targetCount: targets.length,
+    pieces, tables, near, trans, moves, moveCount, redundant,
+    names: moves.map((m) => puzzle.moveToString(m)),
+    pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
+  };
+}
+
+/** Sledované dílky a pro každý (a každý cíl) množina hodnot, které cíl splňují. */
+function trackedPieces(puzzle, constraints, targets) {
+  const { SLOT_OF, ORI_AT } = puzzle;
+  const { positions: TYPE_POSITIONS } = typeInfo(puzzle);
   const pieces = [];
   // „barva na místě“ ({ allow }: povolené polohy ref vůči prvnímu cíli) – pro další
   // cíle (AUF) se polohy přenesou stejně, jako se liší cíle: target[0][k] → t[k]
@@ -88,51 +140,12 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
     const faces = new Set(slot.facelets.map((f) => puzzle.stickerFace[f]));
     pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok: oks[0], oks, constraint: type, faces, stickers: slot.facelets.length });
   }
-
-  // Přechody: trans[type][m * size + v] = hodnota po tahu m.
-  const trans = {};
-  const invTrans = {};
-  for (const type of Object.keys(TYPE_POSITIONS)) {
-    const positions = TYPE_POSITIONS[type];
-    const size = positions.length;
-    const t = new Uint8Array(moveCount * size);
-    const inv = new Uint8Array(moveCount * size);
-    perms.forEach((to, m) => positions.forEach((pos, v) => {
-      const w = LOCAL[to[pos]];
-      t[m * size + v] = w;
-      inv[m * size + w] = v;
-    }));
-    trans[type] = t;
-    invTrans[type] = inv;
-  }
-
-  // Dílky, se kterými povolené tahy nehýbou, se do heuristiky nezahrnují.
-  const tracked = pieces.filter((p) => movingTypes.has(p.kind));
-  const groups = makeGroups(tracked, tableLimit);
-  const tables = groups.map((g, i) => {
-    onTable?.({ table: i + 1, tables: groups.length + 1 });
-    return buildTable(g, moveCount, invTrans);
-  });
-  onTable?.({ table: groups.length + 1, tables: groups.length + 1 });
-  const near = buildNear(pieces, moveCount, invTrans, nearLimit);
-
-  // Kanonické pořadí tahů a jejich zápis.
-  const redundant = new Uint8Array(moveCount * moveCount);
-  for (let a = 0; a < moveCount; a++) for (let b = 0; b < moveCount; b++) {
-    redundant[a * moveCount + b] = puzzle.redundant(moves[a], moves[b]) ? 1 : 0;
-  }
-
-  return {
-    puzzle, local: LOCAL, targetCount: targets.length,
-    pieces, tables, near, trans, moves, moveCount, redundant,
-    names: moves.map((m) => puzzle.moveToString(m)),
-    pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
-  };
+  return pieces;
 }
 
 // Rozdělí dílky do skupin pro pattern databáze. Dvě různá rozdělení
 // (velký dílek + sousední menší / každý typ zvlášť) – heuristika bere maximum.
-function makeGroups(pieces, limit) {
+function makeGroups(pieces, limit, single = false) {
   const chunk = (list) => {
     const out = [];
     let cur = [], size = 1;
@@ -162,9 +175,28 @@ function makeGroups(pieces, limit) {
   const separate = kinds.flatMap((k) => pieces.filter((p) => p.kind === k));
 
   const a = chunk(paired);
+  if (single) return a;
   const b = chunk(separate);
   const key = (gs) => gs.map((g) => g.map((p) => p.name).join(',')).sort().join('|');
   return key(a) === key(b) ? a : [...a, ...b];
+}
+
+/** Klíč pattern databáze podle obsahu (hlavolam, tahy, typy a cíle dílků skupiny). */
+function tableKey(puzzle, moves, group) {
+  const text = [puzzle.id, moves.map((m) => puzzle.moveToString(m)).join(' '),
+    ...group.map((p) => `${p.kind}:${p.oks.map((o) => o.join('')).join('/')}`)].join('|');
+  let h1 = 2166136261, h2 = 5381;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
+  return `${(h1 >>> 0).toString(36)}.${(h2 >>> 0).toString(36)}.${text.length}`;
+}
+
+/** Klíče pattern databází, které prepare() se stejnými parametry použije (pro načtení z úložiště). */
+export function tableKeys({ puzzle = CUBE3, constraints, target = puzzle.solved(), targets = [target], moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT }) {
+  const { positions } = typeInfo(puzzle);
+  const perms = moves.map((m) => puzzle.perm(m));
+  const moving = new Set(Object.keys(positions).filter((type) => perms.some((to) => positions[type].some((pos) => to[pos] !== pos))));
+  const tracked = trackedPieces(puzzle, constraints, targets).filter((p) => moving.has(p.kind));
+  return makeGroups(tracked, tableLimit, nearLimit > 0).map((g) => tableKey(puzzle, moves, g));
 }
 
 function buildTable(group, moveCount, invTrans) {

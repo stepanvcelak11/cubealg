@@ -111,6 +111,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     sledovaného zadání konec algoritmu). „Max. tahů“ omezuje jen úplné prohledávání.
     Limit hledání je až 60 minut; nejlepší řešení se průběžně ukládají, po návratu
     do Labu se ukážou a další hledání na ně naváže.
+  - **Uložené tabulky:** pattern databáze (odhady vzdálenosti pro hledání) se ukládají
+    v prohlížeči (IndexedDB) podle obsahu – u celé kostky s cílem „složeno“ jsou
+    stejné pro všechny případy, takže další hledání začne hned (příprava ~1,5 s → ~0,1 s).
   - **Postupné zlepšování:** hledání běží v několika vláknech najednou (podle
     počtu jader, každé prohledá svůj díl). Nejdřív rychle najde nějaké řešení (u
     mnoha druhů tahů přes menší sady ⟨R U⟩, ⟨R U r⟩, ⟨R U D⟩, ⟨R U M⟩, R U x…) a

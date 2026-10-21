@@ -19,7 +19,8 @@
 //      pohodlnější, než je nejlepší známé,
 //   3. po každé změně nejlepších se kandidáti doladí výměnou úseků (improve.js).
 
-import { prepare, search, searchCost, NEAR_LIMIT } from './engine.js';
+import { prepare, search, searchCost, tableKeys, NEAR_LIMIT } from './engine.js';
+import { openTableCache } from './tablecache.js';
 import { prepareSq1, searchSq1 } from './sq1engine.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
@@ -35,14 +36,13 @@ import { makeResolver } from './resolve.js';
 
 self.onmessage = ({ data }) => {
   if (data.type !== 'search') return;
-  try {
-    run(data);
-  } catch (e) {
-    self.postMessage({ type: 'error', message: e.message });
-  }
+  run(data).catch((e) => self.postMessage({ type: 'error', message: e.message }));
 };
 
-function run({ puzzle: id = '333', start, target, constraints, moves, held, auf, shard, seeds, options, ergonomics, sq1 }) {
+/** Cíle hledání: cíl a cíle po koncovém AUF. */
+const targetsOf = (P, target, auf) => [target, ...(auf?.post ?? []).map((m) => P.applyAlg(target, P.invertAlg([m])))];
+
+async function run({ puzzle: id = '333', start, target, constraints, moves, held, auf, shard, seeds, options, ergonomics, sq1 }) {
   const P = getPuzzle(id);
   const t0 = Date.now();
   const onTable = (info) => self.postMessage({ type: 'progress', phase: 'tables', ...info });
@@ -101,7 +101,20 @@ function run({ puzzle: id = '333', start, target, constraints, moves, held, auf,
         else { seen.add(`${pre ?? ''}|${sd.alg}|${post ?? ''}`); tracker.add({ alg: sd.alg, pre, post }, scoreOf(sd.alg)); }
       }
     }
-    res = explore({ P, start: Uint8Array.from(start), target: Uint8Array.from(target), constraints, moves, held: held ?? moves, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0 });
+    // pattern databáze: uložené se načtou (jen ty, které budou potřeba), nové se uloží
+    const cache = await openTableCache();
+    const goal = Uint8Array.from(target);
+    const targets = targetsOf(P, goal, auf);
+    const nearLimit = options.nearLimit ?? NEAR_LIMIT;
+    const bases = [...new Set(moves.map((m) => m.base))];
+    const plan = [{ moves, targets, near: nearLimit },
+      ...(bases.length >= 3 ? subsetsOf(bases).filter((_, i) => !shard || i % shard.count === shard.index)
+        .map((sub) => ({ moves: moves.filter((m) => sub.includes(m.base)), targets: targets.slice(0, 1), near: Math.floor(nearLimit / 4) })) : [])];
+    await cache.load(plan.flatMap((x) => tableKeys({ puzzle: P, constraints, targets: x.targets, moves: x.moves, nearLimit: x.near })));
+    const full = prepare({ puzzle: P, constraints, moves, targets, nearLimit, onTable, cache });
+    await cache.flush();
+    res = explore({ P, start: Uint8Array.from(start), target: goal, constraints, moves, held: held ?? moves, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0, full, cache });
+    await cache.flush();
   }
   flush();
   self.postMessage({
@@ -222,7 +235,7 @@ function costModel(held, config) {
  * S víc workery (shard) každý prohledá jen svůj díl úplné sady a pohodlí, dostane
  * jen některé menší sady a etapové hledání zkouší tahy v jiném pořadí.
  */
-function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0 }) {
+function explore({ P, start, target, constraints, moves, held, auf, shard, options, config, handlers, tracker, scoreOf, onTable, t0, full: prepared, cache }) {
   const timeLimit = options.timeLimit ?? 15000;
   const deadline = t0 + timeLimit;
   const left = () => deadline - Date.now();
@@ -233,7 +246,7 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
   const name = (m) => P.moveToString(m);
   const roots = [{ loc: start, pre: null }, ...(auf?.pre ?? []).map((m) => ({ loc: P.applyAlg(start, [m]), pre: name(m) }))];
   const posts = [null, ...(auf?.post ?? []).map(name)];
-  const targets = [target, ...(auf?.post ?? []).map((m) => P.applyAlg(target, P.invertAlg([m])))];
+  const targets = targetsOf(P, target, auf);
   // úvodní a koncový tah natočení U se stane součástí AUF (do délky se nepočítá)
   const aufBase = auf?.post?.[0]?.base;
   const amountOf = (t) => (t ? P.parseAlg(t)[0].amount : 0);
@@ -251,8 +264,8 @@ function explore({ P, start, target, constraints, moves, held, auf, shard, optio
   };
   const found = (alg, len, info) => emit(alg, info.pre, posts[info.target]);
   // menší sady mají menší tabulku blízko cíle (méně tahů → dosáhne i tak daleko; šetří paměť)
-  const make = (ms, goals = targets, near = nearLimit) => prepare({ puzzle: P, constraints, moves: ms, targets: goals, nearLimit: near, onTable });
-  const full = make(moves);
+  const make = (ms, goals = targets, near = nearLimit) => prepare({ puzzle: P, constraints, moves: ms, targets: goals, nearLimit: near, onTable, cache });
+  const full = prepared ?? make(moves);
   const mine = (i) => !shard || i % shard.count === shard.index;
   const startOf = (pre) => (pre ? P.applyAlg(start, pre) : start);
 
