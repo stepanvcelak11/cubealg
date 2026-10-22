@@ -13,6 +13,7 @@ import { holdFor } from './holds.js';
 import { downloadLearning } from './learnexport.js';
 import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME } from './parts.js';
 import { describeRule } from '../core/rules.js';
+import { ruleNetSvg } from './ruleeditor.js';
 
 let dialog = null;
 let deps = { labTask: () => null, train: () => {}, practice: null, simulate: null, build: null };
@@ -140,7 +141,10 @@ function draw() {
         !st.task && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
           partsCube(partsBefore(guide.steps, st.id), stepParts(st), guide.frame, `Po kroku ${i + 1}`),
           el('figcaption', { textContent: `po kroku: ${describeParts(stepParts(st))}` })) : null,
-        st.rules?.length ? el('ul', { className: 'guide-rules' }, ...st.rules.map((r) => el('li', { textContent: describeRule(r, frameMap(validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME)) }))) : null,
+        st.rules?.length ? el('ul', { className: 'guide-rules' }, ...st.rules.map((r) => {
+          const f = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
+          return el('li', {}, Object.assign(el('span', { className: 'rule-net' }), { innerHTML: ruleNetSvg(r, f, 96) }), el('span', { textContent: describeRule(r, frameMap(f)) }));
+        })) : null,
         examplePlayer(st.task),
         deps.practice ? el('div', { className: 'guide-set guide-practice-row' },
           el('span', { textContent: i ? 'Nácvik v timeru – předchozí kroky budou složené' : 'Nácvik v timeru od zamíchané kostky' }),

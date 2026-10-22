@@ -17,10 +17,14 @@ import { netSvg } from './netsvg.js';
 const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
 
 /**
- * Síť kostky s místy pravidla: kam má mířit nálepka (barva skupiny, u „jakkoli“
+ * Síť kostky s místy pravidla (SVG): kam má mířit nálepka (barva skupiny, u „jakkoli“
  * obrys), zbytek míst šedě, středy pro orientaci. Natočená jako při skládání.
  */
-function ruleNet(rule, frame, map) {
+export function ruleNetSvg(rule, frame, size) {
+  return netSvg(ruleStickers(rule, frameMap(frame)), holdFromFaces(OPPOSITE[frame.down], frame.front), size);
+}
+
+function ruleStickers(rule, map) {
   const stickers = FACELETS.map((f) => ({ color: f.face, style: SLOTS[SLOT_OF[f.index]].type === 'center' ? 'solid' : 'faint' }));
   for (const s of stickers) if (s.style === 'faint') s.color = 'X';
   const c = compileRule({ ...rule, mode: 'fill' }, map)['#classes']?.[0];
@@ -31,8 +35,12 @@ function ruleNet(rule, frame, map) {
     for (const k of SLOTS[SLOT_OF[pl[0]]].facelets) stickers[k] = { color: 'X', style: 'solid' };
     for (const p of pl) stickers[p] = { color: shown(p), style: rule.ori === 'color' ? 'solid' : 'dashed' };
   }
+  return stickers;
+}
+
+function ruleNet(rule, frame) {
   return Object.assign(el('div', { className: 'rule-net', title: 'Síť kostky: nahoře horní strana, uprostřed boky, dole spodní strana' }),
-    { innerHTML: netSvg(stickers, holdFromFaces(OPPOSITE[frame.down], frame.front)) });
+    { innerHTML: ruleNetSvg(rule, frame) });
 }
 
 const VIEW = ['D', 'U', 'F', 'B', 'R', 'L'];
@@ -117,6 +125,6 @@ export function ruleEditor(rule, frame, n, onChange, onDelete) {
     el('span', { className: 'rule-label', textContent: 'Jak' }), mode,
     el('span', { className: 'rule-label', textContent: 'Natočení' }), ori, oriMore,
     el('div', { className: 'rule-out' },
-      problems.length ? null : ruleNet(rule, frame, map),
+      problems.length ? null : ruleNet(rule, frame),
       el('p', { className: `rule-say${problems.length ? ' bad' : ''}`, textContent: problems.length ? problems.join(' ') : describeRule(rule, map) })));
 }

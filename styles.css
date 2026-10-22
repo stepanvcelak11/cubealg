@@ -1187,7 +1187,8 @@ body.timing .round-panel { visibility: hidden; }
 .sim-color:has(input:focus-visible) { outline: 2px solid var(--accent); }
 .sim-color:not(:has(input:checked)) { opacity: 0.6; }
 .sim-rot { color: var(--muted); }
-.guide-rules { margin: 4px 0 8px; padding-left: 20px; display: grid; gap: 4px; font-size: 0.9rem; font-weight: 600; }
+.guide-rules { margin: 4px 0 8px; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 0.9rem; font-weight: 600; }
+.guide-rules li { display: flex; gap: 10px; align-items: center; }
 .sim-real { padding: 10px 12px; border-radius: 18px; background: var(--panel-2); display: grid; gap: 8px; }
 .sim-real summary { cursor: pointer; font-weight: 800; font-size: 0.9rem; }
 .sim-real .compare td { font-size: 0.8rem; }

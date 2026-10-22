@@ -14,6 +14,7 @@ import { FREEDOM, STEP_MOVES, ADJUST, COLORS } from '../sim/plan.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig } from './stepcfg.js';
 import { describeRule } from '../core/rules.js';
+import { ruleNetSvg } from './ruleeditor.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -123,7 +124,7 @@ export function learningHtml(method = methods.active()) {
     <div>
       ${st.text ? String(st.text).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}
       ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
-      ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${esc(describeRule(r, map))}</li>`).join('')}</ul>` : ''}
+      ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${ruleNetSvg(r, frame, 96)}<span>${esc(describeRule(r, map))}</span></li>`).join('')}</ul>` : ''}
       ${settings.length ? `<dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
     </div>
   </div>
@@ -164,7 +165,9 @@ h3 { font-size: 1rem; margin: 14px 0 8px; }
 .alg code { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
 .alg small { color: var(--muted); font-size: 0.74rem; }
 .alg input { width: 20px; height: 20px; flex: none; }
-.rules { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
+.rules { margin: 6px 0; padding: 0; list-style: none; font-size: 0.9rem; display: grid; gap: 6px; }
+.rules li { display: flex; gap: 10px; align-items: center; }
+.rules svg { flex: none; }
 .import { margin-top: 28px; padding: 12px 14px; border-radius: 14px; background: var(--soft); font-size: 0.86rem; color: var(--muted); }
 @media print { body { padding: 0; } .import { display: none; } .step { border-color: #ccc; } }
 </style></head><body>
