@@ -16,7 +16,18 @@ const OPTS = 'ergocube.lab.generator';
 // paměť hledání po případech: nejlepší algoritmy a prohledané délky (příště se navazuje,
 // u dokázaně nejpohodlnějších se už nehledá)
 const MEMORY = 'ergocube.gen.memory';
-const MEMORY_MAX = 400;
+const MEMORY_MAX = 1500;
+// rozpracovaný dlouhý běh (noční generování): po zavření aplikace jde navázat
+const JOB = 'ergocube.gen.job';
+const HOUR = 3600 * 1000;
+const MODES = {
+  once: { label: 'Jedno kolo', hours: 0 },
+  h1: { label: 'Do dokázání, nejvýš 1 h', hours: 1 },
+  h3: { label: 'Do dokázání, nejvýš 3 h', hours: 3 },
+  h8: { label: 'Do dokázání, nejvýš 8 h (přes noc)', hours: 8 },
+  inf: { label: 'Do dokázání, bez omezení', hours: Infinity },
+};
+const ROUND_CAP = 10 * 60 * 1000; // nejdelší hledání jednoho případu v dalších kolech
 const hash = (text) => {
   let h1 = 2166136261, h2 = 5381;
   for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
@@ -54,6 +65,8 @@ export function openGenerator(ctx) {
   const time = el('input', { type: 'number', min: '2', max: '600', value: String(saved.time ?? 10), ariaLabel: 'Průměrný čas na případ (s)' });
   const view = el('select', { ariaLabel: 'Vybírat podle' }, ...Object.entries(VIEWS).map(([id, v]) => el('option', { value: id, textContent: `${v.icon} ${v.label}` })));
   view.value = saved.view ?? 'balanced';
+  const mode = el('select', { ariaLabel: 'Délka běhu' }, ...Object.entries(MODES).map(([id, m]) => el('option', { value: id, textContent: m.label })));
+  mode.value = MODES[saved.mode] ? saved.mode : 'once';
   const opts = el('div', { className: 'gen-opts' },
     cube ? check('gen-auf', 'Slučovat natočení horní vrstvy (AUF)', saved.auf ?? true, 'Případy, které se liší jen natočením U před nebo po algoritmu, jsou jeden') : null,
     cube ? check('gen-adf', 'Slučovat i natočení spodní vrstvy (D)', saved.adf ?? true, 'Případy, které se liší jen natočením D před nebo po algoritmu, jsou jeden (PBL, EPBL…). Natočení D pak uděláš sám jako AUF.') : null,
@@ -65,7 +78,8 @@ export function openGenerator(ctx) {
     el('div', { className: 'grid-fields' },
       el('label', { className: 'field' }, 'Název sady', name),
       el('label', { className: 'field', title: 'Průměr: případ, u kterého je nejpohodlnější algoritmus dokázaný dřív, skončí a ušetřený čas dostanou těžší (nejvýš 3× průměr, max. minuta)' }, 'Průměrný čas na případ (s)', time),
-      el('label', { className: 'field' }, 'Vybírat podle', view)));
+      el('label', { className: 'field' }, 'Vybírat podle', view),
+      el('label', { className: 'field', title: 'Po prvním kole se nedokázané případy hledají znovu a déle (navazuje se), dokud není u každého dokázaný nejpohodlnější algoritmus nebo nevyprší čas. Displej zůstane rozsvícený; nech aplikaci otevřenou (nejlépe v nabíječce). Když ji zavřeš, příště můžeš pokračovat.' }, 'Délka běhu', mode)));
   const status = el('p', { className: 'status gen-status' });
   // průběh generování: pruh s dílkem za každý případ a pruh času aktuálního případu
   const timeline = el('div', { className: 'gen-timeline', hidden: true, role: 'list', ariaLabel: 'Průběh generování' });
@@ -104,41 +118,45 @@ export function openGenerator(ctx) {
     const s = settings();
     return { auf: s.auf, adf: s.adf, rotations: [s.y && 'y', s.z2 && 'z2'].filter(Boolean), interchange: s.wy ? [['U', 'D']] : [] };
   };
-  const remember = () => storage.set(OPTS, { ...settings(), fix: fix.value, name: name.value, time: Number(time.value), view: view.value });
+  const remember = () => storage.set(OPTS, { ...settings(), fix: fix.value, name: name.value, time: Number(time.value), view: view.value, mode: mode.value });
+  // zadání běhu (Lab + nastavení výčtu): podle něj se pozná, že jde navázat
+  const jobKey = () => hash(JSON.stringify([ctx.signature, ctx.task, settings(), fix.value]));
 
   close.onclick = () => dlg.close();
   dlg.addEventListener('close', () => { running = false; client.cancel(); resolveCurrent?.(); dlg.remove(); });
 
   countBtn.onclick = () => {
+    status.textContent = 'Počítám případy…';
+    setTimeout(countCases, 30);
+  };
+  /** Výčet případů ze zadání (karty, tlačítko Generovat). */
+  function countCases() {
     remember();
     saveBar.hidden = true; openBtn.hidden = true; setId = null;
-    status.textContent = 'Počítám případy…';
     list.replaceChildren();
     goBtn.hidden = true;
-    setTimeout(() => {
-      const t0 = performance.now();
-      result = enumerateCases(P, ctx.task, enumOpts());
-      if (result.error) { status.textContent = `Zadání: ${result.error}`; return; }
-      let todo = result.cases.filter((c) => !c.solved);
-      const solved = result.cases.length - todo.length;
-      parity = null;
-      let parText = '';
-      if (settings().par) {
-        const odd = todo.filter((c) => layerParity(P, c.rep).odd);
-        todo = todo.filter((c) => !odd.includes(c));
-        let bad = 0;
-        try { bad = fix.value.trim() ? checkParityFix(P, odd.flatMap((c) => c.members), fix.value, enumOpts()) : 0; } catch { bad = -1; }
-        parity = { cases: odd, fix: fix.value.trim(), bad };
-        parText = ` · ${odd.length} paritních vynecháno`
-          + (!odd.length || !parity.fix ? '' : bad === -1 ? ' (opravu parity nejde přečíst)' : bad ? ` (⚠ ${parity.fix} neopraví ${bad} stavů)` : ` (opraví ${parity.fix})`);
-      }
-      status.textContent = `${result.signatures} stavů → ${todo.length} případů${solved ? ` (+ ${solved} jen natočením vrstvy)` : ''}${parText}`
-        + `${result.tooMany ? ' · POZOR: moc stavů, výčet není úplný – omez Start' : ''} · ${Math.round(performance.now() - t0)} ms`;
-      renderCards(todo);
-      goBtn.hidden = !todo.length || result.tooMany;
-      goBtn.textContent = `Generovat ${todo.length} algoritmů`;
-    }, 30);
-  };
+    const t0 = performance.now();
+    result = enumerateCases(P, ctx.task, enumOpts());
+    if (result.error) { status.textContent = `Zadání: ${result.error}`; return; }
+    let todo = result.cases.filter((c) => !c.solved);
+    const solved = result.cases.length - todo.length;
+    parity = null;
+    let parText = '';
+    if (settings().par) {
+      const odd = todo.filter((c) => layerParity(P, c.rep).odd);
+      todo = todo.filter((c) => !odd.includes(c));
+      let bad = 0;
+      try { bad = fix.value.trim() ? checkParityFix(P, odd.flatMap((c) => c.members), fix.value, enumOpts()) : 0; } catch { bad = -1; }
+      parity = { cases: odd, fix: fix.value.trim(), bad };
+      parText = ` · ${odd.length} paritních vynecháno`
+        + (!odd.length || !parity.fix ? '' : bad === -1 ? ' (opravu parity nejde přečíst)' : bad ? ` (⚠ ${parity.fix} neopraví ${bad} stavů)` : ` (opraví ${parity.fix})`);
+    }
+    status.textContent = `${result.signatures} stavů → ${todo.length} případů${solved ? ` (+ ${solved} jen natočením vrstvy)` : ''}${parText}`
+      + `${result.tooMany ? ' · POZOR: moc stavů, výčet není úplný – omez Start' : ''} · ${Math.round(performance.now() - t0)} ms`;
+    renderCards(todo);
+    goBtn.hidden = !todo.length || result.tooMany;
+    goBtn.textContent = `Generovat ${todo.length} algoritmů`;
+  }
 
   function renderCards(todo) {
     const v = model.flatView ?? model.view;
@@ -196,10 +214,96 @@ export function openGenerator(ctx) {
     return { it, display, m: styleMetrics(ctx.score(display), cube) };
   }), view.value, { lambda: ctx.lambda }), x.c.members, enumOpts());
 
+  /** Seznam nalezených řešení případu → nabídka; vybrané k uložení zůstanou vybrané. */
+  function applyResult(x, { found, optimal, cached }) {
+    const choices = choicesOf(x, found);
+    if (!x.state) {
+      // k uložení: nabídnutý (nejlepší), když řeší celý případ
+      x.state = { found, choices, keep: new Set(choices[0].v.ok ? [choices[0].display] : []), optimal, cached };
+      if (choices[0].v.ok) learned.push(modelAlg(choices[0].it));
+      return;
+    }
+    const before = x.state.choices[0].display;
+    // nový nejlepší se přidá k uložení, jen když byl vybraný dosavadní nejlepší
+    const keep = new Set(x.state.keep);
+    if (choices[0].display !== before && keep.has(before) && choices[0].v.ok) { keep.delete(before); keep.add(choices[0].display); }
+    const lost = x.state.choices.filter((ch) => keep.has(ch.display) && !choices.some((c2) => c2.display === ch.display));
+    x.state = { ...x.state, found, choices: [...choices, ...lost], keep, optimal, cached: false };
+  }
+
+  /** Stav dílku průběhu podle výsledku případu. */
+  function markSeg(x) {
+    if (!x.seg) return;
+    x.seg.classList.remove('ok', 'warn', 'none', 'proof');
+    if (!x.state) x.seg.classList.add('none');
+    else {
+      x.seg.classList.add(x.state.choices[0].v.ok ? 'ok' : 'warn');
+      if (x.state.optimal) x.seg.classList.add('proof');
+    }
+  }
+
+  /** Jedno hledání případu (navazuje na nalezená řešení); label = text průběhu. */
+  async function attempt(x, limit, label) {
+    x.card.classList.add('busy');
+    x.seg?.classList.add('busy');
+    x.card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const start = performance.now();
+    let count = x.state?.found.size ?? 0;
+    const tick = () => {
+      const t = performance.now() - start;
+      bar.style.width = `${Math.min(100, (t / limit) * 100)}%`;
+      live.lastChild.textContent = `${label()} · ${(t / 1000).toFixed(1)} / ${Math.round(limit / 1000)} s · ${count} řešení`;
+    };
+    tick();
+    const timer = setInterval(tick, 200);
+    const seeds = x.state ? x.state.choices.map((ch) => ({ alg: ch.it.alg, pre: ch.it.pre, post: ch.it.post })) : [];
+    const res = await solveOne(x.c, limit, (f) => {
+      count = f.size;
+      if (!x.state) x.out.replaceChildren(el('span', { className: 'gen-searching', textContent: `hledám… ${count} řešení` }));
+    }, x.state ? { seeds, found: x.state.found } : {});
+    clearInterval(timer);
+    x.card.classList.remove('busy');
+    x.seg?.classList.remove('busy');
+    return { ...res, elapsed: performance.now() - start };
+  }
+
+  /** Souhrn stavu případů (po kole i na konci). */
+  function tally(chosen) {
+    const t = { ok: 0, warn: 0, none: 0, proven: 0, done: 0 };
+    for (const x of chosen) {
+      if (!x.tried) continue;
+      t.done++;
+      if (!x.state) t.none++;
+      else if (x.state.choices[0].v.ok) t.ok++; else t.warn++;
+      if (x.state?.optimal) t.proven++;
+    }
+    return t;
+  }
+
+  // noční běh: displej nezhasne (jinak telefon výpočet uspí), na konci oznámení
+  let wakeLock = null;
+  const lockScreen = async () => { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { wakeLock = null; } };
+  const onVisible = () => { if (running && document.visibilityState === 'visible' && longRun) lockScreen(); };
+  document.addEventListener('visibilitychange', onVisible);
+  dlg.addEventListener('close', () => { document.removeEventListener('visibilitychange', onVisible); wakeLock?.release?.(); document.title = baseTitle; });
+  const baseTitle = document.title;
+  let longRun = false;
+  async function notifyDone(text) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      if (reg?.showNotification) await reg.showNotification('Generátor sady', { body: text, tag: 'ergocube-gen' });
+      else new Notification('Generátor sady', { body: text });
+    } catch { /* bez oznámení */ }
+    navigator.vibrate?.([200, 100, 200]);
+  }
+
   goBtn.onclick = async () => {
     if (!result || running) return;
     remember();
     running = true;
+    const runMode = MODES[mode.value];
+    longRun = runMode.hours > 0;
     goBtn.hidden = true; countBtn.disabled = true; stopBtn.hidden = false; openBtn.hidden = true; saveBar.hidden = true;
     for (const x of cards) x.box.disabled = true;
     const chosen = cards.filter((x) => x.box.checked);
@@ -209,62 +313,107 @@ export function openGenerator(ctx) {
     const cap = Math.max(per, Math.min(60000, per * 3));
     let budget = per * chosen.length;
     setId = null;
-    let ok = 0, warn = 0, none = 0, proven = 0;
-    const n0 = (all, done) => (done < all ? `Zastaveno po ${done} z ${all} · ` : '');
     const segs = chosen.map((x) => Object.assign(el('button', { type: 'button', className: 'gen-seg', role: 'listitem', title: `Případ ${x.i + 1}`, ariaLabel: `Případ ${x.i + 1}` }), {
       onclick: () => x.card.scrollIntoView({ behavior: 'smooth', block: 'center' }),
     }));
+    chosen.forEach((x, n) => { x.seg = segs[n]; markSeg(x); });
     timeline.replaceChildren(...segs);
     timeline.hidden = false;
     live.hidden = false;
     const t0 = performance.now();
+    const deadline = Date.now() + runMode.hours * HOUR;
+    const job = { key: jobKey(), name: name.value.trim() || 'Nová sada', mode: mode.value, started: Date.now(), deadline, total: chosen.length, proven: 0, done: false };
+    const saveJob = () => { if (longRun) storage.set(JOB, { ...job, proven: tally(chosen).proven }); };
+    if (longRun) {
+      lockScreen();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+      saveJob();
+      banner.hidden = true;
+    }
+    const showTitle = () => { if (longRun) { const t = tally(chosen); document.title = `(${t.proven}/${chosen.length}) ${baseTitle}`; } };
+
+    // 1. kolo: každý případ jednou, čas podle průměru
     for (let n = 0; n < chosen.length && running; n++) {
       const x = chosen[n];
-      x.seg = segs[n];
-      const casesLeft = chosen.length - n;
-      const limit = Math.round(Math.min(cap, Math.max(2000, (budget / casesLeft) * 1.5)));
-      x.card.classList.add('busy');
-      segs[n].classList.add('busy');
-      x.card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const limit = Math.round(Math.min(cap, Math.max(2000, (budget / (chosen.length - n)) * 1.5)));
       status.textContent = `Případ ${n + 1} z ${chosen.length} · hledám…`;
-      const start = performance.now();
-      let count = 0;
-      const tick = () => {
-        const el2 = performance.now() - start;
-        bar.style.width = `${Math.min(100, (el2 / limit) * 100)}%`;
-        const left = Math.max(0, budget - el2);
-        live.lastChild.textContent = `${(el2 / 1000).toFixed(1)} / ${Math.round(limit / 1000)} s · nalezeno ${count} řešení · celkem ${fmtTime(performance.now() - t0)}, zbývá nejvýš ${fmtTime(left)}`;
-      };
-      tick();
-      const timer = setInterval(tick, 200);
-      const { found, optimal, cached } = await solveOne(x.c, limit, (f) => {
-        count = f.size;
-        x.out.replaceChildren(el('span', { className: 'gen-searching', textContent: `hledám… ${count} řešení` }));
-      });
-      clearInterval(timer);
-      budget = Math.max(0, budget - (performance.now() - start));
-      x.card.classList.remove('busy');
-      segs[n].classList.remove('busy');
+      const res = await attempt(x, limit, () => `Případ ${n + 1} z ${chosen.length} · celkem ${fmtTime(performance.now() - t0)}, zbývá nejvýš ${fmtTime(Math.max(0, budget))}`);
+      budget = Math.max(0, budget - res.elapsed);
       if (!running) break;
-      if (!found.size) { none++; segs[n].classList.add('none'); x.out.replaceChildren(el('span', { className: 'ko', textContent: 'nenalezeno' })); continue; }
-      const choices = choicesOf(x, found);
-      if (choices[0].v.ok) ok++; else warn++;
-      if (optimal) proven++;
-      segs[n].classList.add(choices[0].v.ok ? 'ok' : 'warn');
-      if (choices[0].v.ok) learned.push(modelAlg(choices[0].it));
-      // k uložení: nabídnutý (nejlepší), když řeší celý případ
-      x.state = { found, choices, keep: new Set(choices[0].v.ok ? [choices[0].display] : []), optimal, cached };
-      renderChoices(x);
+      x.tried = true;
+      if (res.found.size) applyResult(x, res);
+      if (x.state) renderChoices(x); else x.out.replaceChildren(el('span', { className: 'ko', textContent: 'nenalezeno' }));
+      markSeg(x);
       updateSave();
+      showTitle();
+      saveJob();
     }
+
+    // další kola (dlouhý běh): nedokázané případy znovu a déle, dokud nejsou dokázané nebo nevyprší čas
+    for (let round = 1; running && longRun && Date.now() < deadline; round++) {
+      const open = chosen.filter((x) => !x.state?.optimal);
+      if (!open.length) break;
+      const limit = Math.min(ROUND_CAP, per * 2 ** round, Math.max(2000, deadline - Date.now()));
+      for (let n = 0; n < open.length && running && Date.now() < deadline; n++) {
+        const x = open[n];
+        status.textContent = `Kolo ${round + 1} · nedokázaný případ ${n + 1} z ${open.length} (č. ${x.i + 1})`;
+        const res = await attempt(x, limit, () => `Kolo ${round + 1} · případ ${x.i + 1} · dokázáno ${tally(chosen).proven} z ${chosen.length} · běží ${fmtTime(performance.now() - t0)}${Number.isFinite(deadline) ? `, zbývá ${fmtTime(Math.max(0, deadline - Date.now()))}` : ''}`);
+        if (!running) break;
+        if (res.found.size) applyResult(x, res);
+        if (x.state) renderChoices(x);
+        markSeg(x);
+        updateSave();
+        showTitle();
+        saveJob();
+      }
+    }
+
+    const finished = running; // dokončeno (ne zastaveno)
     live.hidden = true;
     running = false;
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
     client.cancel();
+    wakeLock?.release?.();
+    wakeLock = null;
     stopBtn.hidden = true; countBtn.disabled = false;
-    status.textContent = `${n0(chosen.length, ok + warn + none)}Hotovo: ${ok} ověřených${proven ? ` (${proven} dokázaně nejpohodlnějších)` : ''}${warn ? `, ${warn} s upozorněním` : ''}${none ? `, ${none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · vyber, co uložit`;
+    const t = tally(chosen);
+    const all = chosen.length;
+    const n0 = t.done < all ? `Zastaveno po ${t.done} z ${all} · ` : '';
+    status.textContent = `${n0}Hotovo: ${t.ok} ověřených${t.proven ? ` (${t.proven} dokázaně nejpohodlnějších)` : ''}${t.warn ? `, ${t.warn} s upozorněním` : ''}${t.none ? `, ${t.none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · vyber, co uložit`;
+    if (longRun) {
+      document.title = baseTitle;
+      // zastavený běh zůstane rozpracovaný (jde navázat), dokončený se uzavře
+      if (finished) storage.set(JOB, { ...job, proven: t.proven, done: true });
+      if (finished) notifyDone(`${t.proven} z ${all} případů dokázaně nejpohodlnějších${t.proven < all ? ' (zbytek s nejlepším nalezeným)' : ''}. Otevři generátor a vyber, co uložit.`);
+    }
     showSave();
   };
+
+  // rozpracovaný noční běh se stejným zadáním: nabídka navázat
+  const banner = el('div', { className: 'gen-resume', hidden: true });
+  {
+    const job = storage.get(JOB);
+    if (job && !job.done) {
+      const same = job.key === jobKey();
+      const when = new Date(job.started).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const resume = el('button', { type: 'button', className: 'primary small', textContent: 'Pokračovat', hidden: !same });
+      const drop = el('button', { type: 'button', className: 'secondary small', textContent: 'Zahodit' });
+      banner.replaceChildren(
+        el('div', {}, el('b', { textContent: `Rozpracované generování „${job.name}“` }),
+          el('small', { textContent: `${when} · dokázáno ${job.proven} z ${job.total}${same ? ' · navážeš tam, kde skončilo' : ' · otevři v Labu stejné zadání, tahy a nastavení, pak jde navázat'}` })),
+        el('div', { className: 'row-btns' }, resume, drop));
+      banner.hidden = false;
+      drop.onclick = () => { storage.set(JOB, { ...job, done: true }); banner.hidden = true; };
+      resume.onclick = () => {
+        banner.hidden = true;
+        if (MODES[job.mode]) mode.value = job.mode;
+        countCases();
+        if (!goBtn.hidden) goBtn.click();
+      };
+    }
+  }
+  dlg.querySelector('.gen-body').prepend(banner);
+
   /**
    * Nabídka u případu: nejlepší v každém pohledu (★ všestranné, ⚡ rychlost,
    * ◎ efektivita) a další podle zvoleného pohledu; ověřené mají přednost.
@@ -410,34 +559,17 @@ export function openGenerator(ctx) {
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = true;
     countBtn.disabled = true; stopBtn.hidden = false;
     updateSave();
-    x.card.classList.add('busy');
-    x.seg?.classList.add('busy');
     live.hidden = false;
-    const limit = 30000, start = performance.now();
-    const timer = setInterval(() => {
-      const t = performance.now() - start;
-      bar.style.width = `${Math.min(100, (t / limit) * 100)}%`;
-      live.lastChild.textContent = `Případ ${x.i + 1}: hledám déle · ${(t / 1000).toFixed(1)} / 30 s · ${x.state.found.size} řešení`;
-    }, 200);
     status.textContent = `Případ ${x.i + 1} · hledám déle…`;
-    const seeds = x.state.choices.map((ch) => ({ alg: ch.it.alg, pre: ch.it.pre, post: ch.it.post }));
-    const { found, optimal } = await solveOne(x.c, limit, null, { seeds, found: x.state.found });
-    clearInterval(timer);
-    x.card.classList.remove('busy');
-    x.seg?.classList.remove('busy');
+    const before = x.state.choices[0].display;
+    const res = await attempt(x, 30000, () => `Případ ${x.i + 1}: hledám déle`);
     live.hidden = true;
     running = false;
     stopBtn.hidden = true; countBtn.disabled = false;
-    const choices = choicesOf(x, found);
-    const before = x.state.choices[0].display;
-    // vybrané zůstanou vybrané (i když z nabídky vypadly); nový nejlepší se přidá, jen když
-    // byl k uložení vybraný dosavadní nejlepší
-    const keep = new Set(x.state.keep);
-    if (choices[0].display !== before && keep.has(before) && choices[0].v.ok) { keep.delete(before); keep.add(choices[0].display); }
-    const lost = x.state.choices.filter((ch) => keep.has(ch.display) && !choices.some((c2) => c2.display === ch.display));
-    x.state = { ...x.state, found, choices: [...choices, ...lost], keep, optimal, cached: false };
-    status.textContent = `Případ ${x.i + 1}: ${choices[0].display === before ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${optimal ? ' · pohodlnější neexistuje' : ''}`;
+    applyResult(x, res);
+    status.textContent = `Případ ${x.i + 1}: ${x.state.choices[0].display === before ? 'nejlepší se nezměnil' : 'nabídka aktualizovaná'}${res.optimal ? ' · pohodlnější neexistuje' : ''}`;
     renderChoices(x);
+    markSeg(x);
     updateSave();
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
   }

@@ -47,6 +47,13 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
+  **Simulátor metody** (průvodce → „Simulovat“): náhodná zamíchání se složí krok
+  po kroku podle dílků hotových po krocích. Krok vyřeší algoritmus ze sady kroku,
+  když na případ nějaký máš (rychlejší podle tvých časů z trenažéru, jinak méně
+  náročný; i s AUF), jinak hledání jako v Labu podle tvých vah. Výsledek: průměr
+  tahů na složení (± rozptyl, rozložení), tahy a náročnost každého kroku a jeho
+  podíl, krok s nejvíc tahy, kolik případů pokryla tvoje sada, ukázkové složení
+  se zamícháním a porovnání s poslední simulací ostatních metod (`src/sim/simulate.js`).
 - **Simulace soutěže** (tlačítko Soutěž v Timeru): kolo podle pravidel WCA –
   Average of 5, Mean of 3 (6×6, 7×7) nebo Best of 3 (naslepo), povinná inspekce,
   volitelný cutoff, časový limit a cíl. Během kola pokusy, po čtvrtém pokusu
@@ -105,6 +112,12 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     případ s dokázaně nejpohodlnějším algoritmem skončí dřív a ušetřený čas
     dostanou těžší (nejvýš 3× průměr, max. minuta). Tvoje volby se pamatují
     a „Tahy a váhy → Podle mých voleb“ podle nich doladí hodnocení.
+    **Noční běh** (Délka běhu „Do dokázání…“, nejvýš 1 h / 3 h / 8 h / bez omezení):
+    po prvním kole se nedokázané případy hledají znovu a pokaždé déle (navazuje se na
+    nalezená řešení), dokud nemá každý dokázaně nejpohodlnější algoritmus nebo nevyprší
+    čas. Displej nezhasne (Wake Lock), průběh je v názvu karty a na konci přijde
+    oznámení. Zastavený nebo zavřený běh jde příště navázat („Pokračovat“ v generátoru
+    se stejným zadáním) – dokázané případy se už nehledají.
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
     Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým
@@ -234,7 +247,14 @@ Rychlost a síla odhadu:
 - **velké databáze** (skupiny 5–6 dílků, po 4 bitech) na zařízeních s ≥ 8 GB paměti:
   použijí se, když už jsou uložené, nebo při hledání aspoň 30 s; úplné hledání je
   s nimi zhruba 2× rychlejší,
-- workery si rozdělí pohledy pro přeřešení úseků (nedělají totéž).
+- workery si rozdělí pohledy pro přeřešení úseků (nedělají totéž),
+- **jádro ve WebAssembly** (`wasm/src/lib.rs` → `src/search/kernel.wasm`, build
+  `npm run wasm`, potřebuje Rust s cílem `wasm32-unknown-unknown`): stejné prohledávání
+  (IDA* i větve a meze podle ceny) a stavba databází, s výsledky totožnými s JS verzí
+  (test `test/kernel.test.js` porovnává řešení i počty uzlů). Hledání je zhruba 1,8–2×
+  rychlejší (tabulka blízko cíle s otisky klíčů – většina dotazů jedním čtením paměti),
+  příprava databází 1,7–2,9×. Bez jádra (starý prohlížeč) hledá JS verze.
+  `node bench/speed.mjs js` / `node bench/quality.mjs … js` měří bez jádra.
 
 Hodnocení počítá i **AUF** před a po algoritmu (cena U × „AUF před a po“ v Tahy
 a váhy); do délky se nepočítá.

@@ -906,6 +906,78 @@ test('generátor sady: EPBL – 14 případů bez parity, výběr co uložit, ov
   await ctx.close();
 });
 
+test('generátor sady: noční běh do dokázání, uložený rozpracovaný běh a navázání', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const P = m.P;
+    const ud = P.slots.filter((s) => s.facelets.length === 2 && /[UD]/.test(s.name)).map((s) => s.name);
+    const A = m.home(P.slots.filter((s) => !ud.includes(s.name)).map((s) => s.name));
+    for (const n of ud) for (const f of P.slotByName(n).facelets) if (P.stickerFace[f] === 'U' || P.stickerFace[f] === 'D') A[f] = P.stickerFace[f];
+    localStorage.setItem('ergocube.v3', JSON.stringify({
+      constraints: Object.fromEntries(m.pieceNames.map((n) => [n, 'solved'])), colorsA: A, colorsB: m.home(m.pieceNames), bases: ['M', 'U', 'D'],
+    }));
+    localStorage.setItem('ergocube.lab.generator', JSON.stringify({ auf: true, adf: true, y: true, z2: true, wy: false, par: true, fix: 'M2 U2 M2', name: 'EPBL', time: 2, view: 'balanced', mode: 'h1' }));
+    // rozpracovaný běh s jiným zadáním: jen upozornění, navázat nejde
+    localStorage.setItem('ergocube.gen.job', JSON.stringify({ key: 'jiné', name: 'Starý', mode: 'h1', started: Date.now() - 3600e3, total: 9, proven: 4, done: false }));
+  });
+  await p.reload();
+  await p.locator('#gen-set').tap();
+  const banner = p.locator('.gen-resume');
+  assert.match(await banner.innerText(), /Rozpracované generování „Starý“[\s\S]*dokázáno 4 z 9[\s\S]*stejné zadání/);
+  assert.equal(await banner.locator('button', { hasText: 'Pokračovat' }).isVisible(), false);
+  await banner.locator('button', { hasText: 'Zahodit' }).tap();
+  assert.equal(await banner.isVisible(), false);
+  assert.equal(await p.locator('.gen-dialog select[aria-label="Délka běhu"]').inputValue(), 'h1');
+  await p.locator('.gen-dialog button', { hasText: 'Spočítat případy' }).tap();
+  await p.waitForFunction(() => /případů/.test(document.querySelector('.gen-status').textContent));
+  const boxes = p.locator('.gen-card-head input');
+  const n = await boxes.count();
+  for (let i = 2; i < n; i++) await boxes.nth(i).uncheck();
+  await p.locator('.gen-dialog button', { hasText: 'Generovat' }).tap();
+  // rozpracovaný běh je uložený hned (po zavření jde navázat)
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('ergocube.gen.job'))?.name === 'EPBL');
+  // další kola hledají nedokázané případy, dokud nejsou dokázané
+  await p.waitForFunction(() => /Hotovo/.test(document.querySelector('.gen-status').textContent), null, { timeout: 150000 });
+  assert.match(await p.locator('.gen-status').innerText(), /Hotovo: 2 ověřených \(2 dokázaně nejpohodlnějších\)/);
+  assert.equal(await p.locator('.gen-seg.proof').count(), 2);
+  const job = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.gen.job')));
+  assert.equal(job.done, true);
+  assert.equal(job.proven, 2);
+  assert.doesNotMatch(await p.title(), /^\(/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('simulátor metody: složí zamíchání po krocích a porovná metody', async () => {
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
+  ] } };
+  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': { count: 5, time: 1 } });
+  await p.selectOption('#method', '+guide');
+  await p.waitForSelector('.guide-dialog[open]');
+  await p.locator('.guide-sim').tap();
+  await p.waitForSelector('.sim-dialog[open]');
+  assert.equal(await p.locator('.sim-step').count(), 2);
+  assert.match(await p.locator('.sim-step').first().innerText(), /Hrana vpředu[\s\S]*1 hotových/);
+  await p.locator('.sim-dialog button', { hasText: 'Spustit simulaci' }).tap();
+  await p.waitForSelector('.sim-hero', { timeout: 120000 });
+  assert.match(await p.locator('.sim-dialog .status').innerText(), /Hotovo: 5 složení/);
+  assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů/i);
+  assert.equal(await p.locator('.sim-res-row').count(), 2);
+  assert.equal(await p.locator('.sim-res-row.worst').count(), 1);
+  assert.match(await p.locator('.sim-history').innerText(), /Porovnání metod[\s\S]*\(tahle\)/);
+  const hist = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));
+  assert.equal(hist.length, 1);
+  assert.equal(hist[0].n, 5);
+  await p.locator('.sim-example summary').tap();
+  assert.match(await p.locator('.sim-example').innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
 test('trenažér: hromadně kopírovat a přesouvat mezi sadami, kopírovat text, smazat', async () => {
   const { p, ctx, errors } = await open('trainer');
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);

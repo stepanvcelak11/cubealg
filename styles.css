@@ -1056,10 +1056,14 @@ body.timing .round-panel { visibility: hidden; }
 .gen-timeline { display: flex; gap: 3px; }
 .gen-seg { flex: 1; height: 16px; min-height: 0; min-width: 3px; box-shadow: none; padding: 0; border: 0; border-radius: 5px; background: #3a3d4c; cursor: pointer; }
 .gen-seg.busy { background: var(--sun); animation: gen-pulse 1s ease-in-out infinite alternate; }
-.gen-seg.ok { background: #22b455; }
+.gen-seg.ok { background: #8183ff; }
+.gen-seg.proof { background: #22b455; }
 .gen-seg.warn { background: var(--warn); }
 .gen-seg.none { background: var(--bad); }
 @keyframes gen-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+.gen-resume { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-radius: 20px; background: var(--sun-soft); }
+.gen-resume > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gen-resume small { color: var(--muted); font-size: 0.78rem; font-weight: 600; }
 .gen-live { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
 .gen-track { height: 6px; border-radius: 3px; background: #3a3d4c; overflow: hidden; }
 .gen-bar { height: 100%; width: 0; background: var(--sun); transition: width 0.2s linear; }
@@ -1091,3 +1095,50 @@ body.timing .round-panel { visibility: hidden; }
 .gen-choice.bad { box-shadow: inset 0 0 0 1.5px var(--border-strong); opacity: 0.8; }
 .gen-fix input { font-family: var(--mono); }
 .gen-out code { font-family: var(--mono); font-size: 0.74rem; overflow-wrap: anywhere; }
+
+/* --- Simulátor metody ------------------------------------------------------------------------ */
+.sim-dialog { width: min(720px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 16px); padding: 0; display: flex; flex-direction: column; }
+.sim-dialog:not([open]) { display: none; }
+.sim-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 16px 10px 18px; border-bottom: 1px solid var(--panel-2); }
+.sim-head h2 { margin: 0; font-family: var(--display); font-size: 1.6rem; }
+.sim-head .hint { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
+.sim-body { overflow-y: auto; padding: 12px 16px 20px; display: grid; gap: 12px; }
+.sim-steps { display: grid; gap: 8px; }
+.sim-step { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-radius: 18px; background: var(--panel-2); }
+.sim-step-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sim-step-title { display: flex; flex-direction: column; min-width: 0; }
+.sim-step-title small { color: var(--muted); font-size: 0.75rem; font-weight: 600; }
+.sim-step-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sim-step .small-select { background-color: var(--panel); max-width: 60vw; }
+.sim-step .check-row { font-size: 0.82rem; }
+.sim-track { margin-top: 2px; }
+.sim-results { display: grid; gap: 12px; }
+.sim-results:empty { display: none; }
+.sim-hero { background: var(--accent); color: #fff; border-radius: 24px; padding: 16px 18px; }
+.sim-hero > div { display: flex; flex-direction: column; gap: 2px; }
+.sim-hero .tile-label, .sim-hero small { color: rgb(255 255 255 / 0.82); }
+.sim-hero b { font-family: var(--display); font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+@media (prefers-color-scheme: dark) { .sim-hero { color: #0e0f15; } .sim-hero .tile-label, .sim-hero small { color: rgb(14 15 21 / 0.75); } }
+.sim-res { display: grid; gap: 10px; }
+.sim-res-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 10px 12px; border-radius: 18px; background: var(--panel-2); }
+.sim-res-row.worst { background: var(--sun-soft); }
+.sim-res-label { display: flex; align-items: center; gap: 8px; }
+.sim-tag { font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 8px; background: var(--sun); color: #14151c; }
+.sim-res-bar { height: 10px; border-radius: 5px; background: var(--panel); overflow: hidden; }
+.sim-res-bar i { display: block; height: 100%; border-radius: 5px; background: var(--accent); }
+.sim-res-row.worst .sim-res-bar i { background: var(--sun-ink); }
+.sim-res-nums { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.sim-res-nums b { font-family: var(--display); font-size: 1.1rem; }
+.sim-res-nums small { color: var(--muted); font-size: 0.76rem; font-weight: 600; }
+.sim-hist { display: flex; align-items: flex-end; gap: 4px; height: 90px; padding-bottom: 16px; }
+.sim-hist-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.sim-hist-col i { display: block; width: 100%; min-height: 3px; border-radius: 6px 6px 3px 3px; background: color-mix(in srgb, var(--accent) 45%, var(--panel)); }
+.sim-hist-col small { position: absolute; bottom: -16px; font-size: 0.64rem; color: var(--muted); font-weight: 700; }
+.sim-example { padding: 10px 12px; border-radius: 18px; background: var(--panel-2); }
+.sim-example summary { cursor: pointer; font-weight: 750; font-size: 0.86rem; }
+.sim-example p { display: flex; flex-direction: column; gap: 2px; margin: 10px 0 6px; }
+.sim-example small { color: var(--muted); font-weight: 600; }
+.sim-example code { font-family: var(--mono); font-size: 0.86rem; overflow-wrap: anywhere; }
+.sim-example ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 0.86rem; }
+.sim-history h3 { margin: 4px 0 8px; font-family: var(--display); font-size: 1.2rem; }
+.sim-history .compare td:first-child, .sim-history .compare th:first-child { text-align: left; }
