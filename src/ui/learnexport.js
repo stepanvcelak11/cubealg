@@ -13,6 +13,7 @@ import { stepParts, partsBefore, describeParts, frameMap, validFrame, DEFAULT_FR
 import { FREEDOM, STEP_MOVES, ADJUST, COLORS } from '../sim/plan.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig } from './stepcfg.js';
+import { describeRule } from '../core/rules.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -122,6 +123,7 @@ export function learningHtml(method = methods.active()) {
     <div>
       ${st.text ? String(st.text).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}
       ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
+      ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${esc(describeRule(r, map))}</li>`).join('')}</ul>` : ''}
       ${settings.length ? `<dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
     </div>
   </div>
@@ -162,6 +164,7 @@ h3 { font-size: 1rem; margin: 14px 0 8px; }
 .alg code { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
 .alg small { color: var(--muted); font-size: 0.74rem; }
 .alg input { width: 20px; height: 20px; flex: none; }
+.rules { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
 .import { margin-top: 28px; padding: 12px 14px; border-radius: 14px; background: var(--soft); font-size: 0.86rem; color: var(--muted); }
 @media print { body { padding: 0; } .import { display: none; } .step { border-color: #ccc; } }
 </style></head><body>
@@ -173,7 +176,7 @@ ${last ? `<p><b>Simulace (${esc(new Date(last.at).toLocaleDateString('cs-CZ'))},
 ${guide.steps.map((st, i) => {
     const res = last?.steps.find((x) => x.id === st.id);
     const set = st.set ? sets.get(st.set) : null;
-    return `<tr><td>${i + 1}</td><td>${esc(st.title || `Krok ${i + 1}`)}</td><td>${esc(describeParts(stepParts(st)))}</td><td>${set ? `${esc(set.name)} (${setAlgs(set.id).length})` : '–'}</td><td>${esc(freeText(sim[st.id]))}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
+    return `<tr><td>${i + 1}</td><td>${esc(st.title || `Krok ${i + 1}`)}</td><td>${esc([Object.keys(stepParts(st)).length ? describeParts(stepParts(st)) : '', st.rules?.length ? `${st.rules.length}× pravidlo pro skupinu` : ''].filter(Boolean).join(' + ') || '–')}</td><td>${set ? `${esc(set.name)} (${setAlgs(set.id).length})` : '–'}</td><td>${esc(freeText(sim[st.id]))}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
   }).join('')}
 </tbody></table>
 ${steps.join('\n')}

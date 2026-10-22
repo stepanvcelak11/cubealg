@@ -4,7 +4,9 @@ import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
 import { summary, formatValue, formatSolve, formatClock } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { solves, groups, methods, guides } from './store.js';
+import { solves, groups, methods, guides, algs } from './store.js';
+import { buildPlan } from '../sim/plan.js';
+import { stepConfig } from './stepcfg.js';
 import { Stopwatch } from './stopwatch.js';
 import { renderPreview } from './preview.js';
 import { partsBefore, describeParts } from './parts.js';
@@ -38,6 +40,24 @@ export function timerPractice() {
 /** Dílky hotové před krokem (název → styl): co složí předchozí kroky. */
 export function stepFixed(stepId) {
   return partsBefore(guides.get().steps, stepId);
+}
+
+/**
+ * Plán předchozích kroků pro nácvik, když některý z nich má pravidla pro skupiny dílků
+ * (kříž z kterýchkoli hran, separace…): zamíchání pak vznikne složením náhodného stavu
+ * podle těchto kroků (scramble-worker). Jinak stačí pevné dílky (null).
+ */
+function practicePlan(stepId) {
+  const guide = guides.get();
+  const end = guide.steps.findIndex((st) => st.id === stepId);
+  const before = guide.steps.slice(0, Math.max(0, end));
+  if (!before.some((st) => st.rules?.length)) return null;
+  const method = methods.active();
+  // na kvalitě řešení tu nezáleží – krátké hledání
+  const config = Object.fromEntries(before.map((st) => [st.id, { ...stepConfig(method, st), time: 0.15 }]));
+  try {
+    return buildPlan({ guide: { ...guide, steps: before }, config, setAlgs: (id) => algs.list().filter((a) => a.set === id) }).plan;
+  } catch { return null; }
 }
 
 let refreshPractice = () => {};
@@ -131,7 +151,7 @@ async function newScramble() {
   box.textContent = 'Míchám…';
   const event = settings.event;
   const step = timerPractice();
-  const res = await requestScramble(event, { count: settings.mbfCount ?? 3, fixed: step ? stepFixed(step) : null });
+  const res = await requestScramble(event, { count: settings.mbfCount ?? 3, fixed: step ? stepFixed(step) : null, plan: step ? practicePlan(step) : null });
   if (event !== settings.event || step !== timerPractice()) return;
   box.classList.remove('loading');
   current = res.scramble ?? '';
@@ -220,8 +240,9 @@ export function initTimer({ isActive }) {
     document.body.toggleAttribute('data-practice', !!step);
     if (step) {
       const before = describeParts(stepFixed(step));
-      info.textContent = i === 0 ? 'od zamíchané kostky' : before === 'nic' ? 'nastav dílky předchozích kroků' : `předem: ${before}`;
-      info.classList.toggle('warn', i > 0 && before === 'nic');
+      const byRules = i > 0 && steps.slice(0, i).some((st) => st.rules?.length);
+      info.textContent = i === 0 ? 'od zamíchané kostky' : byRules ? `předem: kroky 1–${i} složené podle metody` : before === 'nic' ? 'nastav dílky předchozích kroků' : `předem: ${before}`;
+      info.classList.toggle('warn', i > 0 && !byRules && before === 'nic');
     }
   };
   renderSteps();

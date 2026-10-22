@@ -47,6 +47,8 @@ const NEUTRAL_FREE = { fixed: 'fixed', dual: 'dual', all: 'all' };
 export const stepDefaults = (hasSet) => ({
   on: true, moves: 'faces', custom: null, mode: hasSet ? 'auto' : 'search', view: 'speed',
   adjust: hasSet ? 'U' : 'none', helpers: '', time: 3, recog: hasSet ? 0.6 : 0.3, free: 'fixed',
+  // druh kroku pro odhad času: naučený algoritmus, nebo intuitivní (člověk tahy vymýšlí)
+  kind: hasSet ? 'alg' : 'intuitive',
 });
 
 const FACES = ['U', 'D', 'F', 'B', 'R', 'L'];

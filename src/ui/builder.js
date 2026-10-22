@@ -169,7 +169,9 @@ export function renderBuilder() {
       el('div', { className: 'grid-fields' },
         field('Vybírat řešení podle', select(Object.fromEntries(Object.entries(VIEWS).map(([id, v]) => [id, `${v.icon} ${v.label}`])), cfg.view, `Vybírat podle – krok ${k}`, (v) => patch({ view: v }, false)), 'Které z nalezených řešení test použije'),
         field('Čas hledání (s)', num(cfg.time, `Čas hledání – krok ${k}`, 0.5, 120, 0.5, (v) => patch({ time: v }, false)), 'Delší = blíž nejlepšímu možnému řešení, test trvá déle'),
-        field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => patch({ recog: v }, false)), 'Kolik ti trvá krok rozpoznat (odhad času)')),
+        field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => patch({ recog: v }, false)), 'Kolik ti trvá krok rozpoznat (odhad času)'),
+        field('Druh kroku', select({ alg: 'Naučený algoritmus', intuitive: 'Intuitivní (vymýšlím)' }, cfg.kind ?? 'intuitive', `Druh kroku – krok ${k}`, (v) => patch({ kind: v }, false)),
+          'Pro odhad času: naučený algoritmus jde rychle a s tolika tahy jako v simulaci, intuitivní krok (kříž, páry, bloky) dělá člověk s víc tahy a pomaleji')),
       el('label', { className: 'check-row' }, Object.assign(el('input', { type: 'checkbox' }), { checked: cfg.on === false, onchange: (e) => patch({ on: !e.target.checked }, false) }),
         'V testu spojit s dalším krokem (vyplatilo by se je dělat najednou?)'));
     const alg = el('input', { className: 'guide-input', value: st.task?.alg ?? '', placeholder: 'Ukázkový algoritmus (např. R U R\' U\')', disabled: !st.task, ariaLabel: `Ukázkový algoritmus – krok ${k}` });

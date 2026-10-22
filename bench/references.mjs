@@ -1,22 +1,55 @@
-// Převede výstup `node bench/method.mjs <n> <s> <metoda> json` na src/sim/references.js.
+// Spojí výstupy `node bench/method.mjs <n> <s> <metoda> json [část/počet]` (řádky SOLVES,
+// víc procesů souběžně) a zapíše src/sim/references.js: vestavěné metody k porovnání
+// v simulátoru a k nim data skutečných skladačů (z internetu, se zdroji).
 //   node bench/references.mjs soubor1.txt soubor2.txt …
 import { readFileSync, writeFileSync } from 'node:fs';
+import { summarize } from '../src/sim/simulate.js';
 
 const DESCRIPTIONS = {
-  cfop: 'kříž, 4 páry F2L zvlášť, OLL a PLL (vnější tahy).',
+  cfop: 'kříž, 4 páry F2L do kteréhokoli slotu, OLL a PLL (vnější tahy).',
   roux: 'první a druhý blok 1×2×3, CMLL a LSE ⟨M, U⟩.',
   zz: 'EOLine, bloky ⟨R, U, L⟩, OCLL a PLL.',
 };
-const refs = process.argv.slice(2).map((f) => JSON.parse(readFileSync(f, 'utf8').split('\n').find((l) => l.startsWith('JSON ')).slice(5)));
+const WIKI = { title: 'Cuberpal – CFOP vs Roux (čísla ze Speedsolving wiki)', url: 'https://www.cuberpal.com/guides/cfop-vs-roux' };
+const GUIDE = { title: 'speedcubing.org – výběr metody', url: 'https://speedcubing.org/pages/guide-to-choosing-a-speedsolving-method' };
+const WR = { title: 'Wikipedie – Speedcubing (rekordy)', url: 'https://en.wikipedia.org/wiki/Speedcubing' };
+const ROUX = { title: 'scheopner.com – Roux (rekordy skladačů Roux)', url: 'https://www.scheopner.com/cube/' };
+const REAL = {
+  cfop: { moves: '55–60 (obvykle kolem 57)', best: 'průměr 3,51 s – světový rekord (Yiheng Wang, 2026)', note: 'metoda většiny světové špičky', sources: [WIKI, GUIDE, WR] },
+  roux: { moves: '45–50 (obvykle kolem 48)', best: 'oficiální průměr pod 6 s mají 4 skladači (např. Sean Patrick Villanueva); neoficiálně 4,77 s', note: 'méně tahů, ale pomalejší točení (bloky, tahy M)', sources: [WIKI, GUIDE, ROUX] },
+  zz: { moves: '50–55 (se ZBLL méně)', best: 'spolehlivý přehled rekordů ZZ jsem nenašel', note: 'oblíbená hlavně na jednu ruku (OH)', sources: [GUIDE] },
+};
+
+// SOLVES řádky podle metody (víc souborů = víc dílů stejného běhu)
+const byId = new Map();
+for (const f of process.argv.slice(2)) {
+  for (const line of readFileSync(f, 'utf8').split('\n').filter((l) => l.startsWith('SOLVES '))) {
+    const r = JSON.parse(line.slice(7));
+    const cur = byId.get(r.id) ?? { ...r, solves: [] };
+    cur.solves.push(...r.solves);
+    byId.set(r.id, cur);
+  }
+}
 const order = ['cfop', 'roux', 'zz'];
-refs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-const data = refs.map((r) => ({ ...r, description: DESCRIPTIONS[r.id] ?? '' }));
-writeFileSync(new URL('../src/sim/references.js', import.meta.url), `// Vestavěné metody k porovnání v simulátoru: spočtené stejným simulátorem (bench/method.mjs,
-// semínko 1, ${refs[0]?.n ?? '?'} zamíchání, 3 s hledání na krok, bez sad – každý krok hledáním), aby
-// srovnání s tvou metodou bylo férové. Vygenerováno: node bench/references.mjs.
+const refs = [...byId.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).map((r) => {
+  const solves = r.solves.sort((a, b) => a.k - b.k);
+  const sum = summarize(solves, r.steps.length, { tps: 4, recog: r.steps.map((s) => s.recog ?? 0), kinds: r.steps.map((s) => s.kind ?? 'intuitive') });
+  const round = (x, d = 2) => +x.toFixed(d);
+  return {
+    id: r.id, name: r.name, n: sum.count, seconds: r.seconds, moves: round(sum.moves), ci: round(sum.ci), median: sum.median, min: sum.min, max: sum.max, score: round(sum.score),
+    steps: r.steps.map((s, i) => ({ title: s.title, moves: round(sum.steps[i].moves), median: sum.steps[i].median, p90: sum.steps[i].p90, score: round(sum.steps[i].score),
+      skipped: round(sum.steps[i].skipped, 3), recog: s.recog ?? 0, kind: s.kind ?? 'intuitive' })),
+    description: DESCRIPTIONS[r.id] ?? '', real: REAL[r.id],
+  };
+});
+const n = refs[0]?.n ?? '?', s = refs[0]?.seconds ?? '?';
+writeFileSync(new URL('../src/sim/references.js', import.meta.url), `// Vestavěné metody k porovnání v simulátoru: spočtené stejným simulátorem ze šablon
+// (bench/method.mjs, semínko 1, ${n} zamíchání, ${s} s hledání na krok, bez sad – každý krok
+// hledáním), aby srovnání s tvou metodou bylo férové, a k nim data skutečných skladačů.
+// Vygenerováno: node bench/references.mjs.
 
-export const REFERENCE_NOTE = 'Vestavěné metody spočítal stejný simulátor (každý krok hledáním, ${refs[0]?.n ?? '?'} zamíchání), takže ukazují metodu, ne konkrétního skladače – člověk při skládání obvykle nenajde tak krátká řešení kroků.';
+export const REFERENCE_NOTE = 'Vestavěné metody spočítal stejný simulátor (každý krok hledáním, ${n} zamíchání), takže ukazují metodu, ne konkrétního skladače.';
 
-export const REFERENCES = ${JSON.stringify(data, null, 2).replace(/"([a-zA-Z0-9_]+)":/g, '$1:').replace(/"/g, "'")};
+export const REFERENCES = ${JSON.stringify(refs, null, 2).replace(/"([a-zA-Z0-9_]+)":/g, '$1:').replace(/'/g, "\\'").replace(/"/g, "'")};
 `);
-console.log(data.map((r) => `${r.name}: ${r.moves}`).join(' · '));
+console.log(refs.map((r) => `${r.name}: ${r.moves} tahů (${r.n} zamíchání)`).join(' · '));

@@ -125,7 +125,6 @@ export function constraintsKey(c) {
 }
 
 // --- popis slovy ------------------------------------------------------------------------------------
-const COLOR_NAME = { U: 'bílá', D: 'žlutá', F: 'zelená', B: 'modrá', R: 'červená', L: 'oranžová' };
 const COLOR_INSTR = { U: 'bílou', D: 'žlutou', F: 'zelenou', B: 'modrou', R: 'červenou', L: 'oranžovou' };
 const SIDE = { U: 'nahoru', D: 'dolů', F: 'dopředu', B: 'dozadu', R: 'doprava', L: 'doleva' };
 

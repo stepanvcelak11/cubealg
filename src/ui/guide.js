@@ -11,7 +11,8 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { holdFor } from './holds.js';
 import { downloadLearning } from './learnexport.js';
-import { stepParts, partsBefore, partsCube, describeParts } from './parts.js';
+import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME } from './parts.js';
+import { describeRule } from '../core/rules.js';
 
 let dialog = null;
 let deps = { labTask: () => null, train: () => {}, practice: null, simulate: null, build: null };
@@ -139,6 +140,7 @@ function draw() {
         !st.task && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
           partsCube(partsBefore(guide.steps, st.id), stepParts(st), guide.frame, `Po kroku ${i + 1}`),
           el('figcaption', { textContent: `po kroku: ${describeParts(stepParts(st))}` })) : null,
+        st.rules?.length ? el('ul', { className: 'guide-rules' }, ...st.rules.map((r) => el('li', { textContent: describeRule(r, frameMap(validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME)) }))) : null,
         examplePlayer(st.task),
         deps.practice ? el('div', { className: 'guide-set guide-practice-row' },
           el('span', { textContent: i ? 'Nácvik v timeru – předchozí kroky budou složené' : 'Nácvik v timeru od zamíchané kostky' }),

@@ -177,13 +177,26 @@ const quantile = (xs, q) => {
 };
 
 /**
- * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy / TPS).
- * Přeskočený krok nestojí nic.
+ * Model člověka pro odhad času (simulace najde u každého kroku skoro nejlepší řešení,
+ * člověk ne). Intuitivní kroky (kříž, páry, bloky – tahy se vymýšlejí za běhu) stojí
+ * člověka víc tahů než hledání a jdou pomaleji (dívá se dopředu); naučené algoritmy
+ * mají tahy jako v simulaci a jdou plnou rychlostí. Koeficienty jsou nastavené tak,
+ * aby vestavěné CFOP, Roux a ZZ vyšly v tazích jako u skutečných skladačů
+ * (bench/references.mjs, src/sim/references.js).
  */
-export function stepTime(item, { tps = 4, recog = 0 } = {}) {
+export const HUMAN = { intuitiveMoves: 1.15, intuitiveTps: 0.8 };
+
+/** Kolik tahů na krok udělá člověk (intuitivní krok × koeficient). */
+export const humanMoves = (moves, kind) => (kind === 'intuitive' ? moves * HUMAN.intuitiveMoves : moves);
+
+/**
+ * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy člověka / TPS,
+ * u intuitivních kroků pomaleji). Přeskočený krok nestojí nic.
+ */
+export function stepTime(item, { tps = 4, recog = 0, kind = 'alg' } = {}) {
   if (!item || item.source === 'skip') return 0;
-  const exec = Number.isFinite(item.time) ? item.time / 1000 + (item.extra ?? 0) / tps : item.length / tps;
-  return recog + exec;
+  if (Number.isFinite(item.time)) return recog + item.time / 1000 + (item.extra ?? 0) / tps;
+  return recog + humanMoves(item.length, kind) / (kind === 'intuitive' ? tps * HUMAN.intuitiveTps : tps);
 }
 
 /**
@@ -191,19 +204,19 @@ export function stepTime(item, { tps = 4, recog = 0 } = {}) {
  * času a podíl na celku, jak často se krok přeskočil, kolikrát pomohla tvoje sada
  * a kolik případů v ní chybělo; celkový průměr s rozptylem a intervalem spolehlivosti,
  * odhad času složení, rozložení a které orientace se volily.
- * @param {{tps?: number, recog?: number[]}} [timing]
+ * @param {{tps?: number, recog?: number[], kinds?: string[]}} [timing]
  */
 export function summarize(solves, stepCount, timing = {}) {
   const done = solves.filter((s) => s.ok);
   const tps = timing.tps ?? 4;
-  const times = done.map((s) => s.steps.map((x, i) => stepTime(x, { tps, recog: timing.recog?.[i] ?? 0 })));
+  const times = done.map((s) => s.steps.map((x, i) => stepTime(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i] })));
   const steps = Array.from({ length: stepCount }, (_, i) => {
     const items = done.map((s) => s.steps[i]).filter(Boolean);
     const lens = items.map((x) => x.length);
     const by = (src) => items.filter((x) => x.source === src).length;
     const needed = items.filter((x) => x.source !== 'skip').length;
     return {
-      moves: mean(lens), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
+      moves: mean(lens), human: humanMoves(mean(lens), timing.kinds?.[i]), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
       score: mean(items.map((x) => x.score)),
       time: mean(times.map((t) => t[i] ?? 0)),
       skipped: items.length ? by('skip') / items.length : 0,
@@ -230,7 +243,7 @@ export function summarize(solves, stepCount, timing = {}) {
   const movesSd = sd(totals);
   return {
     count: done.length, failed: solves.length - done.length,
-    moves: total, movesSd, ci: done.length > 1 ? (1.96 * movesSd) / Math.sqrt(done.length) : 0,
+    moves: total, human: steps.reduce((a, st) => a + st.human, 0), movesSd, ci: done.length > 1 ? (1.96 * movesSd) / Math.sqrt(done.length) : 0,
     median: quantile(totals, 0.5),
     score: mean(scores), time: totalTime, timeSd: sd(secs),
     min: totals.length ? lo : 0, max: totals.length ? hi : 0,

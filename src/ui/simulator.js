@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { methods, guides, algs } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
-import { summarize, seededRandom } from '../sim/simulate.js';
+import { summarize, seededRandom, humanMoves, HUMAN } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
@@ -323,7 +323,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
 
   // --- výsledky -------------------------------------------------------------------------------
   function renderResults(solves, meta) {
-    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0) };
+    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive') };
     const sum = summarize(solves, meta.stepTitles.length, timing);
     if (!sum.count) { results.replaceChildren(); return sum; }
     const maxMoves = Math.max(...sum.steps.map((s) => s.moves), 1);
@@ -414,7 +414,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     list.unshift({
       method, name: methods.get(method).name, sig: meta.sig, at: Date.now(), n: sum.count, moves: sum.moves, ci: sum.ci, time: sum.time, score: sum.score,
       median: sum.median, label: settingsLabel(),
-      steps: meta.stepTitles.map((t, i) => ({ id: meta.stepIds[i], title: t, moves: sum.steps[i].moves, median: sum.steps[i].median, time: sum.steps[i].time, recog: Number(config[meta.stepIds[i]]?.recog) || 0 })),
+      steps: meta.stepTitles.map((t, i) => ({ id: meta.stepIds[i], title: t, moves: sum.steps[i].moves, median: sum.steps[i].median, time: sum.steps[i].time, recog: Number(config[meta.stepIds[i]]?.recog) || 0, kind: config[meta.stepIds[i]]?.kind ?? 'intuitive' })),
     });
     storage.set(HISTORY, list.slice(0, HISTORY_MAX));
     cmpRight = `run:${meta.sig}`; // porovnání ukáže právě dokončenou simulaci
@@ -430,7 +430,13 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     return [...refs, ...runs];
   }
   /** Odhad času stejným vzorcem pro obě strany: rozpoznání + tahy / TPS. */
-  const estTime = (src) => src.steps.reduce((a, st) => a + (st.moves > 0 ? (st.recog ?? 0) : 0) + st.moves / (Number(tps.value) || 4), 0);
+  // stejný model člověka jako u výsledků (sim/simulate.js): intuitivní kroky víc tahů a pomaleji
+  const humanOf = (src) => src.steps.reduce((a, st) => a + humanMoves(st.moves, st.kind ?? 'intuitive'), 0);
+  const estTime = (src) => src.steps.reduce((a, st) => {
+    const t = Number(tps.value) || 4;
+    const kind = st.kind ?? 'intuitive';
+    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind) / (kind === 'intuitive' ? t * HUMAN.intuitiveTps : t);
+  }, 0);
   function renderCompare() {
     const list = sources();
     const runs = list.filter((x) => !x.ref);
@@ -449,7 +455,8 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const L = byId(cmpLeft), R = byId(cmpRight);
     const max = Math.max(...L.steps.map((x) => x.moves), ...R.steps.map((x) => x.moves), 1);
     const metrics = [
-      ['Tahů na složení', (x) => x.moves, (v) => fmt(v), true],
+      ['Tahů (simulace)', (x) => x.moves, (v) => fmt(v), true],
+      ['Tahů člověka (odhad)', (x) => humanOf(x), (v) => fmt(v), true],
       ['Odhad času', (x) => estTime(x), (v) => `${fmt(v, 2)} s`, true],
       ['Medián tahů', (x) => x.median, (v) => (Number.isFinite(v) ? String(v) : '–'), true],
       ['Kroků', (x) => x.steps.length, (v) => String(v), false],
@@ -475,8 +482,24 @@ function mountSimulator(host, lab, { onEdit } = {}) {
         el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
         el('tbody', {}, ...metrics.map(([label, f, show, lower]) => el('tr', {}, el('td', { textContent: label }),
           cell(f(L), f(R), lower, show), cell(f(R), f(L), lower, show))))),
+      realData(L, R),
       el('div', { className: 'sim-cmp' }, column(L), column(R)),
       el('p', { className: 'hint', textContent: `${runs.length ? '' : 'Spusť simulaci své metody – objeví se vpravo. '}${L.ref ? `${L.name}: ${L.description} ` : ''}${R.ref ? `${R.name}: ${R.description} ` : ''}${REFERENCE_NOTE}` }));
+  }
+
+  /** Skuteční skladači (u vestavěných metod): tahy z rekonstrukcí a nejlepší oficiální průměr. */
+  function realData(L, R) {
+    if (!L.real && !R.real) return null;
+    const val = (src, key) => (src.real ? src.real[key] ?? '–' : 'jen simulace');
+    const rows = [['Tahů v reálných složeních', 'moves'], ['Nejlepší výsledky', 'best'], ['Poznámka', 'note']];
+    const sources = [...new Map([...(L.real?.sources ?? []), ...(R.real?.sources ?? [])].map((x) => [x.url, x])).values()];
+    return el('details', { className: 'sim-real', open: true },
+      el('summary', { textContent: 'Skuteční skladači (data z internetu)' }),
+      el('table', { className: 'compare sim-cmp-table' },
+        el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
+        el('tbody', {}, ...rows.map(([label, key]) => el('tr', {}, el('td', { textContent: label }), el('td', { textContent: val(L, key) }), el('td', { textContent: val(R, key) }))))),
+      el('p', { className: 'hint', textContent: 'Simulace ukazuje, kolik tahů metoda potřebuje, když se každý krok složí skoro nejlépe. Skuteční skladači dělají víc tahů a rychlost závisí na tom, jak dobře se metoda „točí“ a dívá dopředu – proto odhad času počítá u intuitivních kroků s víc tahy a pomalejším tempem. Rekordy navíc ovlivňuje i to, kolik lidí metodu používá (CFOP většina světové špičky).' }),
+      sources.length ? el('p', { className: 'hint sim-sources' }, 'Zdroje: ', ...sources.flatMap((x, i) => [i ? ' · ' : '', el('a', { href: x.url, target: '_blank', rel: 'noopener', textContent: x.title })])) : null);
   }
 
   function renderHistory() {
