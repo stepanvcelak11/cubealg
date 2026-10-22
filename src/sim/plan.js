@@ -1,7 +1,9 @@
 // Plán simulace z metody: kroky průvodce (dílky hotové po kroku), držení metody,
 // nastavení každého kroku (tahy, sada, natočení vrstev, pomocné algoritmy, pohled)
-// a barevná neutralita (další orientace metody). Výsledek je čistě datový
-// (viz stepsolver.js), aby šel poslat do workerů.
+// a volnost kroku – kde smí být jeho dílky (kříž libovolnou barvou, pár v kterémkoli
+// slotu, blok na kterémkoli boku). Volnost = orientace metody (která barva je dole
+// a vpředu), ve kterých se krok smí složit; další kroky pak pokračují v té zvolené.
+// Výsledek je čistě datový (viz stepsolver.js), aby šel poslat do workerů.
 
 import { stepParts, partsBefore, mergeParts, frameMap, validFrame, DEFAULT_FRAME } from '../ui/parts.js';
 import { slotByName } from '../core/geometry.js';
@@ -25,24 +27,80 @@ export const STEP_MOVES = {
 export const MOVE_BASES = ['R', 'L', 'U', 'D', 'F', 'B', 'M', 'E', 'S', 'r', 'l', 'u', 'd', 'f', 'b'];
 export const ADJUST = { none: 'Žádné', U: 'Horní vrstva (AUF)', UD: 'Horní i spodní (AUF + ADF)' };
 export const NEUTRAL = { fixed: 'Pevná (podle metody)', dual: 'Dvě barvy (protilehlé)', all: 'Libovolná barva' };
+/** Volnost kroku: ve kterých orientacích (vůči té dosavadní) se smí krok složit. */
+export const FREEDOM = {
+  fixed: { label: 'Pevně (jak je v průvodci)', hint: 'Dílky kroku jen tam, kde je máš v průvodci' },
+  side: { label: 'Kterýkoli bok (otočení y)', hint: 'Stejná barva dole, ale dílky kroku smí být vpředu, vpravo, vzadu i vlevo – pár do kteréhokoli slotu, blok na kterékoli straně' },
+  dual: { label: 'Dvě barvy dole (protilehlé)', hint: 'Krok i na protilehlé barvě (např. bílá nebo žlutá dole)' },
+  dualSide: { label: 'Dvě barvy + kterýkoli bok', hint: 'Protilehlé barvy dole a k tomu kterýkoli bok' },
+  all: { label: 'Kterákoli strana a barva', hint: 'Plná barevná neutralita: krok na kterékoli straně kostky (kříž libovolnou barvou, skládaný klidně z boku)' },
+  colors: { label: 'Vybrané barvy…', hint: 'Krok smí skončit jen s vybranými barvami dole (a vpředu) – např. kříž jen bílý nebo žlutý' },
+};
+/** Barvy stěn (písmeno stěny kostky = barva jejího středu). */
+export const COLORS = { U: 'bílá', D: 'žlutá', F: 'zelená', B: 'modrá', R: 'červená', L: 'oranžová' };
+/** Otočení kostky mezi kroky (změna orientace kvůli volnosti). */
+export const ROTATION = { free: 'Nepočítat do tahů', move: 'Počítat jako tah' };
+const NEUTRAL_FREE = { fixed: 'fixed', dual: 'dual', all: 'all' };
 
 /** Výchozí nastavení kroku. */
 export const stepDefaults = (hasSet) => ({
   on: true, moves: 'faces', custom: null, mode: hasSet ? 'auto' : 'search', view: 'speed',
-  adjust: hasSet ? 'U' : 'none', helpers: '', time: 3, recog: hasSet ? 0.6 : 0.3,
+  adjust: hasSet ? 'U' : 'none', helpers: '', time: 3, recog: hasSet ? 0.6 : 0.3, free: 'fixed',
 });
 
-/** Orientace metody k vyzkoušení (barevná neutralita). */
-export function framesFor(frame, neutral) {
-  if (neutral === 'dual') return [frame, { down: OPPOSITE[frame.down], front: frame.front }];
-  if (neutral === 'all') {
-    return ['U', 'D', 'F', 'B', 'R', 'L'].sort((a, b) => (a === frame.down ? -1 : b === frame.down ? 1 : 0)).map((down) => {
-      const front = [frame.front, 'F', 'R', 'B', 'L', 'U', 'D'].find((f) => f !== down && f !== OPPOSITE[down]);
-      return { down, front };
-    });
+const FACES = ['U', 'D', 'F', 'B', 'R', 'L'];
+const fid = (f) => `${f.down}${f.front}`;
+const sides = (down) => FACES.filter((x) => x !== down && x !== OPPOSITE[down]);
+/**
+ * Orientace, do kterých smí krok s volností `free` přejít z orientace f (f první).
+ * free = 'colors': jen vybrané barvy dole (cfg.downs) a vpředu (cfg.fronts, prázdné = kterákoli).
+ */
+export function freeFrames(f, free, cfg = {}) {
+  if (free === 'colors') {
+    const downs = (cfg.downs ?? []).filter((d) => FACES.includes(d));
+    const out = [];
+    for (const down of downs.length ? downs : [f.down]) {
+      const allowed = sides(down).filter((x) => !cfg.fronts?.length || cfg.fronts.includes(x));
+      const fronts = allowed.length ? allowed : sides(down);
+      for (const front of fronts) out.push({ down, front });
+    }
+    // dosavadní orientace první (při shodě vyhraje bez otočení)
+    out.sort((a, b) => (fid(b) === fid(f)) - (fid(a) === fid(f)));
+    return out;
   }
-  return [frame];
+  const downs = free === 'all' ? [f.down, ...FACES.filter((d) => d !== f.down)] : free === 'dual' || free === 'dualSide' ? [f.down, OPPOSITE[f.down]] : [f.down];
+  const out = [];
+  for (const down of downs) {
+    const keep = down !== f.down && down !== OPPOSITE[f.down] ? sides(down)[0] : f.front;
+    const fronts = free === 'side' || free === 'dualSide' || free === 'all' ? [keep, ...sides(down).filter((x) => x !== keep)] : [keep];
+    for (const front of fronts) out.push({ down, front });
+  }
+  return out;
 }
+
+/** Otočení kostky (x, y, z…) z orientace a do orientace b – nejkratší zápis. */
+const TURN = {
+  y: (m) => ({ down: m.D, front: m.R }), "y'": (m) => ({ down: m.D, front: m.L }), y2: (m) => ({ down: m.D, front: m.B }),
+  x: (m) => ({ down: m.B, front: m.D }), "x'": (m) => ({ down: m.F, front: m.U }), x2: (m) => ({ down: m.U, front: m.B }),
+  z: (m) => ({ down: m.R, front: m.F }), "z'": (m) => ({ down: m.L, front: m.F }), z2: (m) => ({ down: m.U, front: m.F }),
+};
+export function rotationBetween(a, b) {
+  if (fid(a) === fid(b)) return '';
+  let level = [{ f: a, seq: [] }];
+  for (let depth = 0; depth < 3; depth++) {
+    const nextLevel = [];
+    for (const { f, seq } of level) {
+      for (const [t, go] of Object.entries(TURN)) {
+        const g = go(frameMap(f));
+        if (fid(g) === fid(b)) return [...seq, t].join(' ');
+        nextLevel.push({ f: g, seq: [...seq, t] });
+      }
+    }
+    level = nextLevel;
+  }
+  return '';
+}
+const LABEL = COLORS;
 
 /** Přejmenuje dílky z orientace `from` do orientace `to` (stejné místo vůči držení). */
 function remap(parts, from, to) {
@@ -59,12 +117,13 @@ const clean = (alg) => String(alg ?? '').replace(/[()]/g, ' ').trim().split(/\s+
  * @param {{frame?: object, steps: object[]}} p.guide průvodce metody
  * @param {Record<string, object>} p.config nastavení kroků podle id (viz stepDefaults)
  * @param {(setId: string) => {alg: string, name: string, task?: object, times?: {t:number}[]}[]} p.setAlgs
- * @param {'fixed'|'dual'|'all'} [p.neutral]
+ * @param {'fixed'|'dual'|'all'} [p.neutral] stará volba: volnost prvního kroku (když ji krok nemá)
+ * @param {'free'|'move'} [p.rotation] počítat otočení kostky do tahů
  * @param {object} [p.ergonomics] váhy hodnocení (Lab)
  * @param {number} [p.lambda]
  * @returns {{plan: object, steps: object[]}} steps = zapnuté kroky (st, index, parts, cfg)
  */
-export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'fixed', ergonomics = {}, lambda = 0.5 }) {
+export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'fixed', rotation = 'free', ergonomics = {}, lambda = 0.5 }) {
   const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
   const ergo = { ...ergonomics, triggers: buildTriggers() };
   // kroky s dílky; vypnutý krok se složí s dalším zapnutým (cíl je kumulativní)
@@ -78,18 +137,43 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   // poslední krok s dílky se simuluje vždy (jinak by se nic neskládalo)
   if (all.length && !all.some((x) => x.cfg.on)) all.at(-1).cfg.on = true;
   const steps = all.filter((x, i) => x.cfg.on || i === all.length - 1);
+  // stará volba „barevná neutralita“ = volnost prvního kroku
+  if (steps.length && neutral !== 'fixed' && !config[steps[0].st.id]?.free) steps[0].cfg.free = NEUTRAL_FREE[neutral] ?? 'fixed';
   const goals0 = steps.map((x) => ({ ...mergeParts(partsBefore(guide.steps, x.st.id), x.parts) }));
-  const frames = framesFor(frame, neutral);
+  // nové dílky kroku (vůči předchozímu zapnutému kroku): ty smí volnost přesunout jinam
+  const fresh = goals0.map((g, i) => Object.fromEntries(Object.entries(g).filter(([n, st]) => !i || goals0[i - 1][n] !== st)));
+  // orientace, do kterých se simulace může dostat (postupně podle volností kroků)
+  const frames = [frame];
+  const index = new Map([[fid(frame), 0]]);
+  const add = (f) => { if (!index.has(fid(f))) { index.set(fid(f), frames.length); frames.push(f); } return index.get(fid(f)); };
+  let reach = [frame];
+  const nextOf = []; // nextOf[i] = Map(id orientace → indexy orientací k vyzkoušení)
+  steps.forEach((x, i) => {
+    const map = new Map();
+    const after = new Map();
+    for (const f of reach) {
+      const list = freeFrames(f, x.cfg.free ?? 'fixed', x.cfg).map((g) => { after.set(fid(g), g); return add(g); });
+      map.set(index.get(fid(f)), list);
+    }
+    nextOf.push(map);
+    reach = [...after.values()];
+  });
+  const scores = new Map(); // náročnost algoritmu nezávisí na orientaci
+  const scoreOnce = (display) => { if (!scores.has(display)) scores.set(display, scoreFor(P, display, ergo).total); return scores.get(display); };
   const variants = frames.map((f, v) => {
     const map = frameMap(f);
     const hold = holdOf(holdFromFaces(map.U, map.F));
     const toModel = (display) => hold.toModelString(display);
     return {
-      label: `${f.down} dole`,
+      label: `${LABEL[f.down]} dole, ${LABEL[f.front]} vpředu`,
+      frame: f,
       // středy až v posledním kroku: tahy středem (M, r…) je smí cestou posunout (Roux),
       // dílky se do té doby počítají vůči pevným pozicím
       goals: goals0.map((g, i) => ({ ...remap(g, frame, f), ...(i === goals0.length - 1 ? CENTERS : {}) })),
-      steps: steps.map((x) => {
+      // orientace k vyzkoušení v každém kroku (z této) a otočení kostky do nich
+      next: nextOf.map((m) => m.get(v) ?? [v]),
+      rotation: frames.map((g) => rotationBetween(f, g)),
+      steps: steps.map((x, i) => {
         const bases = x.cfg.moves === 'custom' && x.cfg.custom?.length ? x.cfg.custom : (STEP_MOVES[x.cfg.moves] ?? STEP_MOVES.faces).bases;
         const held = bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
         const moves = held.map((m) => hold.toModel(P.moveToString(m))[0]);
@@ -108,13 +192,17 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
             // berou zápis vůči držení metody
             const model = v === 0 ? holdOf(a.task?.hold ?? '').toModelString(display) : toModel(display);
             const recent = (a.times ?? []).slice(-5).map((t) => t.t);
-            return [{ model, display, name: a.name, score: scoreFor(P, display, ergo).total, time: recent.length >= 3 ? median(recent) : undefined }];
+            return [{ model, display, name: a.name, score: scoreOnce(display), time: recent.length >= 3 ? median(recent) : undefined }];
           } catch { return []; }
         });
-        return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates };
+        // nové dílky kroku v této orientaci (cíl = dosud hotové + tyto; poslední krok i středy)
+        const parts = { ...remap(fresh[i], frame, f), ...(i === steps.length - 1 ? CENTERS : {}) };
+        return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates, parts };
       }),
     };
   });
+  // kolik různých míst kroku volnost nabízí (z výchozí orientace) – pro odhad délky hledání
+  const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => JSON.stringify(Object.keys(variants[j].steps[i].parts).sort()))).size);
   const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0 }));
-  return { plan: { lambda, ergonomics, variants, stepOpts }, steps };
+  return { plan: { lambda, ergonomics, variants, stepOpts, rotation, choices }, steps };
 }

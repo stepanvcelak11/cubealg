@@ -272,6 +272,8 @@ export function exportMethod(method = methods.active()) {
     sets: sets.map((x) => ({ id: x.id, name: x.name })),
     algs: algsData.filter((a) => ids.has(a.set ?? 'default'))
       .map(({ name, alg, task, set }) => ({ name, alg, task, set: set ?? 'default' })),
+    // nastavení kroků ze simulátoru (volnosti, tahy, sada…) podle id kroku
+    simulator: storage.get('ergocube.sim.options')?.steps?.[method] ?? undefined,
   };
 }
 
@@ -302,8 +304,15 @@ export function importMethod(data) {
     intro: String(guide.intro ?? ''),
     frame: guide.frame && typeof guide.frame.down === 'string' && typeof guide.frame.front === 'string'
       ? { down: guide.frame.down, front: guide.frame.front } : undefined,
-    steps: (guide.steps ?? []).map((st) => ({ ...st, id: newId('k'), set: st.set ? setMap.get(st.set) : undefined })),
+    steps: (guide.steps ?? []).map((st) => ({ ...st, id: newId('k'), oldId: st.id, set: st.set ? setMap.get(st.set) : undefined })),
   };
+  // nastavení simulátoru pod nová id kroků
+  if (data.simulator && typeof data.simulator === 'object') {
+    const steps = Object.fromEntries(guidesData[id].steps.filter((st) => data.simulator[st.oldId]).map((st) => [st.id, data.simulator[st.oldId]]));
+    const opts = storage.get('ergocube.sim.options') ?? {};
+    storage.set('ergocube.sim.options', { ...opts, steps: { ...(opts.steps ?? {}), [id]: steps } });
+  }
+  for (const st of guidesData[id].steps) delete st.oldId;
   storage.set('ergocube.algsets', setsData);
   storage.set('ergocube.algs', algsData);
   storage.set('ergocube.guides', guidesData);

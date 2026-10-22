@@ -3,8 +3,8 @@
 // Používá ho worker simulátoru (sim-worker.js) i měření v Node (bench/method.mjs).
 //
 // Plán simulace (plan) je čistě datový, aby šel poslat do workeru:
-//   { lambda, ergonomics, variants: [{ goals: [constraints po krocích], steps: [krok] }], stepOpts: [...] }
-//   krok: { moves, held (tahy modelu a jak je děláš), adjust: {pre, post, helpers}, candidates }
+//   { lambda, ergonomics, rotation, variants: [{ goals, next, rotation, steps: [krok] }], stepOpts: [...] }
+//   krok: { moves, held (tahy modelu a jak je děláš), adjust: {pre, post, helpers}, candidates, parts }
 //   stepOpts[i]: { mode: 'auto' | 'set' | 'search', view: 'speed' | 'efficient' | 'balanced', time (ms) }
 
 import { getPuzzle } from '../puzzles/index.js';
@@ -42,7 +42,7 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
   const cache = memoryCache();
   const memo = new Map(); // stejný stav a krok → stejné řešení (opakovaná simulace)
 
-  function search(i, state, v, timeScale = 1) {
+  function search(i, state, v, constraints, timeScale = 1) {
     const step = plan.variants[v].steps[i];
     const opts = plan.stepOpts[i];
     const { moves, held } = step;
@@ -62,7 +62,6 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
       context: {}, proof: { cleared: 0 }, onProgress: () => {},
     };
     const target = P.solved();
-    const constraints = plan.variants[v].goals[i];
     if (virtual) clock.setVirtual(true, 1);
     try {
       const full = prepare({ puzzle: P, constraints, moves, targets: [target], nearLimit, cache });
@@ -80,11 +79,11 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     return { model: best.model, display: toHeld(best.model), score: best.m.total, source: 'search' };
   }
 
-  /** Řešení kroku i ze stavu (varianta orientace v). */
-  async function solveStep(i, state, test, v) {
+  /** Řešení kroku i ze stavu (orientace v, cíl goal = dosud hotové + dílky kroku). */
+  async function solveStep(i, state, test, v, goal = plan.variants[v].goals[i]) {
     const step = plan.variants[v].steps[i];
     const opts = plan.stepOpts[i];
-    const key = `${v}|${i}|${state.join(',')}`;
+    const key = `${v}|${i}|${Object.keys(goal).sort().map((n) => n + goal[n]).join()}|${state.join(',')}`;
     if (memo.has(key)) return memo.get(key);
     let r = null;
     if (opts.mode !== 'search' && step.candidates?.length) r = pickFromSet(state, test, step.candidates, step.adjust);
@@ -92,7 +91,7 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     // hledání: když v čase nic nenajde, zkusí to znovu déle (krok se musí složit)
     for (const scale of [1, 3, 10]) {
       if (r) break;
-      r = search(i, state, v, scale);
+      r = search(i, state, v, goal, scale);
       if (r && !test(P.applyAlg(state, r.model))) r = null;
     }
     memo.set(key, r);
@@ -105,11 +104,15 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
 /** Složí daná zamíchání podle plánu (jedno vlákno). */
 export async function solveScrambles(plan, starts, opts = {}) {
   const { solveStep } = makeStepSolver(plan, opts);
-  const better = (a, b) => {
-    const view = plan.stepOpts[0].view ?? 'speed';
+  return simulate({ starts, variants: plan.variants, solveStep, better: betterFor(plan), countRotation: plan.rotation === 'move', onProgress: opts.onProgress, stopped: opts.stopped });
+}
+
+/** Porovnání řešení kroku podle jeho pohledu (rychlost: náročnost, úspornost: tahy). */
+export function betterFor(plan) {
+  return (a, b, i = 0) => {
+    const view = plan.stepOpts[i]?.view ?? 'speed';
     const ka = view === 'efficient' ? [a.length, a.score] : [a.score, a.length];
     const kb = view === 'efficient' ? [b.length, b.score] : [b.score, b.length];
     return ka[0] !== kb[0] ? ka[0] < kb[0] : ka[1] < kb[1];
   };
-  return simulate({ starts, variants: plan.variants, solveStep, better, onProgress: opts.onProgress, stopped: opts.stopped });
 }

@@ -957,19 +957,27 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   ] } };
   const opts = { length: 'c10', steps: { default: { k1: { time: 1 }, k2: { time: 1 } } } };
   const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts });
+  // z průvodce metodou tlačítko Simulovat přepne na sekci Simulátor
   await p.selectOption('#method', '+guide');
   await p.waitForSelector('.guide-dialog[open]');
   await p.locator('.guide-sim').tap();
-  await p.waitForSelector('.sim-dialog[open]');
+  await p.waitForSelector('[data-page="sim"]:not([hidden]) .sim-step');
+  assert.equal(await p.locator('.guide-dialog[open]').count(), 0);
   assert.equal(await p.locator('.sim-step').count(), 2);
+  // volnost kroku: vybrané barvy dole (jen bílá nebo žlutá)
+  await p.locator('.sim-free-help summary').tap();
+  await p.locator('.sim-free-help button', { hasText: '1. krok bílá nebo žlutá' }).tap();
+  await p.locator('.sim-step').first().locator('summary').tap();
+  assert.equal(await p.locator('.sim-step').first().locator('select[aria-label="Volnost – krok 1"]').inputValue(), 'colors');
+  assert.equal(await p.locator('.sim-step').first().locator('.sim-colors').first().locator('input:checked').count(), 2);
+  assert.match(await p.locator('.sim-step').first().locator('.sim-free-note').innerText(), /Zkouší se 8 míst/);
   assert.match(await p.locator('.sim-step').first().innerText(), /Hrana vpředu[\s\S]*1 hotových/);
   // nastavení kroku: vlastní tahy
-  await p.locator('.sim-step').first().locator('summary').tap();
   await p.locator('.sim-step').first().locator('select[aria-label="Tahy – krok 1"]').selectOption('custom');
   assert.ok(await p.locator('.sim-chips label').count() > 6);
   // porovnání vestavěných metod je vidět hned
   assert.match(await p.locator('.sim-cmp-table').innerText(), /CFOP/);
-  await p.locator('.sim-dialog button', { hasText: 'Spustit simulaci' }).tap();
+  await p.locator('.sim-page button', { hasText: 'Spustit simulaci' }).tap();
   await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
   assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů[\s\S]*Odhad času/i);
   assert.equal(await p.locator('.sim-res-row').count(), 2);
@@ -983,13 +991,25 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   assert.equal(await p.locator('.sim-cmp-col').count(), 2);
   await p.locator('.sim-example summary', { hasText: 'Ukázková složení' }).tap();
   assert.match(await p.locator('.sim-example').first().innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);
-  // zavřít a znovu otevřít: poslední běh jde doplnit dalšími zamícháními (stejné semínko)
-  await p.locator('.sim-head .icon-btn').tap();
-  await p.locator('.guide-sim').tap();
-  await p.waitForSelector('.sim-dialog[open]');
-  assert.match(await p.locator('.sim-dialog .gen-resume').innerText(), /Poslední simulace[\s\S]*10 zamíchání/);
-  await p.locator('.sim-dialog .gen-resume button', { hasText: 'Přidat zamíchání' }).tap();
+  // jinam a zpět: poslední běh jde doplnit dalšími zamícháními (stejné semínko)
+  await p.locator('.tabbar [data-tab="timer"]').tap();
+  await p.locator('.tabbar [data-tab="sim"]').tap();
+  assert.match(await p.locator('.sim-page .gen-resume').innerText(), /Poslední simulace[\s\S]*10 zamíchání/);
+  await p.locator('.sim-page .gen-resume button', { hasText: 'Přidat zamíchání' }).tap();
   await p.waitForFunction(() => /Hotovo: 20 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
+  // učebnice metody: HTML s kroky, nastavením a daty k importu
+  const html = await p.evaluate(async () => (await import('./src/ui/learnexport.js')).learningHtml());
+  assert.match(html, /Hrana vpředu[\s\S]*dole bílá \/ žlutá/);
+  assert.match(html, /<svg[\s\S]*id="ergocube-method"/);
+  const imported = await p.evaluate(async () => {
+    const { learningHtml } = await import('./src/ui/learnexport.js');
+    const { importMethod, guides } = await import('./src/ui/store.js');
+    const doc = new DOMParser().parseFromString(learningHtml(), 'text/html');
+    const id = importMethod(JSON.parse(doc.getElementById('ergocube-method').textContent));
+    const steps = guides.get(id).steps;
+    return { n: steps.length, free: JSON.parse(localStorage.getItem('ergocube.sim.options')).steps[id][steps[0].id].free };
+  });
+  assert.deepEqual(imported, { n: 2, free: 'colors' });
   assert.deepEqual(errors, []);
   await ctx.close();
 });

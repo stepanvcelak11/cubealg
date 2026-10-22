@@ -9,6 +9,7 @@ import { labModel } from './models.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { holdFor } from './holds.js';
+import { downloadLearning } from './learnexport.js';
 import { stepParts, partsBefore, partsCube, partsEditor, frameEditor, describeParts, remapParts } from './parts.js';
 
 let dialog = null;
@@ -233,17 +234,19 @@ export function openGuide(opts = {}) {
       { innerHTML: `${icon('share', { size: 16 })}<span>Sdílet</span>` });
     const simBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-sim', title: 'Složit náhodná zamíchání krok po kroku podle metody a spočítat tahy a náročnost' }),
       { innerHTML: `${icon('stats', { size: 16 })}<span>Simulovat</span>` });
+    const learnBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-learn', title: 'Celá metoda v jednom souboru k učení: kroky s obrázky, algoritmy s případy a tvými časy, nastavení ze simulátoru (jde vytisknout i znovu importovat)' }),
+      { innerHTML: `${icon('download', { size: 16 })}<span>Učebnice</span>`, onclick: () => downloadLearning() });
     const printBtn = Object.assign(el('button', { type: 'button', className: 'icon-btn guide-print', title: 'Vytisknout nebo uložit jako PDF', ariaLabel: 'Vytisknout nebo uložit jako PDF' }),
       { innerHTML: icon('print', { size: 20 }) });
     dialog = el('dialog', { className: 'help-dialog guide-dialog' },
       el('div', { className: 'guide-head' },
         el('div', {}, el('small', { className: 'hint', textContent: 'Průvodce metodou' }), el('h2', { className: 'guide-title' })),
-        edit, simBtn, shareBtn, printBtn, close),
+        edit, simBtn, learnBtn, shareBtn, printBtn, close),
       el('div', { className: 'guide-body' }));
     close.onclick = () => dialog.close();
     edit.onclick = () => { editing = !editing; render(); };
     shareBtn.onclick = share;
-    simBtn.onclick = () => deps.simulate?.({ onEdit: () => { editing = true; render(); } });
+    simBtn.onclick = () => { dialog.close(); deps.simulate?.(); };
     printBtn.onclick = () => {
       if (editing) { editing = false; render(); }
       document.body.classList.add('printing-guide');

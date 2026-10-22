@@ -1,8 +1,9 @@
-// Simulátor metody (okno z průvodce metodou): náhodná zamíchání se složí krok po
+// Simulátor metody (samostatná sekce aplikace): náhodná zamíchání se složí krok po
 // kroku podle kroků metody (dílky hotové po kroku, viz parts.js). U každého kroku
 // si nastavíš, jak se řeší: tahy, tvoje sada (i s natočením vrstev a pomocným
-// algoritmem jako oprava parity), nebo hledání, podle čeho vybírat, čas rozpoznání.
-// Kroky jde vypnout (složí se s dalším), metodu zkusit barevně neutrální.
+// algoritmem jako oprava parity), nebo hledání, podle čeho vybírat, čas rozpoznání,
+// a volnost – kde smí být jeho dílky (kříž libovolnou barvou, pár v kterémkoli slotu,
+// blok na kterémkoli boku). Kroky jde vypnout (složí se s dalším).
 //
 // Zamíchání skládá víc workerů souběžně (sim/sim-worker.js). Běh může jet i přes noc:
 // průběžně se ukládá, po zavření jde navázat a výsledky se doplňují. Stejné semínko
@@ -11,8 +12,8 @@
 import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algs } from './store.js';
-import { describeParts, stepParts } from './parts.js';
-import { buildPlan, stepDefaults, STEP_MOVES, MOVE_BASES, ADJUST, NEUTRAL } from '../sim/plan.js';
+import { describeParts, stepParts, validFrame, DEFAULT_FRAME } from './parts.js';
+import { buildPlan, stepDefaults, STEP_MOVES, MOVE_BASES, ADJUST, FREEDOM, ROTATION, COLORS } from '../sim/plan.js';
 import { summarize, seededRandom } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
@@ -21,6 +22,7 @@ import { VIEWS } from '../ergonomics/style.js';
 import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 import { toast } from './share.js';
 import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
+import { downloadLearning } from './learnexport.js';
 
 const OPTS = 'ergocube.sim.options';
 const HISTORY = 'ergocube.sim.history';
@@ -39,6 +41,7 @@ const LENGTHS = {
   h8: { label: '8 hodin (přes noc)', hours: 8 },
   inf: { label: 'Dokud nezastavím', hours: Infinity },
 };
+const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
 const MODES = { auto: 'Moje sada, jinak hledání', set: 'Jen moje sada', search: 'Jen hledání' };
 const invertMove = (m) => (m.endsWith("'") ? m.slice(0, -1) : m.endsWith('2') ? m : `${m}'`);
 const fmt = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d).replace('.', ',') : '–');
@@ -63,41 +66,72 @@ function scrambleOf(start) {
   try { return (twoPhase(toFacelets(Uint8Array.from(start)), { timeLimit: 800 }) ?? '').split(' ').filter(Boolean).reverse().map(invertMove).join(' '); } catch { return ''; }
 }
 
+let deps = { lab: () => ({ ergo: {}, lambda: 0.5 }), onEdit: null };
+let current = null; // { running(), destroy() }
+
 /**
+ * @param {{lab: () => {ergo: object, lambda: number}, onEdit?: () => void}} d
+ *   lab = hodnocení z Labu (Tahy a váhy), onEdit = upravit kroky v průvodci metodou
+ */
+export function initSimulator(d) {
+  deps = { ...deps, ...d };
+  // jiná metoda nebo upravené kroky: překreslit (běžící simulaci nechat doběhnout)
+  const refresh = () => { if (current && !current.running() && !document.querySelector('[data-page="sim"]')?.hidden) showSimulator(); };
+  methods.subscribe(refresh);
+  guides.subscribe(refresh);
+}
+
+/** Zobrazí simulátor aktivní metody (běžící simulace zůstane, jak je). */
+export function showSimulator() {
+  const host = document.getElementById('sim-root');
+  if (!host) return;
+  if (current?.running()) return;
+  current?.destroy();
+  host.replaceChildren();
+  current = mountSimulator(host, deps.lab(), { onEdit: deps.onEdit });
+}
+
+/**
+ * @param {HTMLElement} host
  * @param {{ergo: object, lambda: number}} lab hodnocení z Labu (Tahy a váhy)
  * @param {{onEdit?: () => void}} [opts] onEdit = upravit dílky kroků v průvodci
  */
-export function openSimulator(lab, { onEdit } = {}) {
+function mountSimulator(host, lab, { onEdit } = {}) {
   const method = methods.active();
   const guide = guides.get(method);
   const saved = storage.get(OPTS) ?? {};
   const config = structuredClone(saved.steps?.[method] ?? {});
   const setAlgs = (id) => algs.list().filter((a) => a.set === id);
+  const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
   const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) })).filter((x) => Object.keys(x.parts).length);
 
-  const close = Object.assign(el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
   const body = el('div', { className: 'sim-body' });
-  const dlg = el('dialog', { className: 'help-dialog sim-dialog' },
-    el('div', { className: 'sim-head' }, el('div', {}, el('small', { className: 'hint', textContent: 'Simulátor metody' }), el('h2', { textContent: methods.get(method).name })), close),
+  const guideBtn = onEdit ? Object.assign(el('button', { type: 'button', className: 'secondary small', title: 'Kroky metody a jejich dílky se upravují v průvodci metodou' }),
+    { innerHTML: `${icon('book', { size: 16 })}<span>Kroky v průvodci</span>`, onclick: () => onEdit() }) : null;
+  host.append(
+    el('div', { className: 'sim-head' },
+      el('div', {}, el('small', { className: 'hint', textContent: 'Testování metody' }), el('h2', { textContent: methods.get(method).name }),
+        el('small', { className: 'sim-head-note', textContent: 'Metodu přepneš nahoře v liště' })),
+      el('div', { className: 'row-btns' }, guideBtn,
+        Object.assign(el('button', { type: 'button', className: 'secondary small sim-learn', title: 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, nastavení a výsledek simulace)' }),
+          { innerHTML: `${icon('download', { size: 16 })}<span>Učebnice</span>`, onclick: () => downloadLearning(method) }))),
     body);
-  document.body.append(dlg);
+  let alive = true;
   let running = false;
   let pool = [];
   let awake = null;
   let stopResolve = () => {};
   const title = titleProgress();
   const stopAll = () => { for (const w of pool) w.terminate(); pool = []; };
-  close.onclick = () => dlg.close();
-  dlg.addEventListener('close', () => { running = false; stopAll(); stopResolve(); awake?.release(); title.reset(); dlg.remove(); });
-  const editBtn = (text, cls) => (onEdit ? Object.assign(el('button', { type: 'button', className: cls, textContent: text }), { onclick: () => { dlg.close(); onEdit(); } }) : null);
+  const destroy = () => { alive = false; running = false; stopAll(); stopResolve(); awake?.release(); title.reset(); };
+  const editBtn = (text, cls) => (onEdit ? Object.assign(el('button', { type: 'button', className: cls, textContent: text }), { onclick: () => onEdit() }) : null);
 
   if (!stepsWithParts.length) {
     body.append(el('div', { className: 'guide-empty' },
       el('p', { textContent: 'Simulátor potřebuje kroky metody s vybranými dílky.' }),
       el('p', { className: 'hint', textContent: 'V průvodci metodou klepni na „Upravit“ a u každého kroku vyber, které dílky jsou po něm hotové (předvolby jako kříž, F2L, bloky…).' }),
       editBtn('Upravit kroky', 'primary')));
-    dlg.showModal();
-    return dlg;
+    return { running: () => false, destroy };
   }
 
   // --- nastavení kroků ------------------------------------------------------------------------
@@ -152,11 +186,34 @@ export function openSimulator(lab, { onEdit } = {}) {
       const helpers = el('input', { value: cfg.helpers ?? '', placeholder: 'např. M2 U2 M2', spellcheck: false, ariaLabel: `Pomocné algoritmy – krok ${k}` });
       helpers.onchange = () => { cfg.helpers = helpers.value; changed(); };
       const usesSet = n > 0 && cfg.mode !== 'search';
-      const summary = [cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,
-        usesSet ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání', VIEWS[cfg.view]?.label.toLowerCase(), `${fmt(cfg.time, 1)} s`].join(' · ');
+      const free = select(Object.fromEntries(Object.entries(FREEDOM).map(([id, f]) => [id, f.label])), FREEDOM[cfg.free] ? cfg.free : 'fixed', `Volnost – krok ${k}`, (v) => {
+        cfg.free = v;
+        if (v === 'colors' && !cfg.downs?.length) cfg.downs = [frame.down, OPPOSITE[frame.down]];
+        changed(); renderSteps();
+      });
+      // výběr barev: které smí být dole / vpředu
+      const colorPick = (key, label, hint) => el('div', { className: 'sim-colors', role: 'group', ariaLabel: `${label} – krok ${k}`, title: hint },
+        el('span', { textContent: label }),
+        ...Object.entries(COLORS).map(([f, name]) => {
+          const box = Object.assign(el('input', { type: 'checkbox', ariaLabel: `${label}: ${name}` }), { checked: (cfg[key] ?? []).includes(f) });
+          box.onchange = () => { cfg[key] = Object.keys(COLORS).filter((x) => (x === f ? box.checked : (cfg[key] ?? []).includes(x))); changed(); renderSteps(); };
+          return el('label', { className: 'sim-color', title: name }, box, el('i', { style: `--c: var(--c-${f})` }), el('span', { textContent: name }));
+        }));
+      const colors = cfg.free === 'colors' ? el('div', { className: 'sim-colors-box' },
+        colorPick('downs', 'Dole smí být', 'Barvy, které smí být po kroku dole (např. kříž jen bílý nebo žlutý)'),
+        colorPick('fronts', 'Vpředu smí být', 'Nic nezaškrtnuté = vpředu kterákoli barva (dílky kroku na kterémkoli boku)')) : null;
+      const at = planSteps.findIndex((x) => x.st.id === st.id);
+      const places = at >= 0 ? plan.choices?.[at] ?? 1 : 1;
+      const freeNote = cfg.free && cfg.free !== 'fixed'
+        ? `${FREEDOM[cfg.free].hint}. ${places > 1 ? `Zkouší se ${places} ${places < 5 ? "místa" : "míst"} a vybere se nejlepší – hledání kroku trvá až ${places}× déle.` : 'Dílky kroku jsou ve všech orientacích na stejných místech – volnost tu nic nemění.'}`
+        : null;
+      const summary = [cfg.free && cfg.free !== 'fixed' ? `↻ ${FREEDOM[cfg.free].label.replace(/ \(.*\)/, '').toLowerCase()}` : null,
+        cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,
+        usesSet ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání', VIEWS[cfg.view]?.label.toLowerCase(), `${fmt(cfg.time, 1)} s`].filter(Boolean).join(' · ');
       const details = el('details', { className: 'sim-step-more', open: openSteps.has(st.id) },
         el('summary', { textContent: summary }),
         el('div', { className: 'grid-fields' },
+          field('Volnost (kde smí být)', free, 'Kde smí být dílky kroku: pevně jako v průvodci, nebo kdekoli z povolených míst (kříž libovolnou barvou, pár do kteréhokoli slotu…). Vybere se místo, kde je krok nejlepší, a další kroky pokračují odtud.'),
           field('Tahy', moves, 'Tahy, kterými krok skládáš (pro hledání i hodnocení)'),
           field('Řešení', mode, n ? 'Moje sada: případ, který vyřeší algoritmus ze sady kroku, se řeší jím (jako při skutečném složení). Jen sada: případ bez algoritmu se počítá jako chybějící.' : 'Krok nemá v průvodci sadu algoritmů – řeší ho hledání'),
           field('Vybírat podle', view, 'Které z nalezených řešení se použije'),
@@ -164,6 +221,8 @@ export function openSimulator(lab, { onEdit } = {}) {
           usesSet ? field('Natočení vrstev', adjust, 'Natočení horní (a spodní) vrstvy před algoritmem ze sady a po něm – počítá se do tahů') : null,
           usesSet ? field('Pomocné algoritmy', helpers, 'Smíš je udělat před algoritmem ze sady (např. oprava parity M2 U2 M2); víc oddělených čárkou') : null,
           field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => { cfg.recog = v; changed(); }), 'Kolik ti trvá krok rozpoznat (do odhadu času)')),
+        colors,
+        freeNote ? el('p', { className: 'hint sim-free-note', textContent: freeNote }) : null,
         chips);
       details.addEventListener('toggle', () => { if (details.open) openSteps.add(st.id); else openSteps.delete(st.id); });
       return el('div', { className: 'sim-step' },
@@ -176,7 +235,29 @@ export function openSimulator(lab, { onEdit } = {}) {
   }
 
   // --- nastavení simulace ---------------------------------------------------------------------
-  const neutral = select(NEUTRAL, NEUTRAL[saved.neutral] ? saved.neutral : 'fixed', 'Barevná neutralita', () => changed());
+  const rotation = select(ROTATION, ROTATION[saved.rotation] ? saved.rotation : 'free', 'Otočení kostky', () => changed());
+  // dřív jedna volba „barevná neutralita“ pro celou metodu = volnost prvního kroku
+  if (saved.neutral && saved.neutral !== 'fixed' && stepsWithParts[0] && !config[stepsWithParts[0].st.id]?.free) {
+    config[stepsWithParts[0].st.id] = { ...(config[stepsWithParts[0].st.id] ?? {}), free: saved.neutral };
+  }
+  // rychlé nastavení volností (kdo neví, kde začít)
+  const quick = (label, hint, apply) => Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: label, title: hint }),
+    { onclick: () => { apply(); changed(); renderSteps(); } });
+  const firstOn = () => stepsWithParts.find(({ st }) => cfgOf(st).on !== false)?.st;
+  const freeHelp = el('details', { className: 'sim-free-help' },
+    el('summary', { textContent: 'Jak nastavit volnosti metody (barva, strana, slot)' }),
+    el('p', { textContent: 'Každý krok má „Volnost“ – kde smí být jeho dílky. Simulátor u každého zamíchání zkusí všechna povolená místa, vezme to, kde je krok nejlepší, a další kroky pokračují odtamtud (jako když si při skládání vybereš).' }),
+    el('ul', {},
+      el('li', {}, el('b', { textContent: 'Kříž (první krok) libovolnou barvou, klidně skládaný z boku: ' }), 'u prvního kroku „Kterákoli strana a barva“. Na které straně kříž skládáš, je jedno – počítá se, kde skončí, a kostku pak otočíš.'),
+      el('li', {}, el('b', { textContent: 'Jen některé barvy (např. kříž bílý nebo žlutý): ' }), '„Vybrané barvy…“ a zaškrtni, které smí být dole (případně i vpředu).'),
+      el('li', {}, el('b', { textContent: 'Páry do kteréhokoli slotu, blok na kterékoli straně: ' }), 'u těch kroků „Kterýkoli bok“.'),
+      el('li', {}, el('b', { textContent: 'Další volnosti: ' }), 'natočení horní/spodní vrstvy a pomocné algoritmy u kroků se sadou, tahy kroku (vkládat i z boku = přidej F, B, L…), vypnutí kroku (spojit s dalším). Otočení kostky můžeš počítat jako tah.')),
+    el('p', { className: 'hint', textContent: 'Tip: nastav semínko, pusť simulaci, změň jednu volnost a pusť znovu – v historii a porovnání uvidíš, co pomohlo.' }),
+    el('div', { className: 'row-btns' },
+      quick('1. krok bílá nebo žlutá', 'Volnost prvního kroku: dole bílá nebo žlutá, vpředu kterákoli', () => { const st = firstOn(); if (st) Object.assign(cfgOf(st), { free: 'colors', downs: ['U', 'D'], fronts: [] }); }),
+      quick('1. krok libovolnou barvou', 'Volnost prvního kroku: kterákoli strana a barva', () => { const st = firstOn(); if (st) cfgOf(st).free = 'all'; }),
+      quick('Další kroky: kterýkoli bok', 'Volnost ostatních kroků: kterýkoli bok (y)', () => { const f = firstOn(); for (const { st } of stepsWithParts) if (st !== f) cfgOf(st).free = 'side'; }),
+      quick('Vše pevně', 'Všechny kroky přesně jak jsou v průvodci', () => { for (const { st } of stepsWithParts) cfgOf(st).free = 'fixed'; })));
   const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
   const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
   const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); });
@@ -195,11 +276,12 @@ export function openSimulator(lab, { onEdit } = {}) {
     el('p', { className: 'hint', textContent: 'Náhodná zamíchání se složí krok po kroku podle tvé metody. Krok vyřeší algoritmus z tvé sady, když na případ nějaký máš, jinak ho najde hledání (podle tvých vah ergonomie). U každého kroku si nastavíš, jak ho řešíš. Tahy se počítají včetně natočení vrstev.' }),
     banner,
     el('div', { className: 'sim-section-head' }, el('h3', { textContent: 'Kroky' }), editBtn('Upravit dílky kroků', 'secondary small')),
+    freeHelp,
     stepList,
     el('h3', { textContent: 'Simulace' }),
     el('div', { className: 'grid-fields' },
       field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
-      field('Orientace', neutral, 'Barevná neutralita: první krok se zkusí v každé orientaci a použije se ta nejlepší'),
+      field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
       field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'),
       field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)')),
     el('div', { className: 'row-btns' }, go, more, stop), track, status, results, compare, history);
@@ -209,14 +291,14 @@ export function openSimulator(lab, { onEdit } = {}) {
   let last = null; // { solves, meta, next }
   function remember() {
     const all = storage.get(OPTS) ?? {};
-    storage.set(OPTS, { ...all, neutral: neutral.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), steps: { ...(all.steps ?? {}), [method]: config } });
+    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), steps: { ...(all.steps ?? {}), [method]: config } });
   }
   function changed() {
     remember();
-    ({ plan, steps: planSteps } = buildPlan({ guide, config, setAlgs, neutral: neutral.value, ergonomics: lab.ergo, lambda: lab.lambda }));
+    ({ plan, steps: planSteps } = buildPlan({ guide, config, setAlgs, rotation: rotation.value, ergonomics: lab.ergo, lambda: lab.lambda }));
     // na čem výsledky závisí (bez časů z trenažéru – ty mění jen odhad času)
-    sigNow = hash(JSON.stringify([method, Number(seed.value), plan.stepOpts.map(({ recog, ...o }) => o),
-      plan.variants.map((v) => ({ goals: v.goals, steps: v.steps.map((s) => ({ moves: s.moves, adjust: s.adjust, c: s.candidates.map((c) => c.model) })) })), lab.ergo]));
+    sigNow = hash(JSON.stringify([method, Number(seed.value), plan.rotation, plan.stepOpts.map(({ recog, ...o }) => o),
+      plan.variants.map((v) => ({ next: v.next, steps: v.steps.map((s) => ({ parts: s.parts, moves: s.moves, adjust: s.adjust, c: s.candidates.map((c) => c.model) })) })), lab.ergo]));
     if (!running && last) {
       const same = last.meta.sig === sigNow;
       more.hidden = !same;
@@ -243,7 +325,8 @@ export function openSimulator(lab, { onEdit } = {}) {
     k, ok: solve.ok, variant: solve.variant,
     start: k < KEEP_DISPLAY ? solve.start : undefined,
     steps: solve.steps.map((x) => ({
-      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined,
+      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation,
+      variant: x.variant,
       name: k < KEEP_DISPLAY ? x.name : undefined, missingSet: x.missingSet || undefined,
       // zápis: u ukázek a u případů, na které sada neměla algoritmus (návrh do sady)
       display: k < KEEP_DISPLAY || x.missingSet ? x.display : undefined,
@@ -325,7 +408,7 @@ export function openSimulator(lab, { onEdit } = {}) {
     next = contiguous(solves);
     go.hidden = false; more.hidden = false; stop.hidden = true; track.hidden = true;
     stepList.classList.remove('locked');
-    if (!dlg.open) return;
+    if (!alive) return;
     save(true);
     last = { solves, meta, next };
     const sum = renderResults(solves, meta);
@@ -383,7 +466,9 @@ export function openSimulator(lab, { onEdit } = {}) {
             scramble ? el('p', {}, el('small', { textContent: 'Zamíchání' }), el('code', { textContent: scramble })) : null,
             el('ol', {}, ...s.steps.map((x, i) => el('li', {},
               el('b', { textContent: `${meta.stepTitles[i]}: ` }),
+              x.rotation ? el('code', { className: 'sim-rot', title: 'Otočení kostky (volnost kroku)', textContent: `(${x.rotation}) ` }) : null,
               x.source === 'skip' ? el('em', { textContent: 'přeskočeno' }) : el('code', { textContent: x.display ?? '' }),
+              i === 0 && meta.variants.length > 1 && meta.variants[x.variant] ? el('small', { textContent: ` · ${meta.variants[x.variant]}` }) : null,
               el('small', { textContent: x.source === 'skip' ? '' : ` · ${x.length} tahů${x.source === 'set' ? ` · ${x.name ?? 'ze sady'}${x.helper ? ` (+ ${x.helper})` : ''}` : ''}` })))));
         })) : null].filter(Boolean));
     return sum;
@@ -420,7 +505,10 @@ export function openSimulator(lab, { onEdit } = {}) {
   }
 
   // --- historie a porovnání ---------------------------------------------------------------------
-  const settingsLabel = () => `${NEUTRAL[neutral.value].toLowerCase()} · semínko ${seed.value} · ${planSteps.length} kroků`;
+  const settingsLabel = () => {
+    const free = planSteps.filter((x) => x.cfg.free && x.cfg.free !== 'fixed').length;
+    return `${free ? `volnost u ${free} ${free === 1 ? 'kroku' : 'kroků'}` : 'pevně'} · semínko ${seed.value} · ${planSteps.length} kroků`;
+  };
   function addHistory(sum, meta) {
     const list = (storage.get(HISTORY) ?? []).filter((h) => h.sig !== meta.sig);
     list.unshift({
@@ -512,8 +600,8 @@ export function openSimulator(lab, { onEdit } = {}) {
   }
 
   // --- start: minulý nebo rozpracovaný běh ------------------------------------------------------
-  renderSteps();
   changed();
+  renderSteps();
   renderHistory();
   const r = storage.get(RUN);
   if (r?.meta?.method === method && r.solves?.length) {
@@ -529,6 +617,5 @@ export function openSimulator(lab, { onEdit } = {}) {
     banner.hidden = false;
     more.hidden = !same;
   }
-  dlg.showModal();
-  return dlg;
+  return { running: () => running, destroy };
 }

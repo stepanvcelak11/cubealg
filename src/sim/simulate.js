@@ -78,24 +78,52 @@ export function pickFromSet(state, test, candidates, adjust = {}) {
   return best;
 }
 
+/** Sjednocení cílů (jako mergeParts): „jen místo“ + „jen natočení“ = hotový dílek. */
+function merge(a, b) {
+  const out = { ...a };
+  for (const [n, s] of Object.entries(b)) out[n] = !out[n] || out[n] === s ? s : 'solved';
+  return out;
+}
+const keyOf = (goal) => Object.keys(goal).sort().map((n) => `${n}:${goal[n]}`).join(',');
+
 /**
  * Spustí simulaci.
  * @param {object} p
  * @param {number} [p.count] počet zamíchání (náhodných)
  * @param {Uint8Array[]} [p.starts] nebo daná zamíchání (stavy)
- * @param {{goals: Record<string,string>[], label?: string}[]} p.variants orientace metody (barevná
- *   neutralita): pro každou cíle po krocích; první krok se zkusí v každé a vybere se nejlepší
- * @param {(i: number, state: Uint8Array, test: Function, variant: number) => Promise<object|null>} p.solveStep
+ * @param {object[]} p.variants orientace metody (viz plan.js): { steps: [{ parts }], next: [[indexy]],
+ *   rotation: [zápis otočení] } – krok i se zkusí ve všech orientacích next[i] (volnost kroku), vyhraje
+ *   nejlepší a další kroky pokračují v ní; cíl = dosud hotové dílky + nové dílky kroku v té orientaci.
+ *   Postaru { goals: [cíl po krocích] }: první krok ve všech orientacích, pak pevně.
+ * @param {(i: number, state: Uint8Array, test: Function, variant: number, goal: object) => Promise<object|null>} p.solveStep
  *   řešení kroku: { model, display, score, source: 'set'|'search'|'missing', name?, time? } nebo null
- * @param {(a: object, b: object) => boolean} [p.better] porovnání řešení prvního kroku (výchozí: méně tahů)
+ * @param {(a: object, b: object, step: number) => boolean} [p.better] porovnání řešení kroku (výchozí: méně tahů)
+ * @param {boolean} [p.countRotation] otočení kostky do jiné orientace se počítá jako tah
  * @param {(n: number) => number} [p.rand] náhoda (randomInt / seededRandom)
  * @param {(info: {solve: number, step: number, solves: object[]}) => void} [p.onProgress]
  * @param {() => boolean} [p.stopped]
  */
-export async function simulate({ count, starts, variants, goals, solveStep, better, rand, onProgress, stopped = () => false }) {
+export async function simulate({ count, starts, variants, goals, solveStep, better, countRotation = false, rand, onProgress, stopped = () => false }) {
   variants ??= [{ goals }];
-  const tests = variants.map((v) => v.goals.map((g) => compileGoal(g).test));
-  const steps = variants[0].goals.length;
+  const dynamic = !!variants[0].steps?.[0]?.parts;
+  const steps = dynamic ? variants[0].steps.length : variants[0].goals.length;
+  const compiled = new Map();
+  const testOf = (goal, key = keyOf(goal)) => { if (!compiled.has(key)) compiled.set(key, compileGoal(goal).test); return compiled.get(key); };
+  /** Možnosti kroku i z orientace v při hotových dílcích done: [{ j, goal, key }] (různé cíle). */
+  const options = (i, v, done) => {
+    if (!dynamic) return (i === 0 ? variants.map((_, j) => j) : [v]).map((j) => ({ j, goal: variants[j].goals[i] }));
+    const out = [], seen = new Set([keyOf(done)]);
+    for (const j of variants[v].next?.[i] ?? [v]) {
+      const goal = merge(done, variants[j].steps[i].parts);
+      const key = keyOf(goal);
+      // stejné místo jako jiná možnost, nebo nic nového (dílky na už hotových místech)
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ j, goal, key });
+    }
+    if (!out.length) { const goal = merge(done, variants[v].steps[i].parts); out.push({ j: v, goal, key: keyOf(goal) }); }
+    return out;
+  };
   better ??= (a, b) => a.length < b.length || (a.length === b.length && a.score < b.score);
   const solves = [];
   count = starts?.length ?? count;
@@ -104,37 +132,41 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
     const start = state;
     const out = [];
     let ok = true;
-    let v = 0;
+    let v = 0, first = 0;
+    let done = {};
     for (let i = 0; i < steps && !stopped(); i++) {
       onProgress?.({ solve: k, step: i, solves });
-      let r = null;
-      if (i === 0 && variants.length > 1) {
-        // orientace: první krok ve všech, vyhraje nejlepší (už složená = 0 tahů)
-        const already = tests.findIndex((t) => t[0](state));
-        if (already >= 0) { v = already; r = { model: '', display: '', length: 0, score: 0, source: 'skip' }; }
-        else {
-          for (let j = 0; j < variants.length && !stopped(); j++) {
-            const x = await solveStep(0, state, tests[j][0], j);
-            if (!x || x.source === 'missing' || !tests[j][0](applyAlg(state, x.model))) continue;
-            const y = { ...x, length: lengthOf(x.display) };
-            if (!r || better(y, r)) { r = y; v = j; }
-          }
-        }
-      } else if (tests[v][i](state)) r = { model: '', display: '', length: 0, score: 0, source: 'skip' };
+      const opts = options(i, v, done);
+      let r = null, pick = opts[0];
+      // už složené (v kterékoli povolené orientaci) = přeskočeno
+      const already = opts.find((o) => testOf(o.goal, o.key)(state));
+      if (already) { pick = already; r = { model: '', display: '', length: 0, score: 0, source: 'skip' }; }
       else {
-        const x = await solveStep(i, state, tests[v][i], v);
-        if (x) r = { ...x, length: lengthOf(x.display) };
+        for (const o of opts) {
+          if (stopped()) break;
+          const test = testOf(o.goal, o.key);
+          const x = await solveStep(i, state, test, o.j, o.goal);
+          if (!x) continue;
+          if (x.source === 'missing') { if (!r) { r = x; pick = o; } continue; }
+          if (!test(applyAlg(state, x.model))) continue;
+          const turn = o.j !== v ? (variants[v].rotation?.[o.j] ?? '') : '';
+          const y = { ...x, length: lengthOf(x.display) + (countRotation ? lengthOf(turn) : 0), rotation: turn || undefined };
+          if (!r || r.source === 'missing' || better(y, r, i)) { r = y; pick = o; }
+        }
       }
       if (stopped()) break;
       if (!r) { ok = false; out.push({ model: '', display: '', length: 0, score: 0, source: 'none' }); break; }
       if (r.source === 'missing') { ok = false; out.push(r); break; }
       const after = r.model ? applyAlg(state, r.model) : state;
-      if (!tests[v][i](after)) { ok = false; out.push({ ...r, source: 'none' }); break; }
+      if (!testOf(pick.goal)(after)) { ok = false; out.push({ ...r, source: 'none' }); break; }
       state = after;
-      out.push(r);
+      v = pick.j;
+      done = pick.goal;
+      if (i === 0) first = v;
+      out.push({ ...r, variant: v });
     }
     if (stopped() && out.length < steps && ok) break;
-    solves.push({ start, steps: out, ok, variant: v });
+    solves.push({ start, steps: out, ok, variant: first });
   }
   onProgress?.({ solve: solves.length, step: steps, solves });
   return { solves };

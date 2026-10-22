@@ -47,15 +47,20 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
-  **Simulátor metody** (průvodce → „Simulovat“): náhodná zamíchání se složí krok
+  **Simulátor metody** (vlastní sekce „Simulátor“ v liště, i z průvodce → „Simulovat“;
+  běží dál, i když přepneš jinam): náhodná zamíchání se složí krok
   po kroku podle dílků hotových po krocích. U každého kroku si nastavíš, jak ho řešíš:
   tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když
   případ vyřeší – i s natočením horní, případně i spodní vrstvy před a po a s pomocným
   algoritmem jako oprava parity M2 U2 M2), „jen sada“ (případ bez algoritmu se počítá
   jako chybějící) nebo jen hledání (jako v Labu podle tvých vah), podle čeho vybírat
   (rychlost / efektivita / všestranné), čas hledání a čas rozpoznání. Krok jde vypnout –
-  složí se najednou s dalším (vyplatí se kroky spojit?). **Barevná neutralita**: první
-  krok se zkusí v obou protilehlých / všech šesti orientacích a použije se nejlepší.
+  složí se najednou s dalším (vyplatí se kroky spojit?). **Volnost kroku** – kde smí
+  být jeho dílky: pevně, kterýkoli bok (pár do kteréhokoli slotu, blok na kterékoli
+  straně), dvě protilehlé barvy, kterákoli strana a barva, nebo **vybrané barvy** dole
+  (a vpředu) – třeba kříž jen bílý nebo žlutý. U každého zamíchání se zkusí všechna
+  povolená místa, vyhraje nejlepší a další kroky pokračují v té orientaci; otočení
+  kostky (y, x2…) jde počítat jako tah.
   Zamíchání skládá víc vláken souběžně (`src/sim/sim-worker.js`); stejné **semínko** =
   stejná zamíchání, takže změny jde férově porovnat. **Délka** podle počtu zamíchání
   nebo času (1 h / 3 h / 8 h přes noc / dokud nezastavíš): běh se průběžně ukládá,
@@ -69,6 +74,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   Roux, ZZ – spočtené stejným simulátorem, `src/sim/references.js`) nebo jiná simulace,
   vpravo tvoje; tabulka s tahy, časem a kroky a kroky obou metod vedle sebe. Měření
   v Node: `node bench/method.mjs [zamíchání] [s na krok] [filtr] [json]`.
+  **Učebnice metody** (průvodce nebo simulátor → „Učebnice“): celá metoda v jednom HTML
+  souboru – úvod a držení, kroky s obrázkem dílků a nastavením ze simulátoru, výsledek
+  simulace, všechny algoritmy sad s obrázkem případu, tvými časy a políčkem „umím“.
+  Jde vytisknout do PDF a obsahuje data metody, takže ji aplikace umí znovu importovat
+  (i s nastavením simulátoru).
 - **Simulace soutěže** (tlačítko Soutěž v Timeru): kolo podle pravidel WCA –
   Average of 5, Mean of 3 (6×6, 7×7) nebo Best of 3 (naslepo), povinná inspekce,
   volitelný cutoff, časový limit a cíl. Během kola pokusy, po čtvrtém pokusu

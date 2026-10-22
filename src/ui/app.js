@@ -1,4 +1,4 @@
-// ErgoCube Lab – navigace mezi sekcemi Timer / Statistiky / Trenažér / Lab.
+// ErgoCube Lab – navigace mezi sekcemi Timer / Statistiky / Trenažér / Lab / Simulátor.
 
 import { hydrateIcons } from './icons.js';
 import { storage } from './dom.js';
@@ -6,9 +6,9 @@ import { initTimer, practiceStep } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
 import { initLab, showLab, labTask, labFixed, labErgo } from './lab.js';
-import { openSimulator } from './simulator.js';
+import { initSimulator, showSimulator } from './simulator.js';
 import { initSettings } from './settings.js';
-import { initMethods } from './methods.js';
+import { initMethods, showGuide } from './methods.js';
 import { takeShared, unpackTask, toast } from './share.js';
 import { algs, algSets } from './store.js';
 import { openTask } from './lab.js';
@@ -24,7 +24,7 @@ function updateLock() {
   document.querySelector('[data-page="lab"]').classList.toggle('fixed', page === 'lab' && labFixed());
 }
 
-const TITLES = { timer: 'Timer', stats: 'Statistiky', trainer: 'Trenažér', lab: 'Lab' };
+const TITLES = { timer: 'Timer', stats: 'Statistiky', trainer: 'Trenažér', lab: 'Lab', sim: 'Simulátor' };
 
 function showPage(name) {
   page = name;
@@ -42,6 +42,7 @@ function showPage(name) {
   if (name === 'stats') showStats();
   if (name === 'trainer') showTrainer();
   if (name === 'lab') showLab();
+  if (name === 'sim') showSimulator();
 }
 
 hydrateIcons();
@@ -51,13 +52,14 @@ initMethods({
   labTask,
   train: (id) => { trainSetTo(id); showPage('trainer'); },
   practice: (id) => { practiceStep(id); showPage('timer'); },
-  simulate: (opts) => openSimulator(labErgo(), opts),
+  simulate: () => showPage('sim'),
 });
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });
 initLab({ onSub: () => updateLock(), openSet: (id) => { trainSetTo(id); showPage('trainer'); } });
 initSettings();
+initSimulator({ lab: () => labErgo(), onEdit: () => showGuide({ edit: true }) });
 showPage(page);
 
 // --- Sdílený odkaz (#s=…): přidat algoritmy do sady, nebo otevřít případ v Labu ---------

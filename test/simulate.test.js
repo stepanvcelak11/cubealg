@@ -128,7 +128,8 @@ test('plán: kumulativní cíle, středy až na konci, vypnutý krok, orientace'
   assert.deepEqual(Object.keys(off.plan.variants[0].goals[0]), ['DF']);
   assert.equal(buildPlan({ guide, neutral: 'dual' }).plan.variants.length, 2);
   const all = buildPlan({ guide, neutral: 'all' }).plan;
-  assert.equal(all.variants.length, 6);
+  assert.equal(all.variants.length, 24);
+  assert.equal(all.choices[0], 12); // hrana kamkoli: 12 míst (každé ze dvou orientací)
   // druhá orientace: tytéž dílky vůči držení = jiné dílky kostky (dole je U)
   assert.deepEqual(Object.keys(buildPlan({ guide, neutral: 'dual' }).plan.variants[1].goals[0]), ['UF']);
   const custom = buildPlan({ guide, config: { a: { moves: 'custom', custom: ['R', 'U'] } } }).plan;
@@ -151,4 +152,46 @@ test('řešič kroků: sada, „jen sada“ s chybějícím případem a barevn�
   const dual = buildPlan({ guide, neutral: 'dual', config: { a: { time: 1 }, b: { time: 1 }, c: { time: 1 } } }).plan;
   const res = await solveScrambles(dual, [practiceState({}, seededRandom(3)), practiceState({}, seededRandom(4))], { virtual: true });
   assert.ok(res.solves.every((s) => s.ok));
+});
+
+test('volnost kroku: pár v kterémkoli slotu, otočení kostky, kříž libovolnou barvou', async () => {
+  const pairs = { frame: { down: 'D', front: 'F' }, steps: [
+    { id: 'c', title: 'Kříž', parts: parts(['DF', 'DR', 'DB', 'DL']) },
+    { id: 'p', title: 'Pár', parts: parts(['DFR', 'FR']) },
+  ] };
+  const side = buildPlan({ guide: pairs, config: { c: { time: 1 }, p: { time: 1, free: 'side' } } }).plan;
+  assert.equal(side.variants.length, 4);
+  assert.equal(side.choices[1], 4);
+  assert.deepEqual(side.variants[0].next[1], [0, 1, 2, 3]);
+  assert.equal(side.variants[0].rotation[side.variants[0].next[1][1]].split(' ').length, 1);
+  // stav: kříž hotový, pár DRB+BR hotový, pár DFR+FR rozbitý
+  const broken = applyAlg(solved(), "R U R'");
+  const fixed = buildPlan({ guide: pairs, config: { c: { time: 1 }, p: { time: 1 } } }).plan;
+  const a = await solveScrambles(fixed, [broken], { virtual: true });
+  assert.ok(a.solves[0].ok);
+  assert.ok(a.solves[0].steps[1].length > 0);
+  // s volností je hotový pár v jiném slotu = krok přeskočený
+  const b = await solveScrambles(side, [broken], { virtual: true });
+  assert.equal(b.solves[0].steps[1].source, 'skip');
+  assert.notEqual(b.solves[0].steps[1].variant, 0);
+  // otočení kostky jako tah: řešení kroku v jiné orientaci nese zápis otočení
+  const rot = buildPlan({ guide: pairs, rotation: 'move', config: { c: { time: 1 }, p: { time: 1, free: 'side' } } }).plan;
+  assert.equal(rot.rotation, 'move');
+  const c = await solveScrambles(rot, [applyAlg(solved(), "R U R' L' U L B U B' U B' U' B U2")], { virtual: true });
+  assert.ok(c.solves[0].ok);
+  // kříž zůstal a jeden z párů je hotový; otočení se započítalo, když se orientace změnila
+  let state = c.solves[0].start;
+  for (const x of c.solves[0].steps) state = applyAlg(state, x.model);
+  assert.ok(compileGoal(parts(['DF', 'DR', 'DB', 'DL'])).test(state));
+  assert.ok([['DFR', 'FR'], ['DRB', 'BR'], ['DBL', 'BL'], ['DLF', 'FL']].some((p) => compileGoal(parts(p)).test(state)));
+  const p2 = c.solves[0].steps[1];
+  assert.notEqual(p2.source, 'skip');
+  if (p2.variant !== 0) assert.equal(p2.length, lengthOf(p2.display) + 1);
+  // kříž libovolnou barvou: hotový kříž na bílé (U) = přeskočeno
+  const cn = buildPlan({ guide: pairs, config: { c: { time: 1, free: 'all' }, p: { time: 1, free: 'side' } } }).plan;
+  assert.equal(cn.choices[0], 6);
+  const d = await solveScrambles(cn, [applyAlg(solved(), "D R2 D' F2 L B'")], { virtual: true });
+  assert.ok(d.solves[0].ok);
+  const e = await solveScrambles(cn, [applyAlg(solved(), 'D')], { virtual: true });
+  assert.equal(e.solves[0].steps[0].source, 'skip'); // bílý kříž je hotový
 });

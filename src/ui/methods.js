@@ -50,12 +50,15 @@ function pick() {
 }
 
 function importFile() {
-  const input = el('input', { type: 'file', accept: '.json,application/json' });
+  const input = el('input', { type: 'file', accept: '.json,application/json,.html,text/html' });
   input.onchange = async () => {
     const file = input.files[0];
     if (!file) return;
     try {
-      importMethod(JSON.parse(await file.text()));
+      const text = await file.text();
+      // učebnice metody (HTML) nese data metody uvnitř
+      const inner = text.trimStart().startsWith('<') ? new DOMParser().parseFromString(text, 'text/html').getElementById('ergocube-method')?.textContent : null;
+      importMethod(JSON.parse(inner ?? text));
       openGuide(guideDeps);
     } catch (e) {
       alert(`Metodu se nepodařilo načíst: ${e.message}`);
