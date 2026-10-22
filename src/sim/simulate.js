@@ -11,6 +11,7 @@
 import { compileGoal } from '../core/constraints.js';
 import { applyAlg } from '../core/cube.js';
 import { practiceState } from '../timer/practice.js';
+import { mergeConstraints, constraintsKey } from './../core/rules.js';
 
 /** Počet tahů zápisu (každý token je tah, natočení vrstev i rotace se počítají). */
 export const lengthOf = (alg) => (alg ? alg.trim().split(/\s+/).filter(Boolean).length : 0);
@@ -78,13 +79,8 @@ export function pickFromSet(state, test, candidates, adjust = {}) {
   return best;
 }
 
-/** Sjednocení cílů (jako mergeParts): „jen místo“ + „jen natočení“ = hotový dílek. */
-function merge(a, b) {
-  const out = { ...a };
-  for (const [n, s] of Object.entries(b)) out[n] = !out[n] || out[n] === s ? s : 'solved';
-  return out;
-}
-const keyOf = (goal) => Object.keys(goal).sort().map((n) => `${n}:${goal[n]}`).join(',');
+const merge = mergeConstraints;
+const keyOf = constraintsKey;
 
 /**
  * Spustí simulaci.

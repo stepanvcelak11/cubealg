@@ -68,7 +68,8 @@ export async function initKernel() {
 
 export const kernelReady = () => K !== null;
 /** Jádro umí úlohu (hodnoty dílků se vejdou do 32bitové masky). */
-export const kernelFits = (problem) => K !== null && problem.pieces.every((p) => p.size <= 32);
+// skupinová pravidla (classTables) jádro nezná – ta úloha jde v JS
+export const kernelFits = (problem) => K !== null && !problem.classTables?.length && problem.pieces.every((p) => p.size <= 32);
 /** Vypne jádro (testy porovnávají s JS verzí). */
 export function disableKernel() { K = null; }
 

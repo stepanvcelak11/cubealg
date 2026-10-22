@@ -24,6 +24,8 @@ const GROUP = 3; // dílků v jedné pattern databázi hotových dílků (24³ h
  */
 export function stagedSolve(problem, start, { deadline, finish = 4, stageDepth = 14, seed = 0, onStage }) {
   const { pieces, trans, moveCount, redundant, names, puzzle } = problem;
+  // etapy znají jen cíle jednotlivých dílků (ne skupinová pravidla)
+  if (problem.classTables?.length) return { alg: null, reason: 'unsupported' };
   const n = pieces.length;
   const sizes = pieces.map((p) => p.size);
   const tr = pieces.map((p) => trans[p.kind]);

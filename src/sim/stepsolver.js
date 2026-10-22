@@ -15,6 +15,8 @@ import { buildTriggers } from '../ergonomics/triggers.js';
 import { styleMetrics, rankResults } from '../ergonomics/style.js';
 import { clock } from '../search/clock.js';
 import { simulate, pickFromSet } from './simulate.js';
+import { compileGoal } from '../core/constraints.js';
+import { constraintsKey } from '../core/rules.js';
 
 const P = getPuzzle('333');
 
@@ -73,7 +75,10 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     } finally {
       if (virtual) clock.setVirtual(false);
     }
-    const list = [...seen].map(([model, score]) => ({ model, score, m: styleMetrics(score, true) }));
+    // jen řešení, která cíl opravdu splní (etapy a bloky znají jen část cíle)
+    const reaches = compileGoal(constraints).test;
+    const list = [...seen].filter(([model]) => { try { return reaches(P.applyAlg(state, model)); } catch { return false; } })
+      .map(([model, score]) => ({ model, score, m: styleMetrics(score, true) }));
     if (!list.length) return null;
     const best = rankResults(list, opts.view ?? 'speed', { lambda: plan.lambda ?? 0.5 })[0];
     return { model: best.model, display: toHeld(best.model), score: best.m.total, source: 'search' };
@@ -83,7 +88,7 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
   async function solveStep(i, state, test, v, goal = plan.variants[v].goals[i]) {
     const step = plan.variants[v].steps[i];
     const opts = plan.stepOpts[i];
-    const key = `${v}|${i}|${Object.keys(goal).sort().map((n) => n + goal[n]).join()}|${state.join(',')}`;
+    const key = `${v}|${i}|${constraintsKey(goal)}|${state.join(',')}`;
     if (memo.has(key)) return memo.get(key);
     let r = null;
     if (opts.mode !== 'search' && step.candidates?.length) r = pickFromSet(state, test, step.candidates, step.adjust);

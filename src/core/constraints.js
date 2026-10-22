@@ -9,6 +9,11 @@
 //   { allow }    – referenční nálepka dílku musí ležet na některé z pozic
 //                  („barva na místě“ z částečně vybarveného cíle, core/task.js)
 //
+// Skupinová pravidla (klíč „#classes“, viz core/rules.js): dílky skupiny jsou
+// zaměnitelné – na každém místě musí ležet některá sledovaná nálepka některého
+// dílku skupiny (např. kříž z kterýchkoli bílých/žlutých hran, bílou/žlutou dolů):
+//   { pieces: [názvy dílků], stickers: [[pořadí nálepek dílku]], places: [[pozice]] }
+//
 // Dílek je určen svým názvem ve složené kostce („UF“, „DFR“, „U“ = střed).
 // U středů se orientace neřeší (orientation = ignore, solved = permutation).
 
@@ -45,8 +50,14 @@ export function compileGoal(constraints, target, puzzle) {
   const slotEq = [];    // dvojice [referenční nálepka, slot]
   const oriEq = [];     // dvojice [referenční nálepka, orientace]
   const allowed = [];   // [referenční nálepka, Set povolených poloh] („barva na místě“)
+  // skupinová pravidla: sledované nálepky (indexy) a místa (Set pozic)
+  const classes = (constraints['#classes'] ?? []).map((c) => ({
+    stickers: c.pieces.flatMap((name, i) => c.stickers[i].map((o) => P.slotByName(name).facelets[o])),
+    places: c.places.map((pl) => new Set(pl)),
+  }));
+  const classOk = (loc, c) => c.places.every((pl) => c.stickers.some((k) => pl.has(loc[k])));
   for (const [name, type] of Object.entries(constraints)) {
-    if (type === 'ignore') continue;
+    if (type === 'ignore' || name === '#classes') continue;
     if (type && typeof type === 'object' && type.allow) {
       allowed.push([P.slotByName(name).facelets[0], new Set(type.allow)]);
       continue;
@@ -68,6 +79,7 @@ export function compileGoal(constraints, target, puzzle) {
     for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) return false;
     for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) return false;
     for (const [ref, set] of allowed) if (!set.has(loc[ref])) return false;
+    for (const c of classes) if (!classOk(loc, c)) return false;
     return true;
   }
 
@@ -78,6 +90,7 @@ export function compileGoal(constraints, target, puzzle) {
     for (let i = 0; i < pe.length; i += 2) if (slotOf[loc[pe[i]]] !== pe[i + 1]) n++;
     for (let i = 0; i < oe.length; i += 2) if (oriAt[loc[oe[i]]] !== oe[i + 1]) n++;
     for (const [ref, set] of allowed) if (!set.has(loc[ref])) n++;
+    for (const c of classes) if (!classOk(loc, c)) n++;
     return n;
   }
 

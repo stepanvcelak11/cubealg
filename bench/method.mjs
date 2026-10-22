@@ -9,6 +9,7 @@ import { practiceState } from '../src/timer/practice.js';
 import { frameMap, DEFAULT_FRAME } from '../src/ui/parts.js';
 import { slotByName } from '../src/core/geometry.js';
 import { initKernel } from '../src/search/kernel.js';
+import { RULE_PRESETS } from '../src/core/rules.js';
 
 const count = Number(process.argv[2] ?? 4);
 const seconds = Number(process.argv[3] ?? 3);
@@ -22,7 +23,8 @@ const CROSS = ['DF', 'DR', 'DB', 'DL'];
 const E = ['FR', 'BR', 'BL', 'FL'];
 const UE = ['UF', 'UR', 'UB', 'UL'], DE = ['DF', 'DR', 'DB', 'DL'];
 const UC = ['UFR', 'URB', 'UBL', 'ULF'], DC = ['DFR', 'DRB', 'DBL', 'DLF'];
-const step = (id, title, parts, cfg = {}) => ({ st: { id, title, parts }, cfg });
+const step = (id, title, parts, cfg = {}, rules) => ({ st: { id, title, parts, ...(rules ? { rules } : {}) }, cfg });
+const R = (id, patch = {}) => ({ ...RULE_PRESETS.find((x) => x.id === id).rule, ...patch });
 
 const BL = ['DLF', 'DBL', 'DL', 'FL', 'BL'], BR = ['DFR', 'DRB', 'DR', 'FR', 'BR'];
 const ALL_E = [...UE, ...DE, ...E];
@@ -61,6 +63,19 @@ export const METHODS = [
       step('rb', 'Pravý blok', view(BR), { moves: 'RUL', recog: 0.3 }),
       step('ocll', 'OCLL', view(UC, 'orientation'), { recog: 0.5 }),
       step('pll', 'PLL', view([...UE, ...UC]), { recog: 0.6 }),
+    ],
+  },
+  {
+    id: 'sep',
+    name: 'Separační metoda (kříž z bílých/žlutých, páry, OLL, separace, rohy, EPBL)',
+    steps: [
+      step('x', 'Kříž (bílé/žluté hrany)', {}, { recog: 0 }, [R('cross-any')]),
+      ...[1, 2, 3, 4].map((k) => step(`p${k}`, `Pár ${k}`, view(['FR']), { free: 'side', recog: 0.4 }, [R('corner-any')])),
+      step('o', 'OLL (bílá/žlutá nahoru či dolů)', {}, { recog: 0.5 }, [R('orient-edges'), R('orient-corners')]),
+      step('se', 'Separace hran', {}, { recog: 0.4 }, [R('sep-edges-d'), R('sep-edges-u')]),
+      step('sc', 'Separace rohů', {}, { recog: 0.4 }, [R('sep-corners-d'), R('sep-corners-u')]),
+      step('cp', 'Permutace rohů', view([...UC, ...DC]), { recog: 0.5 }),
+      step('ep', 'Parita + EPBL', view([...UE, ...DE, ...E]), { moves: 'MUD', helpers: 'M2 U2 M2', recog: 0.6 }),
     ],
   },
   {

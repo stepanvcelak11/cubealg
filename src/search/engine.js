@@ -101,7 +101,7 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   }
 
   // Dílky, se kterými povolené tahy nehýbou, se do heuristiky nezahrnují.
-  const tracked = pieces.filter((p) => movingTypes.has(p.kind));
+  const tracked = pieces.filter((p) => movingTypes.has(p.kind) && p.constraint !== 'free');
   // s tabulkou blízko cíle stačí jedno rozdělení (druhé skoro nezlepší odhad, jen zdržuje)
   const groups = makeGroups(tracked, tableLimit, nearLimit > 0);
   const tables = groups.map((g, i) => {
@@ -120,6 +120,8 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   const smallGroups = tableLimit > DEFAULT_TABLE_LIMIT ? makeGroups(tracked, DEFAULT_TABLE_LIMIT, true) : groups;
   onTable?.({ table: groups.length + 1, tables: groups.length + 1 });
   const near = buildNear(pieces, moveCount, invTrans, nearLimit);
+  // skupinová pravidla: přesné databáze podle toho, kde leží sledované nálepky skupiny
+  const classTables = (constraints['#classes'] ?? []).map((c) => classTable(puzzle, c, pieces, moves, invTrans, cache));
 
   // Kanonické pořadí tahů a jejich zápis.
   const redundant = new Uint8Array(moveCount * moveCount);
@@ -129,7 +131,7 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
 
   return {
     puzzle, local: LOCAL, targetCount: targets.length,
-    pieces, tables, smallGroups, near, trans, moves, moveCount, redundant,
+    pieces, tables, smallGroups, near, trans, moves, moveCount, redundant, classTables,
     names: moves.map((m) => puzzle.moveToString(m)),
     pieceIndex: new Map(pieces.map((p, i) => [p.name, i])),
   };
@@ -163,7 +165,123 @@ function trackedPieces(puzzle, constraints, targets) {
     const faces = new Set(slot.facelets.map((f) => puzzle.stickerFace[f]));
     pieces.push({ name: slot.name, kind: slot.type, ref, size: positions.length, ok: oks[0], oks, constraint: type, faces, stickers: slot.facelets.length });
   }
+  // dílky skupinových pravidel, které jinak nic neomezuje: sledují se (kvůli databázím
+  // skupin), ale každá hodnota je pro ně v pořádku
+  const have = new Set(pieces.map((p) => p.name));
+  for (const c of constraints['#classes'] ?? []) {
+    for (const name of c.pieces) {
+      if (have.has(name)) continue;
+      have.add(name);
+      const slot = puzzle.slotByName(name);
+      const size = TYPE_POSITIONS[slot.type].length;
+      const all = new Uint8Array(size).fill(1);
+      pieces.push({ name: slot.name, kind: slot.type, ref: slot.facelets[0], size, ok: all, oks: targets.map(() => all), constraint: 'free',
+        faces: new Set(slot.facelets.map((f) => puzzle.stickerFace[f])), stickers: slot.facelets.length });
+    }
+  }
   return pieces;
+}
+
+// --- Skupinová pravidla -----------------------------------------------------------------------
+// Stav skupiny = množina pozic jejích sledovaných nálepek (dílky jsou zaměnitelné), jako
+// maska nad pozicemi jednoho typu (24 u hran i rohů). Databáze má C(24, k) stavů a dává
+// přesnou vzdálenost, za kolik tahů lze místa obsadit (zpětné BFS od všech cílových množin).
+const BINOM = Array.from({ length: 33 }, (_, n) => { const r = [1]; for (let k = 1; k <= n; k++) r.push((r[k - 1] * (n - k + 1)) / k); return r; });
+const binom = (n, k) => (k < 0 || k > n ? 0 : BINOM[n][k]);
+const CLASS_CACHE = new Map(); // klíč → dist (i bez cache workeru; stejná pravidla se opakují)
+
+/** Tabulky pro pořadí masky po bajtech: rankTab[b][c][x] = příspěvek bajtu b, když před ním je c bitů. */
+function rankTables(size, k) {
+  const bytes = Math.ceil(size / 8);
+  return Array.from({ length: bytes }, (_, b) => Array.from({ length: k + 1 }, (_, c) => {
+    const t = new Uint32Array(256);
+    for (let x = 0; x < 256; x++) {
+      let r = 0, i = c;
+      for (let j = 0; j < 8; j++) if (x & (1 << j)) { r += binom(8 * b + j, i + 1); i++; }
+      t[x] = r;
+    }
+    return t;
+  }));
+}
+const POP = Uint8Array.from({ length: 256 }, (_, x) => { let n = 0; for (let j = 0; j < 8; j++) n += (x >> j) & 1; return n; });
+
+function classTable(puzzle, rule, pieces, moves, invTrans, cache) {
+  const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
+  const slot0 = puzzle.slotByName(rule.pieces[0]);
+  const kind = slot0.type;
+  const positions = TYPE_POSITIONS[kind];
+  const size = positions.length;
+  if (size > 32) throw new Error('Skupinové pravidlo: moc pozic');
+  // pro každý sledovaný dílek a nálepku: hodnota dílku (poloha ref) → pozice nálepky (lokálně)
+  const index = new Map(pieces.map((p, i) => [p.name, i]));
+  const maps = [];
+  rule.pieces.forEach((name, i) => {
+    const slot = puzzle.slotByName(name);
+    for (const o of rule.stickers[i]) {
+      maps.push({ piece: index.get(slot.name), map: Uint8Array.from(positions, (q) => {
+        const T = puzzle.slots[puzzle.SLOT_OF[q]];
+        const j = T.facelets.indexOf(q);
+        return LOCAL[T.facelets[(j + o) % T.facelets.length]];
+      }) });
+    }
+  });
+  const k = maps.length;
+  const placeMasks = Uint32Array.from(rule.places, (pl) => pl.reduce((m, pos) => (m | (1 << LOCAL[pos])) >>> 0, 0));
+  const rt = rankTables(size, k);
+  const bytes = rt.length;
+  const rank = (mask) => {
+    let r = 0, c = 0;
+    for (let b = 0; b < bytes; b++) { const x = (mask >>> (8 * b)) & 255; r += rt[b][c][x]; c += POP[x]; }
+    return r;
+  };
+  const isGoal = (mask) => { for (let i = 0; i < placeMasks.length; i++) if (!(mask & placeMasks[i])) return false; return true; };
+  const total = binom(size, k);
+  const key = `cls|${puzzle.id}|${kind}|${k}|${moves.map((m) => puzzle.moveToString(m)).join(' ')}|${[...placeMasks].join(',')}`;
+  let dist = CLASS_CACHE.get(key) ?? cache?.get(key);
+  if (!dist || dist.length !== total) {
+    // tah na masku po bajtech: permTab[m][b][x] = obraz bitů bajtu b při zpětném tahu m
+    const inv = invTrans[kind];
+    const moveCount = moves.length;
+    const permTab = Array.from({ length: moveCount }, (_, m) => Array.from({ length: bytes }, (_, b) => {
+      const t = new Uint32Array(256);
+      for (let x = 0; x < 256; x++) {
+        let r = 0;
+        for (let j = 0; j < 8; j++) if (x & (1 << j) && 8 * b + j < size) r |= 1 << inv[m * size + 8 * b + j];
+        t[x] = r >>> 0;
+      }
+      return t;
+    }));
+    dist = new Uint8Array(total).fill(255);
+    const queue = new Uint32Array(total);
+    let head = 0, tail = 0;
+    // všechny masky s k bity (Gosperův trik), cílové do fronty
+    if (k === 0) { dist[0] = 0; queue[tail++] = 0; } else {
+      let mask = (2 ** k - 1) >>> 0;
+      const limit = 2 ** size;
+      while (mask < limit) {
+        if (isGoal(mask)) { dist[rank(mask)] = 0; queue[tail++] = mask; }
+        const c = mask & -mask, r = mask + c;
+        mask = (((r ^ mask) >>> 2) / c | r) >>> 0;
+        if (r >= limit) break;
+      }
+    }
+    while (head < tail) {
+      const mask = queue[head++];
+      const d = dist[rank(mask)] + 1;
+      for (let m = 0; m < moveCount; m++) {
+        const pt = permTab[m];
+        let nm = 0;
+        for (let b = 0; b < bytes; b++) nm |= pt[b][(mask >>> (8 * b)) & 255];
+        nm >>>= 0;
+        const r = rank(nm);
+        if (dist[r] === 255) { dist[r] = d; queue[tail++] = nm; }
+      }
+    }
+    CLASS_CACHE.set(key, dist);
+    if (CLASS_CACHE.size > 24) CLASS_CACHE.delete(CLASS_CACHE.keys().next().value);
+    cache?.set(key, dist);
+  }
+  return { kind, maps, placeMasks, rank, dist, k };
 }
 
 // Rozdělí dílky do skupin pro pattern databáze. Dvě různá rozdělení
@@ -218,7 +336,7 @@ export function tableKeys({ puzzle = CUBE3, constraints, target = puzzle.solved(
   const { positions } = typeInfo(puzzle);
   const perms = moves.map((m) => puzzle.perm(m));
   const moving = new Set(Object.keys(positions).filter((type) => perms.some((to) => positions[type].some((pos) => to[pos] !== pos))));
-  const tracked = trackedPieces(puzzle, constraints, targets).filter((p) => moving.has(p.kind));
+  const tracked = trackedPieces(puzzle, constraints, targets).filter((p) => moving.has(p.kind) && p.constraint !== 'free');
   return makeGroups(tracked, tableLimit, nearLimit > 0).map((g) => tableKey(puzzle, moves, g));
 }
 
@@ -528,8 +646,17 @@ export function evaluator(problem) {
   const tableIdx = tables.map((t) => t.pieces.map((name) => pieceIndex.get(name)));
   const nearRadius = near ? near.radius : 0;
   const oks = Array.from({ length: targetCount }, (_, t) => pieces.map((p) => p.oks[t]));
+  // skupinová pravidla: maska pozic sledovaných nálepek → vzdálenost / splnění
+  const classes = problem.classTables ?? [];
+  const classMask = (c, v) => {
+    let mask = 0;
+    for (let i = 0; i < c.maps.length; i++) mask |= 1 << c.maps[i].map[v[c.maps[i].piece]];
+    return mask >>> 0;
+  };
+  const classDist = (c, v) => c.dist[c.rank(classMask(c, v))];
   /** Index splněného cíle, nebo −1. */
   const goalOf = (v) => {
+    for (let ci = 0; ci < classes.length; ci++) if (classes[ci].dist[classes[ci].rank(classMask(classes[ci], v))] !== 0) return -1;
     for (let t = 0; t < targetCount; t++) {
       const ok = oks[t];
       let i = 0;
@@ -549,6 +676,7 @@ export function evaluator(problem) {
       if (packed && d === PACKED_UNREACHABLE) d = UNREACHABLE;
       if (d > h) h = d;
     }
+    for (let ci = 0; ci < classes.length; ci++) { const d = classDist(classes[ci], v); if (d > h) h = d; }
     return h;
   };
   // přesnější dolní odhad: tabulka blízko cíle (mimo ni je vzdálenost > radius)
@@ -592,6 +720,7 @@ export function evaluator(problem) {
       } else if (tDist[t][idx] > limit) return false;
     }
     for (let k = 0; k < rest.length; k++) { const i = rest[k]; next[i] = pTrans[i][m * pSize[i] + cur[i]]; }
+    for (let ci = 0; ci < classes.length; ci++) if (classDist(classes[ci], next) > limit) return false;
     return true;
   };
   return { goalOf, heuristic, estimate, advance, near, nearRadius, order, tableIdx, rest };

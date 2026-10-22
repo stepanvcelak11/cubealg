@@ -11,6 +11,7 @@ import { holdOf, holdFromFaces } from '../core/hold.js';
 import { MOVESET_PRESETS } from '../core/moveset.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
+import { compileRule, mergeConstraints, constraintsKey } from '../core/rules.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 
 const P = getPuzzle('333');
@@ -106,11 +107,15 @@ const LABEL = COLORS;
  * Kolik různých míst volnost kroku nabízí (z držení metody): nové dílky kroku
  * (ty, které nebyly hotové dřív) přesunuté do každé povolené orientace.
  */
-export function placesCount(frame, before, parts, cfg = {}) {
+export function placesCount(frame, before, parts, cfg = {}, rules = []) {
   const f = validFrame(frame) ? frame : DEFAULT_FRAME;
   const fresh = Object.fromEntries(Object.entries(parts).filter(([n, st]) => before[n] !== st));
-  if (!Object.keys(fresh).length) return 1;
-  return new Set(freeFrames(f, cfg.free ?? 'fixed', cfg).map((g) => Object.keys(remap(fresh, f, g)).sort().join())).size;
+  if (!Object.keys(fresh).length && !rules.length) return 1;
+  return new Set(freeFrames(f, cfg.free ?? 'fixed', cfg).map((g) => {
+    let c = remap(fresh, f, g);
+    for (const rule of rules) c = mergeConstraints(c, compileRule(rule, frameMap(g)));
+    return constraintsKey(c);
+  })).size;
 }
 
 /** Přejmenuje dílky z orientace `from` do orientace `to` (stejné místo vůči držení). */
@@ -141,7 +146,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   const all = [];
   guide.steps.forEach((st, index) => {
     const parts = stepParts(st);
-    if (!Object.keys(parts).length) return;
+    if (!Object.keys(parts).length && !st.rules?.length) return;
     const algs = st.set ? setAlgs(st.set) : [];
     all.push({ st, index, parts, algs, cfg: { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) } });
   });
@@ -151,8 +156,16 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   // stará volba „barevná neutralita“ = volnost prvního kroku
   if (steps.length && neutral !== 'fixed' && !config[steps[0].st.id]?.free) steps[0].cfg.free = NEUTRAL_FREE[neutral] ?? 'fixed';
   const goals0 = steps.map((x) => ({ ...mergeParts(partsBefore(guide.steps, x.st.id), x.parts) }));
-  // nové dílky kroku (vůči předchozímu zapnutému kroku): ty smí volnost přesunout jinam
-  const fresh = goals0.map((g, i) => Object.fromEntries(Object.entries(g).filter(([n, st]) => !i || goals0[i - 1][n] !== st)));
+  // dílky a pravidla kroku: jeho vlastní + z vypnutých kroků před ním (složí se s ním).
+  // Vlastní, ne rozdíl proti předchozím krokům – kroky se stejnými dílky (pár do
+  // kteréhokoli slotu ×4) pak s volností každý přidá další místo.
+  const fresh = [], rulesOf = [];
+  let pend = {}, pendRules = [];
+  for (const x of all) {
+    pend = mergeParts(pend, x.parts);
+    pendRules.push(...(x.st.rules ?? []));
+    if (steps.includes(x)) { fresh.push(pend); rulesOf.push(pendRules); pend = {}; pendRules = []; }
+  }
   // orientace, do kterých se simulace může dostat (postupně podle volností kroků)
   const frames = [frame];
   const index = new Map([[fid(frame), 0]]);
@@ -207,13 +220,15 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
           } catch { return []; }
         });
         // nové dílky kroku v této orientaci (cíl = dosud hotové + tyto; poslední krok i středy)
-        const parts = { ...remap(fresh[i], frame, f), ...(i === steps.length - 1 ? CENTERS : {}) };
+        // a pravidla pro skupiny dílků (core/rules.js) přeložená do této orientace
+        let parts = { ...remap(fresh[i], frame, f), ...(i === steps.length - 1 ? CENTERS : {}) };
+        for (const rule of rulesOf[i]) parts = mergeConstraints(parts, compileRule(rule, map));
         return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates, parts };
       }),
     };
   });
   // kolik různých míst kroku volnost nabízí (z výchozí orientace) – pro odhad délky hledání
-  const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => JSON.stringify(Object.keys(variants[j].steps[i].parts).sort()))).size);
+  const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => constraintsKey(variants[j].steps[i].parts))).size);
   const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0 }));
   return { plan: { lambda, ergonomics, variants, stepOpts, rotation, choices }, steps };
 }
