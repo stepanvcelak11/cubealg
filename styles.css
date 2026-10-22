@@ -1096,8 +1096,48 @@ body.timing .round-panel { visibility: hidden; }
 .gen-fix input { font-family: var(--mono); }
 .gen-out code { font-family: var(--mono); font-size: 0.74rem; overflow-wrap: anywhere; }
 
+/* --- Sekce Metoda: sestavit a otestovat ------------------------------------------------------- */
+.mp { width: 100%; max-width: 760px; margin: 0 auto; display: grid; gap: 12px; min-width: 0; }
+.mp-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.mp-head h2 { margin: 0; font-family: var(--display); font-size: 1.7rem; letter-spacing: -0.02em; }
+.mp-head .hint { margin: 0; font-size: 0.72rem; font-weight: 700; }
+.mp-tabs { justify-self: stretch; }
+.mp-build { display: grid; gap: 10px; min-width: 0; }
+.mp-build[hidden], .mp .sim-page[hidden] { display: none; }
+.bld-how { padding: 12px 14px; border-radius: 18px; background: var(--accent-soft); font-size: 0.86rem; }
+.bld-how ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.bld-card { display: grid; gap: 10px; padding: 14px; border-radius: 22px; background: var(--panel); box-shadow: var(--shadow-sm); min-width: 0; }
+.bld-q { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; }
+.bld-q > div { display: flex; flex-direction: column; min-width: 0; }
+.bld-q b { font-size: 0.98rem; }
+.bld-q small { color: var(--muted); font-size: 0.78rem; font-weight: 600; }
+.bld-qn { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 800; font-size: 0.85rem; }
+.bld-h { margin: 8px 0 0; font-family: var(--display); font-size: 1.25rem; }
+.bld-step { gap: 8px; }
+.bld-step.open { box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-sm); }
+.bld-step-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bld-step-toggle { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: none; padding: 4px 6px; border-radius: 12px; color: inherit; min-height: 44px; }
+.bld-step-toggle:hover:not(:disabled) { background: var(--panel-2); filter: none; }
+.bld-step-toggle b { font-size: 1rem; }
+.bld-step-toggle small { color: var(--muted); font-size: 0.76rem; font-weight: 600; overflow-wrap: anywhere; }
+.bld-free { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.bld-free-opt { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 14px; background: var(--panel-2); cursor: pointer; }
+.bld-free-opt input { margin-top: 3px; accent-color: var(--accent); }
+.bld-free-opt span { display: flex; flex-direction: column; }
+.bld-free-opt b { font-size: 0.88rem; }
+.bld-free-opt small { color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.bld-free-opt.on { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.bld-places { margin: 0; font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+.bld-places.many { color: var(--accent); }
+.bld-more { padding: 8px 12px; border-radius: 14px; background: var(--panel-2); }
+.bld-more summary { cursor: pointer; font-weight: 750; font-size: 0.86rem; }
+.bld-more[open] { display: grid; gap: 8px; }
+.bld-step-tools { justify-content: flex-end; }
+.bld-add { width: 100%; min-height: 48px; font-weight: 800; }
+.bld-test { justify-self: center; min-width: 240px; }
+
 /* --- Simulátor metody ------------------------------------------------------------------------ */
-.sim-page { width: 100%; max-width: 760px; margin: 0 auto; background: var(--panel); border-radius: 28px; box-shadow: var(--shadow-sm); }
+.sim-page { width: 100%; background: var(--panel); border-radius: 28px; box-shadow: var(--shadow-sm); min-width: 0; }
 .sim-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 16px 10px 18px; border-bottom: 1px solid var(--panel-2); }
 .sim-head-note { display: block; color: var(--muted); font-size: 0.74rem; font-weight: 600; }
 .sim-free-help { padding: 10px 12px; border-radius: 18px; background: var(--accent-soft, var(--panel-2)); font-size: 0.86rem; }

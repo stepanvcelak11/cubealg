@@ -48,6 +48,7 @@ const F2L = [...CROSS, ...D_CORNERS, ...E_EDGES];
 export const PRESETS = [
   { id: 'cross', label: 'Kříž', parts: rel(CROSS) },
   { id: 'xcross', label: 'Kříž + 1 pár (X-cross)', parts: rel([...CROSS, 'DFR', 'FR']) },
+  { id: 'pair', label: 'Jeden pár (roh + hrana vpředu vpravo)', parts: rel(['DFR', 'FR']) },
   { id: 'layer1', label: 'První vrstva', parts: rel([...CROSS, ...D_CORNERS]) },
   { id: 'f2l', label: 'První dvě vrstvy (F2L)', parts: rel(F2L) },
   { id: 'block222', label: 'Blok 2×2×2 (vlevo vzadu)', parts: rel(['DBL', 'DL', 'DB', 'BL']) },

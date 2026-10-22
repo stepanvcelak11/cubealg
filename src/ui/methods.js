@@ -3,7 +3,9 @@
 
 import { $, el } from './dom.js';
 import { methods, importMethod } from './store.js';
-import { openGuide } from './guide.js';
+import { openGuide, shareMethod } from './guide.js';
+
+export { shareMethod };
 
 let guideDeps = {};
 
@@ -12,6 +14,7 @@ function render() {
   const active = methods.active();
   select.replaceChildren(...[
     ...methods.list().map((m) => el('option', { value: m.id, textContent: m.name })),
+    el('option', { value: '+build', textContent: 'Sestavit / upravit metodu…' }),
     el('option', { value: '+guide', textContent: 'Průvodce metodou…' }),
     el('option', { value: '+new', textContent: '+ Nová metoda…' }),
     el('option', { value: '+import', textContent: 'Importovat metodu…' }),
@@ -27,13 +30,15 @@ function pick() {
   const select = $('method');
   const v = select.value;
   const active = methods.active();
-  if (v === '+guide') {
+  if (v === '+build') {
+    guideDeps.build?.();
+  } else if (v === '+guide') {
     openGuide(guideDeps);
   } else if (v === '+import') {
     importFile();
   } else if (v === '+new') {
     const name = prompt('Název metody (např. Roux, ZZ nebo tvoje vlastní):', '')?.trim();
-    if (name) methods.setActive(methods.add(name));
+    if (name) { methods.setActive(methods.add(name)); guideDeps.build?.(); }
   } else if (v === '+rename') {
     const name = prompt('Nový název metody:', methods.get(active).name)?.trim();
     if (name) methods.rename(active, name);

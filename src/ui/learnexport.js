@@ -12,6 +12,7 @@ import { labModel } from './models.js';
 import { stepParts, partsBefore, describeParts, frameMap, validFrame, DEFAULT_FRAME, COLOR_NAME } from './parts.js';
 import { FREEDOM, STEP_MOVES, ADJUST, COLORS } from '../sim/plan.js';
 import { VIEWS } from '../ergonomics/style.js';
+import { stepConfig } from './stepcfg.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -86,7 +87,7 @@ export function learningHtml(method = methods.active()) {
   const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
   const map = frameMap(frame);
   const hold = holdFromFaces(map.U, map.F);
-  const sim = storage.get('ergocube.sim.options')?.steps?.[method] ?? {};
+  const sim = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig(method, st)]));
   const last = (storage.get('ergocube.sim.history') ?? []).find((h) => h.method === method && h.steps?.length);
   const sets = new Map(algSets.list(method).map((s) => [s.id, s]));
   const setAlgs = (id) => algs.list().filter((a) => (a.set ?? 'default') === id);

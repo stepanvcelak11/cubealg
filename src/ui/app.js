@@ -1,4 +1,4 @@
-// ErgoCube Lab – navigace mezi sekcemi Timer / Statistiky / Trenažér / Lab / Simulátor.
+// ErgoCube Lab – navigace mezi sekcemi Timer / Statistiky / Trenažér / Lab / Metoda.
 
 import { hydrateIcons } from './icons.js';
 import { storage } from './dom.js';
@@ -6,15 +6,16 @@ import { initTimer, practiceStep } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
 import { initLab, showLab, labTask, labFixed, labErgo } from './lab.js';
-import { initSimulator, showSimulator } from './simulator.js';
+import { initMethodPage, showMethodPage } from './methodpage.js';
 import { initSettings } from './settings.js';
-import { initMethods, showGuide } from './methods.js';
+import { initMethods } from './methods.js';
 import { takeShared, unpackTask, toast } from './share.js';
 import { algs, algSets } from './store.js';
 import { openTask } from './lab.js';
 import { el } from './dom.js';
 
 let page = storage.get('ergocube.page') ?? 'timer';
+if (page === 'sim') page = 'method';
 
 // Stránky, které se nesmí posouvat (otáčení kostkou, stopky).
 function updateLock() {
@@ -24,9 +25,9 @@ function updateLock() {
   document.querySelector('[data-page="lab"]').classList.toggle('fixed', page === 'lab' && labFixed());
 }
 
-const TITLES = { timer: 'Timer', stats: 'Statistiky', trainer: 'Trenažér', lab: 'Lab', sim: 'Simulátor' };
+const TITLES = { timer: 'Timer', stats: 'Statistiky', trainer: 'Trenažér', lab: 'Lab', method: 'Metoda' };
 
-function showPage(name) {
+function showPage(name, opts = {}) {
   page = name;
   storage.set('ergocube.page', name);
   document.body.dataset.view = name;
@@ -42,7 +43,7 @@ function showPage(name) {
   if (name === 'stats') showStats();
   if (name === 'trainer') showTrainer();
   if (name === 'lab') showLab();
-  if (name === 'sim') showSimulator();
+  if (name === 'method') showMethodPage(opts.sub, opts.step);
 }
 
 hydrateIcons();
@@ -52,14 +53,19 @@ initMethods({
   labTask,
   train: (id) => { trainSetTo(id); showPage('trainer'); },
   practice: (id) => { practiceStep(id); showPage('timer'); },
-  simulate: () => showPage('sim'),
+  simulate: () => showPage('method', { sub: 'test' }),
+  build: (step) => showPage('method', { sub: 'build', step }),
 });
 initTimer({ isActive: () => page === 'timer' });
 initStats();
 initTrainer({ isActive: () => page === 'trainer' });
 initLab({ onSub: () => updateLock(), openSet: (id) => { trainSetTo(id); showPage('trainer'); } });
 initSettings();
-initSimulator({ lab: () => labErgo(), onEdit: () => showGuide({ edit: true }) });
+initMethodPage({
+  lab: () => labErgo(), labTask, isActive: () => page === 'method',
+  train: (id) => { trainSetTo(id); showPage('trainer'); },
+  practice: (id) => { practiceStep(id); showPage('timer'); },
+});
 showPage(page);
 
 // --- Sdílený odkaz (#s=…): přidat algoritmy do sady, nebo otevřít případ v Labu ---------

@@ -36,7 +36,16 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Metody** – výběr metody v horní liště (např. CFOP a tvoje vlastní) přepne celou
   aplikaci: složení v timeru, statistiky i sady algoritmů z Labu a Trenažéru patří
   k aktivní metodě. Ve statistikách jde metody (i skupiny) porovnat vedle sebe.
-  **Průvodce metodou** (ve výběru metody): úvod a kroky se slovním popisem,
+  **Sekce Metoda** (v liště): celá vlastní metoda na jednom místě. **Sestavit** –
+  nahoře název, držení a úvod, pod tím kroky v pořadí; u každého kroku popořadě
+  1. název a popis, 2. co je po kroku hotové (předvolby nebo klepání na dílky),
+  3. musí to být přesně tady? (přesně tady / na kterémkoli boku – např. kterýkoli
+  ze 4 párů / jen s vybranými barvami dole a vpředu / kdekoli…, s počtem možných
+  míst), 4. čím krok skládáš (sada algoritmů, co když v ní případ chybí, tahy,
+  natočení vrstev, pomocné algoritmy) a nepovinně podrobnosti pro test a obrázek
+  z Labu. Nastavení se ukládá přímo ke krokům metody (`src/ui/builder.js`,
+  `st.sim`). **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
+  **Průvodce metodou** (na čtení; „Upravit“ vede do Sestavit): úvod a kroky se slovním popisem,
   obrázkem kostky „před → po“ převzatým z Labu a odkazem na sadu algoritmů
   k tréninku, případně **ukázkou algoritmu**, která se dá přehrát tah po tahu.
   Metodu i s průvodcem a algoritmy jde **sdílet** jako soubor (druhý ji
@@ -47,9 +56,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
-  **Simulátor metody** (vlastní sekce „Simulátor“ v liště, i z průvodce → „Simulovat“;
-  běží dál, i když přepneš jinam): náhodná zamíchání se složí krok
-  po kroku podle dílků hotových po krocích. U každého kroku si nastavíš, jak ho řešíš:
+  **Test metody** (Metoda → Otestovat, i z průvodce; běží dál, i když přepneš jinam):
+  náhodná zamíchání se složí krok po kroku podle dílků hotových po krocích. Krok se řeší
+  podle nastavení ze Sestavit:
   tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když
   případ vyřeší – i s natočením horní, případně i spodní vrstvy před a po a s pomocným
   algoritmem jako oprava parity M2 U2 M2), „jen sada“ (případ bez algoritmu se počítá
@@ -74,7 +83,7 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   Roux, ZZ – spočtené stejným simulátorem, `src/sim/references.js`) nebo jiná simulace,
   vpravo tvoje; tabulka s tahy, časem a kroky a kroky obou metod vedle sebe. Měření
   v Node: `node bench/method.mjs [zamíchání] [s na krok] [filtr] [json]`.
-  **Učebnice metody** (průvodce nebo simulátor → „Učebnice“): celá metoda v jednom HTML
+  **Učebnice metody** (Metoda nebo průvodce → „Učebnice“): celá metoda v jednom HTML
   souboru – úvod a držení, kroky s obrázkem dílků a nastavením ze simulátoru, výsledek
   simulace, všechny algoritmy sad s obrázkem případu, tvými časy a políčkem „umím“.
   Jde vytisknout do PDF a obsahuje data metody, takže ji aplikace umí znovu importovat

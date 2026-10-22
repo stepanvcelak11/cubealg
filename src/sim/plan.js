@@ -102,6 +102,17 @@ export function rotationBetween(a, b) {
 }
 const LABEL = COLORS;
 
+/**
+ * Kolik různých míst volnost kroku nabízí (z držení metody): nové dílky kroku
+ * (ty, které nebyly hotové dřív) přesunuté do každé povolené orientace.
+ */
+export function placesCount(frame, before, parts, cfg = {}) {
+  const f = validFrame(frame) ? frame : DEFAULT_FRAME;
+  const fresh = Object.fromEntries(Object.entries(parts).filter(([n, st]) => before[n] !== st));
+  if (!Object.keys(fresh).length) return 1;
+  return new Set(freeFrames(f, cfg.free ?? 'fixed', cfg).map((g) => Object.keys(remap(fresh, f, g)).sort().join())).size;
+}
+
 /** Přejmenuje dílky z orientace `from` do orientace `to` (stejné místo vůči držení). */
 function remap(parts, from, to) {
   const a = frameMap(from), b = frameMap(to);
@@ -148,7 +159,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   const add = (f) => { if (!index.has(fid(f))) { index.set(fid(f), frames.length); frames.push(f); } return index.get(fid(f)); };
   let reach = [frame];
   const nextOf = []; // nextOf[i] = Map(id orientace → indexy orientací k vyzkoušení)
-  steps.forEach((x, i) => {
+  steps.forEach((x) => {
     const map = new Map();
     const after = new Map();
     for (const f of reach) {

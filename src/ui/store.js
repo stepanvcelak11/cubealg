@@ -306,13 +306,12 @@ export function importMethod(data) {
       ? { down: guide.frame.down, front: guide.frame.front } : undefined,
     steps: (guide.steps ?? []).map((st) => ({ ...st, id: newId('k'), oldId: st.id, set: st.set ? setMap.get(st.set) : undefined })),
   };
-  // nastavení simulátoru pod nová id kroků
-  if (data.simulator && typeof data.simulator === 'object') {
-    const steps = Object.fromEntries(guidesData[id].steps.filter((st) => data.simulator[st.oldId]).map((st) => [st.id, data.simulator[st.oldId]]));
-    const opts = storage.get('ergocube.sim.options') ?? {};
-    storage.set('ergocube.sim.options', { ...opts, steps: { ...(opts.steps ?? {}), [id]: steps } });
+  // nastavení kroků ze starších souborů (dřív zvlášť v simulátoru) patří ke krokům
+  for (const st of guidesData[id].steps) {
+    const old = data.simulator?.[st.oldId];
+    if (old && typeof old === 'object' && !st.sim) st.sim = old;
+    delete st.oldId;
   }
-  for (const st of guidesData[id].steps) delete st.oldId;
   storage.set('ergocube.algsets', setsData);
   storage.set('ergocube.algs', algsData);
   storage.set('ergocube.guides', guidesData);
