@@ -1034,6 +1034,37 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   await ctx.close();
 });
 
+test('sestavení metody: šablona separační metody, pravidla pro skupiny dílků a test čte kroky', async () => {
+  const { p, ctx, errors } = await open('timer');
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
+  await p.locator('.bld-tpl').selectOption('separation');
+  await p.waitForFunction(() => document.querySelectorAll('.bld-step').length === 10);
+  assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
+  // kříž: pravidlo „na 4 místa dole patří kterékoli hrany s bílou nebo žlutou nálepkou, tou dolů“
+  await p.locator('.bld-step-toggle').first().tap();
+  assert.match(await p.locator('.bld-step.open .rule-say').innerText(), /Na 4 místa \(hrany: 4 dole\) patří kterékoli hrany s bílou nebo žlutou nálepkou, tou nálepkou dolů/);
+  // úprava pravidla: jen bílé hrany → popis se změní, uloží se ke kroku
+  await p.locator('.bld-step.open .rule-row', { hasText: 's barvou' }).locator('.rule-chip', { hasText: 'žlutá' }).tap();
+  assert.match(await p.locator('.bld-step.open .rule-say').innerText(), /hrany s bílou nálepkou/);
+  const rules = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('ergocube.guides')); return Object.values(g).at(-1).steps[0].rules; });
+  assert.deepEqual(rules[0].colors, ['D']);
+  // přidání pravidla z předvolby a smazání
+  await p.locator('.bld-step.open .bld-rule-add').selectOption('sep-edges-u');
+  assert.equal(await p.locator('.bld-step.open .rule-card').count(), 2);
+  await p.locator('.bld-step.open .rule-card').nth(1).locator('.rule-head .icon-btn').tap();
+  assert.equal(await p.locator('.bld-step.open .rule-card').count(), 1);
+  // nesmysl hlásí: víc míst než dílků
+  await p.locator('.bld-step.open .rule-chip', { hasText: 'Nahoře' }).first().tap();
+  assert.match(await p.locator('.bld-step.open .rule-say.bad').innerText(), /Míst \(8\) je víc než dílků ve skupině \(4\)/);
+  // test metody vidí všech 10 kroků i s pravidly
+  await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
+  assert.equal(await p.locator('.sim-step').count(), 10);
+  assert.match(await p.locator('.sim-step').nth(5).innerText(), /OLL[\s\S]*2× pravidlo/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
 test('trenažér: hromadně kopírovat a přesouvat mezi sadami, kopírovat text, smazat', async () => {
   const { p, ctx, errors } = await open('trainer');
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);

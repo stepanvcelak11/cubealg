@@ -51,5 +51,5 @@ test('sjednocení pravidel: stejná skupina = víc míst, stabilní klíč, popi
   assert.equal(m['#classes'].length, 1);
   assert.equal(m['#classes'][0].places.length, 2);
   assert.equal(constraintsKey(mergeConstraints(a, b)), constraintsKey(mergeConstraints(a, b)));
-  assert.match(describeRule(preset('cross-any'), frameMap(DEFAULT_FRAME)), /obsadí kterékoli hrany s barvou (bílá nebo žlutá|žlutá nebo bílá)/);
+  assert.match(describeRule(preset('cross-any'), frameMap(DEFAULT_FRAME)), /patří kterékoli hrany s bílou nebo žlutou nálepkou, tou nálepkou dolů/);
 });

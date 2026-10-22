@@ -100,7 +100,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   // nastavení kroků patří ke krokům metody (Sestavit), test je jen čte
   const config = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig(method, st)]));
   const setAlgs = (id) => algs.list().filter((a) => a.set === id);
-  const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) })).filter((x) => Object.keys(x.parts).length);
+  const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) })).filter((x) => Object.keys(x.parts).length || x.st.rules?.length);
 
   const body = el('div', { className: 'sim-body' });
   host.append(body);
@@ -145,7 +145,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       const at = planSteps.findIndex((x) => x.st.id === st.id);
       const places = at >= 0 ? plan?.choices?.[at] ?? 1 : 1;
       const info = cfg.on === false ? 'v testu spojený s dalším krokem' : [
-        describeParts(parts),
+        [Object.keys(parts).length ? describeParts(parts) : null, st.rules?.length ? `${st.rules.length}× pravidlo` : null].filter(Boolean).join(' + '),
         cfg.free && cfg.free !== 'fixed' ? `${FREEDOM[cfg.free]?.label.replace(/ \(.*\)|…/g, '').toLowerCase()} (${places} míst)` : 'přesně tady',
         n && cfg.mode !== 'search' ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání',
         cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,

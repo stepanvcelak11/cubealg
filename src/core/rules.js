@@ -133,15 +133,18 @@ const PLACE_WORD = { D: 'dole', U: 'nahoře' };
 /** Popis míst slovy podle vrstev („4 hrany dole“, „roh dole vpředu vpravo“). */
 export function describePlaces(places, type) {
   const n = places.length;
-  const word = type === 'edge' ? (n === 1 ? 'hrana' : n < 5 ? 'hrany' : 'hran') : (n === 1 ? 'roh' : n < 5 ? 'rohy' : 'rohů');
   if (n === 1) {
+    const word = type === 'edge' ? 'hrany' : 'rohu';
     const dir = { F: 'vpředu', B: 'vzadu', R: 'vpravo', L: 'vlevo', U: 'nahoře', D: 'dole' };
-    return `${word} ${[...places[0]].map((f) => dir[f]).join(' ')}`;
+    return `${word} ${[...places[0]].map((f) => dir[f]).join(' ')}`; // „na místo rohu dole vpředu vpravo“
   }
   const D = places.filter((p) => p.includes('D')).length, U = places.filter((p) => p.includes('U')).length, E = n - D - U;
   const parts = [D && `${D} ${PLACE_WORD.D}`, E && `${E} uprostřed`, U && `${U} ${PLACE_WORD.U}`].filter(Boolean);
-  return `${n} ${word} (${parts.join(', ')})`;
+  return `${n} ${n < 5 ? 'místa' : 'míst'} (${type === 'edge' ? 'hrany' : 'rohy'}: ${parts.join(', ')})`;
 }
+
+const COLOR_GEN = { U: 'bílé', D: 'žluté', F: 'zelené', B: 'modré', R: 'červené', L: 'oranžové' };
+const ORDER = ['D', 'U', 'F', 'B', 'R', 'L'];
 
 /**
  * Pravidlo slovy (barvy podle orientace metody).
@@ -149,17 +152,23 @@ export function describePlaces(places, type) {
  * @param {Record<string,string>} map stěna pohledu → stěna kostky (barva středu)
  */
 export function describeRule(rule, map) {
-  const names = (cs) => cs.map((c) => COLOR_NAME[map[c]]).join(' nebo ');
-  const instr = (cs) => cs.map((c) => COLOR_INSTR[map[c]]).join(' nebo ');
-  const kind = rule.type === 'edge' ? 'hrany' : 'rohy';
-  const group = `${kind}${rule.colors?.length ? ` s barvou ${names(rule.colors)}` : ''}${rule.without?.length ? ` bez ${names(rule.without)}` : ''}`;
-  const where = describePlaces(rule.places ?? [], rule.type);
+  const sorted = (cs) => [...cs].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+  const list = (cs, table) => sorted(cs).map((c) => table[map[c]]).join(' nebo ');
+  const n = (rule.places ?? []).length;
+  const edge = rule.type === 'edge';
+  const one = edge ? 'hrana' : 'roh', many = edge ? 'hrany' : 'rohy';
+  const colors = rule.colors ?? [];
+  const oriColors = rule.oriColors?.length ? rule.oriColors : colors;
+  const withWord = (t) => (/^[žšsz]/.test(t) ? `se ${t}` : `s ${t}`);
+  const what = `${colors.length ? ` ${withWord(list(colors, COLOR_INSTR))} nálepkou` : ''}${rule.without?.length ? ` bez ${list(rule.without, COLOR_GEN)}` : ''}`;
+  const sameColors = sorted(oriColors).join() === sorted(colors).join();
   const ori = rule.ori === 'color'
-    ? `, ${instr(rule.oriColors?.length ? rule.oriColors : rule.colors ?? [])} nálepkou ${(rule.oriFaces ?? []).map((f) => SIDE[f]).join(' nebo ')}`
-    : rule.ori === 'solved' ? ', správně natočené' : ', natočené jakkoli';
-  return rule.mode === 'within'
-    ? `Všechny ${group} jsou na místech: ${where}${ori}.`
-    : `Místa ${where} obsadí kterékoli ${group}${ori}.`;
+    ? `, ${sameColors && colors.length ? 'tou' : `${list(oriColors, COLOR_INSTR)}`} nálepkou ${sorted(rule.oriFaces ?? []).map((f) => SIDE[f]).join(' nebo ')}`
+    : rule.ori === 'solved' ? ', správně natočen' + (n === 1 && rule.mode !== 'within' ? (edge ? 'á' : 'ý') : 'é') : '';
+  const where = describePlaces(rule.places ?? [], rule.type);
+  if (rule.mode === 'within') return `Všechny ${many}${what} musí být na místech: ${where}${ori}.`;
+  if (n === 1) return `Na místo ${where} patří kter${edge ? 'ákoli' : 'ýkoli'} ${one}${what}${ori}.`;
+  return `Na ${where} patří kterékoli ${many}${what}${ori}.`;
 }
 
 /** Místa v pohledu metody podle vrstev (pro výběr v editoru). */

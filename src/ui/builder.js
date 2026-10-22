@@ -15,6 +15,9 @@ import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount } from '../sim/plan
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
+import { ruleEditor, newRule } from './ruleeditor.js';
+import { RULE_PRESETS } from '../core/rules.js';
+import { TEMPLATES, templateGuide } from '../sim/templates.js';
 
 const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
 // volnost v řeči kroku: co přesně znamená pro dílky kroku
@@ -91,11 +94,14 @@ export function renderBuilder() {
     const cfg = stepConfig(method, st);
     const set = st.set ? algSets.list(method).find((x) => x.id === st.set) : null;
     const nSet = set ? algs.inSet(set.id).length : 0;
-    const places = placesCount(frame, before, parts, cfg);
+    const rules = st.rules ?? [];
+    const places = placesCount(frame, before, parts, cfg, rules);
     const patch = (p, again = true) => { setStepConfig(method, st, p); if (again) redraw(); else save(); };
     const isOpen = open.has(st.id);
     const summary = [
-      Object.keys(parts).length ? `hotovo: ${describeParts(parts)}` : 'dílky zatím nevybrané',
+      Object.keys(parts).length || rules.length
+        ? [Object.keys(parts).length ? `hotovo: ${describeParts(parts)}` : null, rules.length ? `${rules.length} ${rules.length === 1 ? 'pravidlo' : rules.length < 5 ? 'pravidla' : 'pravidel'} pro skupiny` : null].filter(Boolean).join(' + ')
+        : 'dílky zatím nevybrané',
       cfg.free && cfg.free !== 'fixed' ? `${FREE_TEXT[cfg.free]?.[0].toLowerCase()} (${plural(places, 'místo', 'místa', 'míst')})` : 'přesně tady',
       set ? `sada ${set.name} (${nSet})` : 'bez sady',
     ].join(' · ');
@@ -129,7 +135,7 @@ export function renderBuilder() {
         box.onchange = () => patch({ [key]: Object.keys(COLORS).filter((x) => (x === f ? box.checked : (cfg[key] ?? []).includes(x))) });
         return el('label', { className: 'sim-color', title: cname }, box, el('i', { style: `--c: var(--c-${f})` }), el('span', { textContent: cname }));
       }));
-    const placesNote = !Object.keys(parts).length ? 'Nejdřív vyber dílky (bod 2).'
+    const placesNote = !Object.keys(parts).length && !rules.length ? 'Nejdřív vyber dílky nebo pravidlo (bod 2).'
       : places > 1 ? `Krok je hotový na kterémkoli z možných míst (${places}). Test u každého zamíchání vybere to nejvýhodnější a další kroky pokračují odtamtud.`
         : free === 'fixed' ? 'Krok je hotový jen tehdy, když jsou hotové přesně vybrané dílky.' : 'Tyhle dílky jsou ve všech povolených polohách na stejném místě – volnost tu nic nemění.';
 
@@ -178,7 +184,24 @@ export function renderBuilder() {
     return el('section', { className: 'bld-card bld-step open' }, head,
       q('1', 'Název a popis'), title, text,
       q('2', 'Co je po kroku hotové?', 'Klepni na dílky, nebo vyber předvolbu. Bledé jsou hotové z dřívějších kroků.'),
+      el('b', { className: 'bld-sub', textContent: 'a) Konkrétní dílky' }),
       partsEditor(st, before, frame, redraw),
+      el('b', { className: 'bld-sub', textContent: 'b) Kterékoli dílky ze skupiny' }),
+      el('p', { className: 'hint bld-sub-hint', textContent: 'Když nezáleží na tom, který dílek to je – např. kříž z kterýchkoli bílých a žlutých hran, do slotu kterýkoli bílý/žlutý roh, natočení horní a spodní vrstvy, separace barev.' }),
+      ...rules.map((r, j) => ruleEditor(r, frame, j + 1, redraw, () => { rules.splice(j, 1); st.rules = rules.length ? rules : undefined; redraw(); })),
+      (() => {
+        const add = el('select', { className: 'small-select bld-rule-add', ariaLabel: `Přidat pravidlo – krok ${k}` },
+          el('option', { value: '', textContent: '+ Přidat pravidlo pro skupinu dílků…' }),
+          el('option', { value: 'new', textContent: 'Vlastní pravidlo (nastavím sám)' }),
+          el('optgroup', { label: 'Předvolby' }, ...RULE_PRESETS.map((p) => el('option', { value: p.id, textContent: p.label }))));
+        add.onchange = () => {
+          if (!add.value) return;
+          const preset = RULE_PRESETS.find((p) => p.id === add.value);
+          st.rules = [...rules, preset ? structuredClone(preset.rule) : newRule()];
+          redraw();
+        };
+        return add;
+      })(),
       q('3', 'Musí to být přesně tady?', 'Např. pár: „Přesně tady“ = jen ten jeden pár, „Na kterémkoli boku“ = kterýkoli ze 4 párů.'),
       freeList,
       free === 'colors' ? el('div', { className: 'sim-colors-box' },
@@ -217,7 +240,25 @@ export function renderBuilder() {
       el('ol', {},
         el('li', { textContent: 'Nahoře nastav, jak kostku držíš.' }),
         el('li', { textContent: 'Přidej kroky v pořadí, jak je skládáš. U každého odpověz na otázky 1–4.' }),
-        el('li', { textContent: 'Přepni na „Otestovat“ – test složí náhodná zamíchání podle tvých kroků.' }))),
+        el('li', { textContent: 'Přepni na „Otestovat“ – test složí náhodná zamíchání podle tvých kroků.' })),
+      (() => {
+        const tpl = el('select', { className: 'small-select bld-tpl', ariaLabel: 'Nová metoda ze šablony' },
+          el('option', { value: '', textContent: 'Nebo začni ze šablony (vytvoří novou metodu)…' }),
+          ...TEMPLATES.map((t) => el('option', { value: t.id, textContent: `${t.name} – ${t.steps.length} kroků` })));
+        tpl.onchange = () => {
+          const t = TEMPLATES.find((x) => x.id === tpl.value);
+          if (!t) return;
+          const taken = new Set(methods.list().map((m) => m.name));
+          let name = t.name;
+          for (let n = 2; taken.has(name); n++) name = `${t.name} (${n})`;
+          const id = methods.add(name);
+          guides.set(id, templateGuide(t, DEFAULT_FRAME, guides.newStep));
+          methods.setActive(id);
+          open.clear();
+          renderBuilder();
+        };
+        return tpl;
+      })()),
     base,
     el('h3', { className: 'bld-h', textContent: `Kroky (${guide.steps.length})` }),
     guide.steps.length ? null : el('p', { className: 'hint', textContent: 'Zatím žádný krok. Přidej první – třeba „Kříž“ nebo „Levý blok“ z předvoleb.' }),
