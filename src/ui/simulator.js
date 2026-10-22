@@ -1,65 +1,79 @@
 // Simulátor metody (okno z průvodce metodou): náhodná zamíchání se složí krok po
-// kroku podle kroků metody (dílky hotové po kroku, viz parts.js). Krok řeší algoritmus
-// z tvé sady kroku, když nějaký pasuje, jinak hledání stejné jako v Labu. Výsledek:
-// průměrné tahy a náročnost celé metody i kroků, co nejvíc zdržuje, jak dobře pokrývá
-// tvoje sada případy, ukázkové složení a porovnání s dřívějšími simulacemi metod.
+// kroku podle kroků metody (dílky hotové po kroku, viz parts.js). U každého kroku
+// si nastavíš, jak se řeší: tahy, tvoje sada (i s natočením vrstev a pomocným
+// algoritmem jako oprava parity), nebo hledání, podle čeho vybírat, čas rozpoznání.
+// Kroky jde vypnout (složí se s dalším), metodu zkusit barevně neutrální.
+//
+// Zamíchání skládá víc workerů souběžně (sim/sim-worker.js). Běh může jet i přes noc:
+// průběžně se ukládá, po zavření jde navázat a výsledky se doplňují. Stejné semínko
+// = stejná zamíchání, takže změny nastavení i metody jde férově porovnat.
 
 import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algs } from './store.js';
-import { stepParts, partsBefore, describeParts, mergeParts, frameMap, validFrame, DEFAULT_FRAME } from './parts.js';
-import { SearchClient } from '../search/client.js';
-import { simulate, summarize, pickFromSet } from '../sim/simulate.js';
-import { holdOf, holdFromFaces } from '../core/hold.js';
-import { MOVESET_PRESETS } from '../core/moveset.js';
-import { solved, toFacelets } from '../core/cube.js';
+import { describeParts, stepParts } from './parts.js';
+import { buildPlan, stepDefaults, STEP_MOVES, MOVE_BASES, ADJUST, NEUTRAL } from '../sim/plan.js';
+import { summarize, seededRandom } from '../sim/simulate.js';
+import { practiceState } from '../timer/practice.js';
+import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
-import { getPuzzle } from '../puzzles/index.js';
-import { scoreFor } from '../ergonomics/puzzles.js';
-import { buildTriggers } from '../ergonomics/triggers.js';
-import { styleMetrics, rankResults } from '../ergonomics/style.js';
+import { VIEWS } from '../ergonomics/style.js';
+import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
+import { toast } from './share.js';
+import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
 
 const OPTS = 'ergocube.sim.options';
 const HISTORY = 'ergocube.sim.history';
-const HISTORY_MAX = 30;
-const CENTERS = { U: 'solved', D: 'solved', F: 'solved', B: 'solved', R: 'solved', L: 'solved' };
-// sady tahů kroku: předvolby Labu + pár typických pro metody
-const MOVES = {
-  ...Object.fromEntries(Object.entries(MOVESET_PRESETS).map(([id, p]) => [id, { label: p.label, bases: p.bases }])),
-  facesM: { label: 'Vnější + M', bases: ['R', 'L', 'U', 'D', 'F', 'B', 'M'] },
-  RrUM: { label: '<R, r, U, M>', bases: ['R', 'r', 'U', 'M'] },
+const RUN = 'ergocube.sim.run';
+const HISTORY_MAX = 40;
+const KEEP_DISPLAY = 60; // u kolika zamíchání si pamatovat zápis (ukázky)
+const HOUR = 3600 * 1000;
+const LENGTHS = {
+  c10: { label: '10 zamíchání', count: 10 },
+  c25: { label: '25 zamíchání', count: 25 },
+  c50: { label: '50 zamíchání', count: 50 },
+  c100: { label: '100 zamíchání', count: 100 },
+  c250: { label: '250 zamíchání', count: 250 },
+  h1: { label: '1 hodinu', hours: 1 },
+  h3: { label: '3 hodiny', hours: 3 },
+  h8: { label: '8 hodin (přes noc)', hours: 8 },
+  inf: { label: 'Dokud nezastavím', hours: Infinity },
 };
-const COUNTS = [5, 10, 25, 50, 100];
-const P = getPuzzle('333');
+const MODES = { auto: 'Moje sada, jinak hledání', set: 'Jen moje sada', search: 'Jen hledání' };
 const invertMove = (m) => (m.endsWith("'") ? m.slice(0, -1) : m.endsWith('2') ? m : `${m}'`);
-const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN; };
 const fmt = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d).replace('.', ',') : '–');
+const pct = (x) => `${Math.round(x * 100)} %`;
+const fmtTime = (ms) => {
+  const t = Math.round(ms / 1000);
+  if (t < 60) return `${t} s`;
+  if (t < 3600) return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  return `${Math.floor(t / 3600)} h ${String(Math.floor((t % 3600) / 60)).padStart(2, '0')} min`;
+};
+const when = (at) => new Date(at).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+const hash = (text) => {
+  let h1 = 2166136261, h2 = 5381;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = (Math.imul(h2, 33) + c) | 0; }
+  return `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
+};
+// workery skládají různá zamíchání souběžně; jedno jádro zůstane pro aplikaci
+const workerCount = () => Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1));
 
-/** Kroky metody, které jde simulovat (mají vybrané dílky), s cílem po kroku. */
-function plan(guide) {
-  const out = [];
-  let done = {};
-  guide.steps.forEach((st, i) => {
-    const parts = stepParts(st);
-    if (!Object.keys(parts).length) return;
-    done = mergeParts(partsBefore(guide.steps, st.id), parts);
-    out.push({ st, index: i, parts, goal: { ...done, ...CENTERS } });
-  });
-  return out;
+/** Zamíchání (WCA zápis) ke stavu – pro ukázky. */
+function scrambleOf(start) {
+  try { return (twoPhase(toFacelets(Uint8Array.from(start)), { timeLimit: 800 }) ?? '').split(' ').filter(Boolean).reverse().map(invertMove).join(' '); } catch { return ''; }
 }
 
 /**
  * @param {{ergo: object, lambda: number}} lab hodnocení z Labu (Tahy a váhy)
+ * @param {{onEdit?: () => void}} [opts] onEdit = upravit dílky kroků v průvodci
  */
-export function openSimulator(lab) {
+export function openSimulator(lab, { onEdit } = {}) {
   const method = methods.active();
   const guide = guides.get(method);
-  const steps = plan(guide);
   const saved = storage.get(OPTS) ?? {};
-  const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
-  const map = frameMap(frame);
-  const hold = holdOf(holdFromFaces(map.U, map.F));
-  const config = { ...lab.ergo, triggers: buildTriggers() };
+  const config = structuredClone(saved.steps?.[method] ?? {});
+  const setAlgs = (id) => algs.list().filter((a) => a.set === id);
+  const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) })).filter((x) => Object.keys(x.parts).length);
 
   const close = Object.assign(el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít' }), { innerHTML: icon('close', { size: 20 }) });
   const body = el('div', { className: 'sim-body' });
@@ -67,201 +81,454 @@ export function openSimulator(lab) {
     el('div', { className: 'sim-head' }, el('div', {}, el('small', { className: 'hint', textContent: 'Simulátor metody' }), el('h2', { textContent: methods.get(method).name })), close),
     body);
   document.body.append(dlg);
-  const client = new SearchClient();
   let running = false;
+  let pool = [];
+  let awake = null;
+  let stopResolve = () => {};
+  const title = titleProgress();
+  const stopAll = () => { for (const w of pool) w.terminate(); pool = []; };
   close.onclick = () => dlg.close();
-  dlg.addEventListener('close', () => { running = false; client.cancel(); dlg.remove(); });
+  dlg.addEventListener('close', () => { running = false; stopAll(); stopResolve(); awake?.release(); title.reset(); dlg.remove(); });
+  const editBtn = (text, cls) => (onEdit ? Object.assign(el('button', { type: 'button', className: cls, textContent: text }), { onclick: () => { dlg.close(); onEdit(); } }) : null);
 
-  if (!steps.length) {
+  if (!stepsWithParts.length) {
     body.append(el('div', { className: 'guide-empty' },
       el('p', { textContent: 'Simulátor potřebuje kroky metody s vybranými dílky.' }),
-      el('p', { className: 'hint', textContent: 'V průvodci metodou klepni na „Upravit“ a u každého kroku vyber, které dílky jsou po něm hotové (předvolby jako kříž, F2L, bloky…).' })));
+      el('p', { className: 'hint', textContent: 'V průvodci metodou klepni na „Upravit“ a u každého kroku vyber, které dílky jsou po něm hotové (předvolby jako kříž, F2L, bloky…).' }),
+      editBtn('Upravit kroky', 'primary')));
     dlg.showModal();
     return dlg;
   }
 
-  // nastavení kroků: sada tahů a jestli použít algoritmy ze sady kroku
-  const stepOpts = saved.steps?.[method] ?? {};
-  const rows = steps.map((s, k) => {
-    const prev = stepOpts[s.st.id] ?? {};
-    const moves = el('select', { className: 'small-select', ariaLabel: `Tahy pro krok ${s.index + 1}` },
-      ...Object.entries(MOVES).map(([id, m]) => el('option', { value: id, textContent: m.label })));
-    moves.value = prev.moves && MOVES[prev.moves] ? prev.moves : 'faces';
-    const setAlgs = s.st.set ? algs.list().filter((a) => a.set === s.st.set) : [];
-    const useSet = Object.assign(el('input', { type: 'checkbox', disabled: !setAlgs.length }), { checked: setAlgs.length > 0 && prev.useSet !== false });
-    const row = el('div', { className: 'sim-step' },
-      el('div', { className: 'sim-step-head' }, el('span', { className: 'guide-n', textContent: String(s.index + 1) }),
-        el('div', { className: 'sim-step-title' }, el('b', { textContent: s.st.title || `Krok ${s.index + 1}` }), el('small', { textContent: describeParts(s.parts) }))),
-      el('div', { className: 'sim-step-opts' }, moves,
-        setAlgs.length
-          ? el('label', { className: 'check-row', title: 'Případy, které vyřeší algoritmus ze sady kroku, se řeší jím (jako při skutečném složení)' }, useSet, `Moje algoritmy (${setAlgs.length})`)
-          : el('small', { className: 'hint', title: 'Sadu kroku vybereš v průvodci (Upravit)', textContent: 'bez sady – řeší hledání' })));
-    return { ...s, k, moves, useSet, setAlgs, row };
-  });
+  // --- nastavení kroků ------------------------------------------------------------------------
+  const cfgOf = (st) => {
+    const hasSet = st.set ? setAlgs(st.set).length > 0 : false;
+    config[st.id] = { ...stepDefaults(hasSet), ...(config[st.id] ?? {}) };
+    if (!hasSet) config[st.id].mode = 'search';
+    return config[st.id];
+  };
+  const select = (opts, value, label, onChange) => {
+    const s = el('select', { className: 'small-select', ariaLabel: label },
+      ...Object.entries(opts).map(([id, t]) => el('option', { value: id, textContent: typeof t === 'string' ? t : t.label })));
+    s.value = value;
+    s.onchange = () => onChange(s.value);
+    return s;
+  };
+  const num = (value, label, min, max, step, onChange) => {
+    const i = el('input', { type: 'number', min: String(min), max: String(max), step: String(step), value: String(value), ariaLabel: label });
+    i.onchange = () => onChange(Math.max(min, Math.min(max, Number(i.value) || min)));
+    return i;
+  };
+  const field = (label, control, hint) => el('label', { className: 'field', title: hint ?? '' }, label, control);
+  const openSteps = new Set();
 
-  const count = el('select', { ariaLabel: 'Počet zamíchání' }, ...COUNTS.map((n) => el('option', { value: String(n), textContent: `${n} zamíchání` })));
-  count.value = String(COUNTS.includes(saved.count) ? saved.count : 10);
-  const time = el('input', { type: 'number', min: '1', max: '120', value: String(saved.time ?? 3), ariaLabel: 'Čas hledání na krok (s)' });
+  const stepList = el('div', { className: 'sim-steps' });
+  function renderSteps() {
+    stepList.replaceChildren(...stepsWithParts.map(({ st, i, parts }) => {
+      const cfg = cfgOf(st);
+      const n = st.set ? setAlgs(st.set).length : 0;
+      const k = i + 1;
+      const on = Object.assign(el('input', { type: 'checkbox', ariaLabel: `Krok ${k} zvlášť` }), { checked: cfg.on !== false });
+      on.onchange = () => { cfg.on = on.checked; changed(); renderSteps(); };
+      if (cfg.on === false) {
+        return el('div', { className: 'sim-step off' },
+          el('div', { className: 'sim-step-head' }, el('span', { className: 'guide-n', textContent: String(k) }),
+            el('div', { className: 'sim-step-title' }, el('b', { textContent: st.title || `Krok ${k}` }), el('small', { textContent: 'složí se najednou s dalším krokem' })),
+            el('label', { className: 'sim-switch', title: 'Vypnutý krok se složí s dalším – zkus, jestli by se vyplatilo kroky spojit' }, on, el('span', { textContent: 'zvlášť' }))));
+      }
+      const moves = select({ ...STEP_MOVES, custom: { label: 'Vlastní výběr…' } }, cfg.moves, `Tahy – krok ${k}`, (v) => {
+        cfg.moves = v;
+        if (v === 'custom' && !cfg.custom?.length) cfg.custom = [...STEP_MOVES.faces.bases];
+        changed(); renderSteps();
+      });
+      const chips = cfg.moves === 'custom' ? el('div', { className: 'sim-chips', role: 'group', ariaLabel: `Vlastní tahy – krok ${k}` }, ...MOVE_BASES.map((b) => {
+        const box = Object.assign(el('input', { type: 'checkbox' }), { checked: (cfg.custom ?? []).includes(b) });
+        box.onchange = () => { cfg.custom = MOVE_BASES.filter((x) => (x === b ? box.checked : (cfg.custom ?? []).includes(x))); changed(); };
+        return el('label', {}, box, b);
+      })) : null;
+      const mode = select(n ? MODES : { search: MODES.search }, cfg.mode, `Řešení – krok ${k}`, (v) => { cfg.mode = v; changed(); renderSteps(); });
+      const view = select(Object.fromEntries(Object.entries(VIEWS).map(([id, v]) => [id, `${v.icon} ${v.label}`])), cfg.view, `Vybírat podle – krok ${k}`, (v) => { cfg.view = v; changed(); renderSteps(); });
+      const adjust = select(ADJUST, cfg.adjust, `Natočení vrstev – krok ${k}`, (v) => { cfg.adjust = v; changed(); });
+      const helpers = el('input', { value: cfg.helpers ?? '', placeholder: 'např. M2 U2 M2', spellcheck: false, ariaLabel: `Pomocné algoritmy – krok ${k}` });
+      helpers.onchange = () => { cfg.helpers = helpers.value; changed(); };
+      const usesSet = n > 0 && cfg.mode !== 'search';
+      const summary = [cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,
+        usesSet ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání', VIEWS[cfg.view]?.label.toLowerCase(), `${fmt(cfg.time, 1)} s`].join(' · ');
+      const details = el('details', { className: 'sim-step-more', open: openSteps.has(st.id) },
+        el('summary', { textContent: summary }),
+        el('div', { className: 'grid-fields' },
+          field('Tahy', moves, 'Tahy, kterými krok skládáš (pro hledání i hodnocení)'),
+          field('Řešení', mode, n ? 'Moje sada: případ, který vyřeší algoritmus ze sady kroku, se řeší jím (jako při skutečném složení). Jen sada: případ bez algoritmu se počítá jako chybějící.' : 'Krok nemá v průvodci sadu algoritmů – řeší ho hledání'),
+          field('Vybírat podle', view, 'Které z nalezených řešení se použije'),
+          field('Hledání (s)', num(cfg.time, `Čas hledání – krok ${k}`, 0.5, 120, 0.5, (v) => { cfg.time = v; changed(); renderSteps(); }), 'Jak dlouho hledat řešení kroku (delší = blíž nejlepšímu možnému)'),
+          usesSet ? field('Natočení vrstev', adjust, 'Natočení horní (a spodní) vrstvy před algoritmem ze sady a po něm – počítá se do tahů') : null,
+          usesSet ? field('Pomocné algoritmy', helpers, 'Smíš je udělat před algoritmem ze sady (např. oprava parity M2 U2 M2); víc oddělených čárkou') : null,
+          field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => { cfg.recog = v; changed(); }), 'Kolik ti trvá krok rozpoznat (do odhadu času)')),
+        chips);
+      details.addEventListener('toggle', () => { if (details.open) openSteps.add(st.id); else openSteps.delete(st.id); });
+      return el('div', { className: 'sim-step' },
+        el('div', { className: 'sim-step-head' },
+          el('span', { className: 'guide-n', textContent: String(k) }),
+          el('div', { className: 'sim-step-title' }, el('b', { textContent: st.title || `Krok ${k}` }), el('small', { textContent: describeParts(parts) })),
+          el('label', { className: 'sim-switch', title: 'Vypnutý krok se složí s dalším – zkus, jestli by se vyplatilo kroky spojit' }, on, el('span', { textContent: 'zvlášť' }))),
+        details);
+    }));
+  }
+
+  // --- nastavení simulace ---------------------------------------------------------------------
+  const neutral = select(NEUTRAL, NEUTRAL[saved.neutral] ? saved.neutral : 'fixed', 'Barevná neutralita', () => changed());
+  const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
+  const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
+  const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); });
   const go = el('button', { type: 'button', className: 'primary', textContent: 'Spustit simulaci' });
+  const more = el('button', { type: 'button', className: 'secondary', textContent: 'Přidat zamíchání', hidden: true, title: 'Pokračuje dalšími zamícháními (stejné semínko) a výsledky doplní' });
   const stop = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
-  const status = el('p', { className: 'status' });
+  const status = el('p', { className: 'status sim-status' });
   const bar = el('div', { className: 'gen-bar' });
   const track = el('div', { className: 'gen-track sim-track', hidden: true }, bar);
+  const banner = el('div', { className: 'gen-resume', hidden: true });
   const results = el('div', { className: 'sim-results' });
   const history = el('div', { className: 'sim-history' });
+  const compare = el('div', { className: 'sim-compare' });
 
   body.append(
-    el('p', { className: 'hint', textContent: 'Náhodná zamíchání se složí krok po kroku podle tvé metody. Krok vyřeší algoritmus z tvé sady, když na případ nějaký máš, jinak ho najde hledání (stejné jako v Labu, podle tvých vah ergonomie). Tahy se počítají včetně natočení vrstvy.' }),
-    el('div', { className: 'sim-steps' }, ...rows.map((r) => r.row)),
+    el('p', { className: 'hint', textContent: 'Náhodná zamíchání se složí krok po kroku podle tvé metody. Krok vyřeší algoritmus z tvé sady, když na případ nějaký máš, jinak ho najde hledání (podle tvých vah ergonomie). U každého kroku si nastavíš, jak ho řešíš. Tahy se počítají včetně natočení vrstev.' }),
+    banner,
+    el('div', { className: 'sim-section-head' }, el('h3', { textContent: 'Kroky' }), editBtn('Upravit dílky kroků', 'secondary small')),
+    stepList,
+    el('h3', { textContent: 'Simulace' }),
     el('div', { className: 'grid-fields' },
-      el('label', { className: 'field' }, 'Zamíchání', count),
-      el('label', { className: 'field', title: 'Jak dlouho hledat řešení kroku, který nevyřeší tvoje sada. Delší = blíž nejlepšímu možnému.' }, 'Hledání na krok (s)', time)),
-    el('div', { className: 'row-btns' }, go, stop), track, status, results, history);
-  renderHistory();
+      field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
+      field('Orientace', neutral, 'Barevná neutralita: první krok se zkusí v každé orientaci a použije se ta nejlepší'),
+      field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'),
+      field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)')),
+    el('div', { className: 'row-btns' }, go, more, stop), track, status, results, compare, history);
 
-  const remember = () => {
+  let sigNow = '';
+  let plan = null, planSteps = [];
+  let last = null; // { solves, meta, next }
+  function remember() {
     const all = storage.get(OPTS) ?? {};
-    all.count = Number(count.value);
-    all.time = Number(time.value);
-    all.steps = { ...(all.steps ?? {}), [method]: Object.fromEntries(rows.map((r) => [r.st.id, { moves: r.moves.value, useSet: r.useSet.checked }])) };
-    storage.set(OPTS, all);
-  };
-
-  /** Algoritmy sady kroku: zápis modelu, jak se dělají, náročnost a medián času z trenažéru. */
-  const candidatesOf = (r) => r.setAlgs.flatMap((a) => {
-    try {
-      const display = a.alg.replace(/[()]/g, ' ').trim().split(/\s+/).join(' ');
-      const model = holdOf(a.task?.hold ?? '').toModelString(display);
-      const recent = (a.times ?? []).slice(-5).map((x) => x.t);
-      return [{ model, display, name: a.name, score: scoreFor(P, display, config).total, time: recent.length >= 3 ? median(recent) : undefined }];
-    } catch { return []; }
-  });
-  const aufs = ['', 'U', "U'", 'U2'].map((d) => ({ display: d, model: d ? hold.toModelString(d) : '' }));
-
-  /** Hledání kroku (workery jako v Labu); nejlepší podle rychlosti. */
-  const searchStep = (r, state, limit, library) => new Promise((resolve) => {
-    const held = MOVES[r.moves.value].bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
-    const moves = held.map((m) => hold.toModel(P.moveToString(m))[0]);
-    const found = [];
-    stopSearch = () => resolve(null);
-    client.start({
-      puzzle: '333', start: state, target: solved(), constraints: r.goal, moves, held, auf: null, ergonomics: lab.ergo,
-      options: { lambda: lab.lambda, maxLength: 20, extraDepth: 1, maxResults: 500, timeLimit: limit, library },
-    }, {
-      onSolutions: (items) => found.push(...items),
-      onDone: () => {
-        if (!found.length) { resolve(null); return; }
-        const ranked = rankResults(found.map((it) => ({ it, m: styleMetrics(it.score, true) })), 'speed');
-        const best = ranked[0].it;
-        const model = [best.pre, best.alg, best.post].filter(Boolean).join(' ');
-        resolve({ model, display: hold.toHeldString(model), score: ranked[0].m.total, source: 'search' });
-      },
-      onError: () => resolve(null),
-    });
-  });
-  let stopSearch = () => {};
-
-  go.onclick = async () => {
+    storage.set(OPTS, { ...all, neutral: neutral.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), steps: { ...(all.steps ?? {}), [method]: config } });
+  }
+  function changed() {
     remember();
-    running = true;
-    go.hidden = true; stop.hidden = false; track.hidden = false;
-    for (const r of rows) { r.moves.disabled = true; r.useSet.disabled = true; }
-    results.replaceChildren();
-    const n = Number(count.value);
-    const limit = Math.max(1, Math.min(120, Number(time.value) || 3)) * 1000;
-    const cands = rows.map((r) => (r.useSet.checked ? candidatesOf(r) : []));
-    const t0 = performance.now();
-    const totalSteps = n * rows.length;
-    const { solves } = await simulate({
-      count: n,
-      goals: rows.map((r) => r.goal),
-      stopped: () => !running,
-      onProgress: ({ solve, step }) => {
-        const done = solve * rows.length + step;
-        bar.style.width = `${Math.min(100, (done / totalSteps) * 100)}%`;
-        const el2 = (performance.now() - t0) / 1000;
-        const eta = done ? (el2 / done) * (totalSteps - done) : NaN;
-        status.textContent = solve < n ? `Složení ${solve + 1} z ${n} · krok ${Math.min(step + 1, rows.length)} z ${rows.length} · ${Math.round(el2)} s${Number.isFinite(eta) ? ` · zbývá asi ${Math.round(eta)} s` : ''}` : 'Počítám souhrn…';
-      },
-      solveStep: async (i, state, test) => {
-        const fromSet = cands[i].length ? pickFromSet(state, test, cands[i], aufs) : null;
-        if (fromSet) return fromSet;
-        return searchStep(rows[i], state, limit, cands[i].map((c) => c.model));
-      },
-    });
-    running = false;
-    client.cancel();
-    go.hidden = false; stop.hidden = true; track.hidden = true;
-    for (const r of rows) { r.moves.disabled = false; r.useSet.disabled = !r.setAlgs.length; }
-    const sum = summarize(solves, rows.length);
-    status.textContent = sum.count ? `Hotovo: ${sum.count} složení${sum.failed ? ` (${sum.failed} se nepodařilo dořešit – zkus delší hledání nebo víc tahů)` : ''} · ${Math.round((performance.now() - t0) / 1000)} s` : 'Nic nedoběhlo';
-    if (!sum.count) return;
-    renderSummary(sum, solves);
-    addHistory(sum);
-    renderHistory();
-  };
-  stop.onclick = () => { running = false; client.cancel(); stopSearch(); };
+    ({ plan, steps: planSteps } = buildPlan({ guide, config, setAlgs, neutral: neutral.value, ergonomics: lab.ergo, lambda: lab.lambda }));
+    // na čem výsledky závisí (bez časů z trenažéru – ty mění jen odhad času)
+    sigNow = hash(JSON.stringify([method, Number(seed.value), plan.stepOpts.map(({ recog, ...o }) => o),
+      plan.variants.map((v) => ({ goals: v.goals, steps: v.steps.map((s) => ({ moves: s.moves, adjust: s.adjust, c: s.candidates.map((c) => c.model) })) })), lab.ergo]));
+    if (!running && last) {
+      const same = last.meta.sig === sigNow;
+      more.hidden = !same;
+      if (!same) status.textContent = 'Nastavení se změnilo – „Spustit simulaci“ začne znovu (výsledky níž jsou z minulého nastavení)';
+    }
+  }
 
-  function renderSummary(sum, solves) {
-    const maxMoves = Math.max(...sum.steps.map((s) => s.moves), 1);
-    const stepRows = rows.map((r, i) => {
-      const s = sum.steps[i];
-      const worst = i === sum.worst;
-      const cover = r.useSet.checked && r.setAlgs.length && s.needed
-        ? `${Math.round((s.fromSet / s.needed) * 100)} % případů tvou sadou${s.searched ? ` (${s.searched}× chyběl algoritmus)` : ''}` : null;
-      return el('div', { className: `sim-res-row${worst ? ' worst' : ''}` },
-        el('div', { className: 'sim-res-label' }, el('b', { textContent: r.st.title || `Krok ${r.index + 1}` }),
-          worst ? el('span', { className: 'sim-tag', textContent: 'nejvíc tahů' }) : null),
-        el('div', { className: 'sim-res-bar', role: 'img', ariaLabel: `${fmt(s.moves)} tahů v průměru` }, el('i', { style: `width: ${(s.moves / maxMoves) * 100}%` })),
-        el('div', { className: 'sim-res-nums' },
-          el('b', { textContent: `${fmt(s.moves)} tahů` }),
-          el('small', { textContent: [`náročnost ${fmt(s.score)}`, `${Math.round(s.share * 100)} % celku`, s.skipped ? `${Math.round(s.skipped * 100)} % přeskočeno` : null, cover].filter(Boolean).join(' · ') })));
+  // --- běh ------------------------------------------------------------------------------------
+  /** Nedokončená zamíchání (zastaveno, zavřeno) se příště složí znovu: platí souvislý začátek. */
+  function contiguous(solves) {
+    solves.sort((a, b) => a.k - b.k);
+    let upto = 0;
+    while (upto < solves.length && solves[upto].k === upto) upto++;
+    solves.length = upto;
+    return upto;
+  }
+  /** Zamíchání v pořadí podle semínka (generují se postupně). */
+  function scrambles(seedValue) {
+    const rand = seededRandom(seedValue);
+    const list = [];
+    return (k) => { while (list.length <= k) list.push(practiceState({}, rand)); return list[k]; };
+  }
+  const compact = (solve, k) => ({
+    k, ok: solve.ok, variant: solve.variant,
+    start: k < KEEP_DISPLAY ? solve.start : undefined,
+    steps: solve.steps.map((x) => ({
+      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined,
+      name: k < KEEP_DISPLAY ? x.name : undefined, missingSet: x.missingSet || undefined,
+      // zápis: u ukázek a u případů, na které sada neměla algoritmus (návrh do sady)
+      display: k < KEEP_DISPLAY || x.missingSet ? x.display : undefined,
+    })),
+  });
+
+  async function run(resume) {
+    changed();
+    const len = LENGTHS[length.value];
+    const meta = resume?.meta ?? {
+      sig: sigNow, method, seed: Number(seed.value), started: Date.now(),
+      stepTitles: planSteps.map((x) => x.st.title || `Krok ${x.index + 1}`), stepIds: planSteps.map((x) => x.st.id),
+      variants: plan.variants.map((v) => v.label), hasSet: plan.variants[0].steps.map((s) => s.candidates.length > 0),
+    };
+    const solves = resume?.solves ?? [];
+    let next = resume?.next ?? solves.length;
+    const target = len.count ? next + len.count : Infinity;
+    const deadline = len.hours ? Date.now() + len.hours * HOUR : Infinity;
+    const long = !!len.hours || len.count >= 100;
+    running = true;
+    go.hidden = true; more.hidden = true; stop.hidden = false; track.hidden = false; banner.hidden = true;
+    stepList.classList.add('locked');
+    if (long) { awake = keepAwake(); askNotify(); }
+    const scr = scrambles(meta.seed);
+    const t0 = performance.now();
+    const done0 = solves.length;
+    let lastRender = 0, lastSave = 0;
+    const save = (finished = false) => storage.set(RUN, { meta, solves, next: Math.min(next, solves.length), finished });
+    const progress = () => {
+      const n = solves.length - done0;
+      const elapsed = performance.now() - t0;
+      const per = n ? elapsed / n : NaN;
+      const left = Math.min(Number.isFinite(target) ? (target - solves.length) * per : Infinity, Number.isFinite(deadline) ? deadline - Date.now() : Infinity);
+      bar.style.width = Number.isFinite(target) ? `${Math.min(100, (n / (target - done0)) * 100)}%`
+        : Number.isFinite(deadline) ? `${Math.min(100, (elapsed / (len.hours * HOUR)) * 100)}%` : `${(elapsed / 600) % 100}%`;
+      status.textContent = `Složeno ${solves.length}${Number.isFinite(target) ? ` z ${target}` : ''} · ${fmtTime(elapsed)}`
+        + `${Number.isFinite(per) ? ` · ${fmt(per / 1000)} s na zamíchání` : ''}${Number.isFinite(left) && n ? ` · zbývá asi ${fmtTime(left)}` : ''} · ${pool.length} vlákna`;
+      if (long) title.set(`(${solves.length})`);
+    };
+    const statusTimer = setInterval(progress, 1000);
+    await new Promise((resolve) => {
+      let active = 0;
+      const finish = () => { if (!active) resolve(); };
+      stopResolve = () => { running = false; resolve(); };
+      const feed = (w) => {
+        if (!running || next >= target || Date.now() >= deadline) { finish(); return; }
+        const k = next++;
+        active++;
+        w.postMessage({ type: 'solve', id: k, start: Array.from(scr(k)) });
+      };
+      stopAll();
+      pool = Array.from({ length: workerCount() }, () => {
+        const w = new Worker(new URL('../sim/sim-worker.js', import.meta.url), { type: 'module' });
+        w.onmessage = ({ data }) => {
+          active--;
+          if (data.type === 'solved' && running) {
+            // případ, na který sada neměla algoritmus (řešilo ho hledání)
+            data.solve.steps.forEach((x, i) => { if (x.source === 'search' && meta.hasSet[i]) x.missingSet = true; });
+            solves.push(compact(data.solve, data.id));
+            if (performance.now() - lastRender > 1500) { lastRender = performance.now(); renderResults(solves, meta); }
+            if (long && performance.now() - lastSave > 15000) { lastSave = performance.now(); save(); }
+          } else if (data.type === 'error') toast(`Simulace: ${data.message}`);
+          feed(w);
+        };
+        w.onerror = (e) => { active--; toast(`Simulace: ${e.message || 'chyba ve workeru'}`); feed(w); };
+        w.postMessage({ type: 'plan', plan });
+        return w;
+      });
+      progress();
+      for (const w of pool) feed(w);
     });
-    // ukázka: složení nejblíž průměru
-    const totals = solves.filter((s) => s.ok).map((s) => ({ s, t: s.steps.reduce((a, x) => a + x.length, 0) }));
-    const example = totals.sort((a, b) => Math.abs(a.t - sum.moves) - Math.abs(b.t - sum.moves))[0]?.s;
-    let scramble = '';
-    try { scramble = (twoPhase(toFacelets(example.start), { timeLimit: 1000 }) ?? '').split(' ').filter(Boolean).reverse().map(invertMove).join(' '); } catch { /* bez zamíchání */ }
-    results.replaceChildren(
+    clearInterval(statusTimer);
+    const finished = running;
+    running = false;
+    stopAll();
+    stopResolve = () => {};
+    awake?.release(); awake = null;
+    title.reset();
+    next = contiguous(solves);
+    go.hidden = false; more.hidden = false; stop.hidden = true; track.hidden = true;
+    stepList.classList.remove('locked');
+    if (!dlg.open) return;
+    save(true);
+    last = { solves, meta, next };
+    const sum = renderResults(solves, meta);
+    status.textContent = `${finished ? 'Hotovo' : 'Zastaveno'}: ${solves.length} zamíchání${sum?.failed ? ` (${sum.failed} se nepodařilo složit – zkus delší hledání, víc tahů nebo „Moje sada, jinak hledání“)` : ''} · ${fmtTime(performance.now() - t0)}`;
+    if (sum?.count) { addHistory(sum, meta); renderHistory(); }
+    if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
+  }
+
+  go.onclick = () => { last = null; run(null); };
+  more.onclick = () => { if (last && last.meta.sig === sigNow) run(last); };
+  stop.onclick = () => { stopAll(); stopResolve(); };
+
+  // --- výsledky -------------------------------------------------------------------------------
+  function renderResults(solves, meta) {
+    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0) };
+    const sum = summarize(solves, meta.stepTitles.length, timing);
+    if (!sum.count) { results.replaceChildren(); return sum; }
+    const maxMoves = Math.max(...sum.steps.map((s) => s.moves), 1);
+    // minulý běh této metody s jiným nastavením: rozdíl po krocích
+    const prev = (storage.get(HISTORY) ?? []).find((h) => h.method === method && h.sig !== meta.sig && h.steps?.length);
+    const delta = (a, b) => el('span', { className: `sim-delta${a < b - 0.05 ? ' good' : a > b + 0.05 ? ' bad' : ''}`, title: 'Proti minulé simulaci', textContent: `${a <= b ? '−' : '+'}${fmt(Math.abs(a - b))}` });
+    const rows = meta.stepTitles.map((t, i) => {
+      const s = sum.steps[i];
+      const tags = [i === sum.worst ? 'nejvíc tahů' : null, i === sum.slowest && sum.slowest !== sum.worst ? 'nejvíc času' : null].filter(Boolean);
+      const info = [`medián ${s.median}`, `90 % ≤ ${s.p90}`, `náročnost ${fmt(s.score)}`, `${fmt(s.time, 2)} s`, `${pct(s.share)} tahů`, s.skipped ? `${pct(s.skipped)} přeskočeno` : null].filter(Boolean).join(' · ');
+      const cover = meta.hasSet[i] && s.needed
+        ? [`sadou ${pct(s.fromSet / s.needed)} případů`, s.searched ? `${s.searched}× chyběl algoritmus` : null, s.helper ? `${s.helper}× s pomocným algoritmem` : null].filter(Boolean).join(' · ') : null;
+      const pstep = prev?.steps.find((x) => x.id === meta.stepIds[i]);
+      return el('div', { className: `sim-res-row${tags.length ? ' worst' : ''}` },
+        el('div', { className: 'sim-res-label' }, el('b', { textContent: t }), ...tags.map((x) => el('span', { className: 'sim-tag', textContent: x }))),
+        el('div', { className: 'sim-res-bar', role: 'img', ariaLabel: `${fmt(s.moves)} tahů v průměru` }, el('i', { style: `width: ${(s.moves / maxMoves) * 100}%` })),
+        el('div', { className: 'sim-res-nums' }, el('b', { textContent: `${fmt(s.moves)} tahů` }), pstep ? delta(s.moves, pstep.moves) : null, el('small', { textContent: info })),
+        cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
+        s.missing ? el('small', { className: 'ko', textContent: `V sadě chyběl algoritmus u ${s.missing} zamíchání (jen sada) – ta se nedosložila` }) : null);
+    });
+    const examples = pickExamples(solves);
+    results.replaceChildren(...[ // replaceChildren nevynechá null jako el()
       el('div', { className: 'sim-hero' },
         el('div', {}, el('span', { className: 'tile-label', textContent: 'Průměr na složení' }), el('b', { textContent: `${fmt(sum.moves)} tahů` }),
-          el('small', { textContent: `± ${fmt(sum.movesSd)} · od ${sum.min} do ${sum.max} · náročnost ${fmt(sum.score)}` }))),
-      el('div', { className: 'sim-res' }, ...stepRows),
+          el('small', { textContent: `± ${fmt(sum.ci)} (95 %) · medián ${sum.median} · od ${sum.min} do ${sum.max} · ${sum.count} zamíchání` })),
+        el('div', {}, el('span', { className: 'tile-label', textContent: 'Odhad času' }), el('b', { textContent: `${fmt(sum.time, 2)} s` }),
+          el('small', { textContent: `rozpoznání + provedení při ${fmt(Number(tps.value))} tazích/s · náročnost ${fmt(sum.score)}` })),
+        prev ? el('small', { className: 'sim-hero-prev', textContent: `Minulá simulace (${when(prev.at)}, ${prev.label ?? ''}): ${fmt(prev.moves)} tahů${prev.time ? ` · ${fmt(prev.time, 2)} s` : ''}` }) : null),
+      Object.keys(sum.variants).length > 1 || meta.variants.length > 1
+        ? el('p', { className: 'hint', textContent: `Orientace: ${Object.entries(sum.variants).map(([v, n]) => `${meta.variants[v]} ${pct(n / sum.count)}`).join(' · ')}` }) : null,
+      el('div', { className: 'sim-res' }, ...rows),
       sum.hist.length > 1 ? el('div', { className: 'sim-hist', role: 'img', ariaLabel: 'Rozložení počtu tahů na složení' },
         ...sum.hist.map((h) => el('div', { className: 'sim-hist-col', title: `${h.from}–${h.to} tahů: ${h.n}×` },
           el('i', { style: `height: ${(h.n / Math.max(...sum.hist.map((x) => x.n))) * 100}%` }), el('small', { textContent: String(h.from) })))) : null,
-      example ? el('details', { className: 'sim-example' }, el('summary', { textContent: 'Ukázkové složení (nejblíž průměru)' }),
-        scramble ? el('p', {}, el('small', { textContent: 'Zamíchání' }), el('code', { textContent: scramble })) : null,
-        el('ol', {}, ...example.steps.map((x, i) => el('li', {},
-          el('b', { textContent: `${rows[i].st.title || `Krok ${rows[i].index + 1}`}: ` }),
-          x.source === 'skip' ? el('em', { textContent: 'přeskočeno' }) : el('code', { textContent: x.display }),
-          el('small', { textContent: x.source === 'set' ? ` · ${x.name ?? 'ze sady'} · ${x.length} tahů` : x.source === 'skip' ? '' : ` · ${x.length} tahů` }))))) : null);
+      missingCases(solves, meta),
+      examples.length ? el('details', { className: 'sim-example' }, el('summary', { textContent: 'Ukázková složení' }),
+        ...examples.map(({ label, s }) => {
+          const scramble = scrambleOf(s.start);
+          return el('div', { className: 'sim-ex' }, el('b', { textContent: `${label}: ${s.steps.reduce((a, x) => a + x.length, 0)} tahů` }),
+            scramble ? el('p', {}, el('small', { textContent: 'Zamíchání' }), el('code', { textContent: scramble })) : null,
+            el('ol', {}, ...s.steps.map((x, i) => el('li', {},
+              el('b', { textContent: `${meta.stepTitles[i]}: ` }),
+              x.source === 'skip' ? el('em', { textContent: 'přeskočeno' }) : el('code', { textContent: x.display ?? '' }),
+              el('small', { textContent: x.source === 'skip' ? '' : ` · ${x.length} tahů${x.source === 'set' ? ` · ${x.name ?? 'ze sady'}${x.helper ? ` (+ ${x.helper})` : ''}` : ''}` })))));
+        })) : null].filter(Boolean));
+    return sum;
   }
 
-  function addHistory(sum) {
-    const list = storage.get(HISTORY) ?? [];
-    list.unshift({ method, name: methods.get(method).name, at: Date.now(), n: sum.count, moves: sum.moves, score: sum.score,
-      steps: rows.map((r, i) => ({ title: r.st.title || `Krok ${r.index + 1}`, moves: sum.steps[i].moves })) });
+  /** Ukázky: nejbližší průměru, nejkratší a nejdelší (z těch, u kterých se pamatuje zápis). */
+  function pickExamples(solves) {
+    const list = solves.filter((s) => s.ok && s.start).map((s) => ({ s, t: s.steps.reduce((a, x) => a + x.length, 0) }));
+    if (!list.length) return [];
+    const avg = list.reduce((a, x) => a + x.t, 0) / list.length;
+    const by = (f) => list.reduce((b, x) => (f(x) < f(b) ? x : b));
+    const out = [{ label: 'Nejbližší průměru', s: by((x) => Math.abs(x.t - avg)).s }, { label: 'Nejkratší', s: by((x) => x.t).s }, { label: 'Nejdelší', s: by((x) => -x.t).s }];
+    return out.filter((x, i) => out.findIndex((y) => y.s === x.s) === i);
+  }
+
+  /** Případy, na které sada neměla algoritmus: co v nich našlo hledání (návrh do sady). */
+  function missingCases(solves, meta) {
+    const blocks = meta.stepTitles.map((t, i) => {
+      if (!meta.hasSet[i]) return null;
+      const counts = new Map();
+      for (const s of solves) { const x = s.steps[i]; if (x?.missingSet && x.display) counts.set(x.display, (counts.get(x.display) ?? 0) + 1); }
+      if (!counts.size) return null;
+      const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 12);
+      return el('div', { className: 'sim-missing-step' }, el('b', { textContent: `${t}: ${counts.size}× řešení mimo sadu` }),
+        el('ul', {}, ...top.map(([alg, n]) => {
+          const copy = Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Kopírovat', ariaLabel: `Kopírovat ${alg}` }), { innerHTML: icon('copy', { size: 16 }) });
+          copy.onclick = () => navigator.clipboard?.writeText(alg).then(() => toast('Zkopírováno'), () => toast('Kopírování se nepovedlo'));
+          return el('li', {}, el('code', { textContent: alg }), el('small', { textContent: `${n}×` }), copy);
+        })));
+    }).filter(Boolean);
+    return blocks.length ? el('details', { className: 'sim-example sim-missing' },
+      el('summary', { textContent: 'Případy, na které v sadě nemáš algoritmus' }),
+      el('p', { className: 'hint', textContent: 'Co v nich našlo hledání – kandidáti, které můžeš doplnit do sady (v Labu nebo generátorem sady).' }), ...blocks) : null;
+  }
+
+  // --- historie a porovnání ---------------------------------------------------------------------
+  const settingsLabel = () => `${NEUTRAL[neutral.value].toLowerCase()} · semínko ${seed.value} · ${planSteps.length} kroků`;
+  function addHistory(sum, meta) {
+    const list = (storage.get(HISTORY) ?? []).filter((h) => h.sig !== meta.sig);
+    list.unshift({
+      method, name: methods.get(method).name, sig: meta.sig, at: Date.now(), n: sum.count, moves: sum.moves, ci: sum.ci, time: sum.time, score: sum.score,
+      median: sum.median, label: settingsLabel(),
+      steps: meta.stepTitles.map((t, i) => ({ id: meta.stepIds[i], title: t, moves: sum.steps[i].moves, median: sum.steps[i].median, time: sum.steps[i].time, recog: Number(config[meta.stepIds[i]]?.recog) || 0 })),
+    });
     storage.set(HISTORY, list.slice(0, HISTORY_MAX));
+    cmpRight = `run:${meta.sig}`; // porovnání ukáže právě dokončenou simulaci
+  }
+  // --- porovnání ve dvou sloupcích: vlevo metoda ke srovnání, vpravo tvoje ------------------------
+  let cmpLeft = saved.cmpLeft ?? 'ref:cfop', cmpRight = null;
+  /** Zdroje k porovnání: vestavěné metody a tvoje simulace (poslední u každého nastavení). */
+  function sources() {
+    const refs = REFERENCES.map((r) => ({ id: `ref:${r.id}`, label: `${r.name} (vestavěná)`, ...r, ref: true }));
+    const runs = (storage.get(HISTORY) ?? []).filter((h) => h.steps?.length).map((h) => ({
+      id: `run:${h.sig}`, label: `${h.name} · ${when(h.at)}`, name: h.name, n: h.n, moves: h.moves, ci: h.ci, median: h.median, steps: h.steps, mine: h.method === method, note: h.label,
+    }));
+    return [...refs, ...runs];
+  }
+  /** Odhad času stejným vzorcem pro obě strany: rozpoznání + tahy / TPS. */
+  const estTime = (src) => src.steps.reduce((a, st) => a + (st.moves > 0 ? (st.recog ?? 0) : 0) + st.moves / (Number(tps.value) || 4), 0);
+  function renderCompare() {
+    const list = sources();
+    const runs = list.filter((x) => !x.ref);
+    const byId = (id) => list.find((x) => x.id === id);
+    if (!byId(cmpLeft)) cmpLeft = list[0].id;
+    // vpravo tvoje poslední simulace (bez ní zatím druhá vestavěná metoda)
+    if (!cmpRight || !byId(cmpRight)) cmpRight = (runs.find((x) => x.mine) ?? runs[0] ?? list.find((x) => x.id !== cmpLeft)).id;
+    const pick = (value, onChange, label) => {
+      const sel = el('select', { className: 'small-select', ariaLabel: label },
+        el('optgroup', { label: 'Vestavěné metody' }, ...list.filter((x) => x.ref).map((x) => el('option', { value: x.id, textContent: x.label }))),
+        runs.length ? el('optgroup', { label: 'Tvoje simulace' }, ...runs.map((x) => el('option', { value: x.id, textContent: x.label }))) : null);
+      sel.value = value;
+      sel.onchange = () => { onChange(sel.value); renderCompare(); };
+      return sel;
+    };
+    const L = byId(cmpLeft), R = byId(cmpRight);
+    const max = Math.max(...L.steps.map((x) => x.moves), ...R.steps.map((x) => x.moves), 1);
+    const metrics = [
+      ['Tahů na složení', (x) => x.moves, (v) => fmt(v), true],
+      ['Odhad času', (x) => estTime(x), (v) => `${fmt(v, 2)} s`, true],
+      ['Medián tahů', (x) => x.median, (v) => (Number.isFinite(v) ? String(v) : '–'), true],
+      ['Kroků', (x) => x.steps.length, (v) => String(v), false],
+      ['Nejdelší krok', (x) => Math.max(...x.steps.map((st) => st.moves)), (v) => `${fmt(v)} tahů`, true],
+      ['Zamíchání', (x) => x.n, (v) => String(v), false],
+    ];
+    const cell = (v, other, lower, show) => el('td', { className: lower && Number.isFinite(v) && Number.isFinite(other) && v < other - 0.05 ? 'win' : '', textContent: show(v) });
+    const diff = R.moves - L.moves;
+    const column = (src) => el('div', { className: 'sim-cmp-col' },
+      el('b', { textContent: `${src.name} · ${src.steps.length} kroků` }),
+      el('div', { className: 'sim-cmp-steps' }, ...src.steps.map((st) => el('div', { className: 'sim-cmp-step' },
+        el('div', { className: 'sim-cmp-step-head' }, el('span', { textContent: st.title }), el('b', { textContent: fmt(st.moves) })),
+        el('div', { className: 'sim-res-bar' }, el('i', { style: `width: ${(st.moves / max) * 100}%` }))))));
+    compare.replaceChildren(
+      el('h3', { textContent: 'Porovnání metod' }),
+      el('div', { className: 'sim-cmp' },
+        el('div', { className: 'sim-cmp-pick' }, pick(cmpLeft, (v) => { cmpLeft = v; const all = storage.get(OPTS) ?? {}; storage.set(OPTS, { ...all, cmpLeft: v }); }, 'Metoda ke srovnání')),
+        el('div', { className: 'sim-cmp-pick mine' }, pick(cmpRight, (v) => { cmpRight = v; }, 'Tvoje metoda'))),
+      el('div', { className: 'sim-cmp-total' },
+        el('b', { className: diff < -0.05 ? 'ok' : diff > 0.05 ? 'ko' : '', textContent: `${diff <= 0 ? '−' : '+'}${fmt(Math.abs(diff))} tahů (${diff <= 0 ? '−' : '+'}${Math.round(Math.abs(diff / L.moves) * 100)} %)` }),
+        el('small', { textContent: `vpravo proti vlevo · čas ${estTime(R) <= estTime(L) ? '−' : '+'}${fmt(Math.abs(estTime(R) - estTime(L)), 2)} s` })),
+      el('table', { className: 'compare sim-cmp-table' },
+        el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
+        el('tbody', {}, ...metrics.map(([label, f, show, lower]) => el('tr', {}, el('td', { textContent: label }),
+          cell(f(L), f(R), lower, show), cell(f(R), f(L), lower, show))))),
+      el('div', { className: 'sim-cmp' }, column(L), column(R)),
+      el('p', { className: 'hint', textContent: `${runs.length ? '' : 'Spusť simulaci své metody – objeví se vpravo. '}${L.ref ? `${L.name}: ${L.description} ` : ''}${R.ref ? `${R.name}: ${R.description} ` : ''}${REFERENCE_NOTE}` }));
   }
 
-  /** Porovnání: poslední simulace každé metody. */
   function renderHistory() {
-    const byMethod = new Map();
-    for (const h of storage.get(HISTORY) ?? []) if (!byMethod.has(h.method)) byMethod.set(h.method, h);
-    const rowsH = [...byMethod.values()].sort((a, b) => a.moves - b.moves);
-    if (!rowsH.length) { history.replaceChildren(); return; }
-    history.replaceChildren(el('h3', { textContent: 'Porovnání metod' }),
-      el('table', { className: 'compare' },
-        el('thead', {}, el('tr', {}, el('th', { textContent: 'Metoda' }), el('th', { textContent: 'Tahů' }), el('th', { textContent: 'Náročnost' }), el('th', { textContent: 'Složení' }))),
-        el('tbody', {}, ...rowsH.map((h, i) => el('tr', {},
-          el('td', { textContent: `${h.name}${h.method === method ? ' (tahle)' : ''}` }),
-          el('td', { className: i === 0 && rowsH.length > 1 ? 'win' : '', textContent: fmt(h.moves) }),
-          el('td', { textContent: fmt(h.score) }),
-          el('td', { textContent: String(h.n) }))))),
-      el('p', { className: 'hint', textContent: 'Poslední simulace každé metody. Srovnání je férové jen při podobném nastavení (počet zamíchání, čas hledání, sady tahů).' }));
+    renderCompare();
+    const list = storage.get(HISTORY) ?? [];
+    if (!list.length) { history.replaceChildren(); return; }
+    const best = Math.min(...list.map((h) => h.moves));
+    history.replaceChildren(el('h3', { textContent: 'Historie simulací' }),
+      el('div', { className: 'sim-hist-list' }, ...list.slice(0, 15).map((h) => {
+        const del = Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Smazat z historie', ariaLabel: 'Smazat z historie' }), { innerHTML: icon('trash', { size: 16 }) });
+        del.onclick = () => { storage.set(HISTORY, (storage.get(HISTORY) ?? []).filter((x) => !(x.sig === h.sig && x.at === h.at))); renderHistory(); };
+        return el('div', { className: `sim-hist-item${h.method === method ? ' mine' : ''}` },
+          el('div', { className: 'sim-hist-main' }, el('b', { textContent: h.name }),
+            el('small', { textContent: `${when(h.at)} · ${h.n} zamíchání${h.label ? ` · ${h.label}` : ''}` }),
+            h.steps ? el('small', { className: 'sim-hist-steps', textContent: h.steps.map((s) => `${s.title} ${fmt(s.moves)}`).join(' · ') } ) : null),
+          el('div', { className: 'sim-hist-nums' }, el('b', { className: h.moves === best && list.length > 1 ? 'ok' : '', textContent: `${fmt(h.moves)} tahů` }),
+            h.ci ? el('small', { textContent: `± ${fmt(h.ci)}` }) : null, h.time ? el('small', { textContent: `${fmt(h.time, 2)} s` }) : null),
+          del);
+      })),
+      el('p', { className: 'hint', textContent: 'Férové porovnání: stejné semínko a dost zamíchání (± u průměru říká, o kolik se může lišit náhodou).' }));
   }
 
+  // --- start: minulý nebo rozpracovaný běh ------------------------------------------------------
+  renderSteps();
+  changed();
+  renderHistory();
+  const r = storage.get(RUN);
+  if (r?.meta?.method === method && r.solves?.length) {
+    const same = r.meta.sig === sigNow;
+    last = { solves: r.solves, meta: r.meta, next: contiguous(r.solves) };
+    renderResults(r.solves, r.meta);
+    const resume = el('button', { type: 'button', className: 'primary small', textContent: r.finished ? 'Přidat zamíchání' : 'Pokračovat', hidden: !same });
+    resume.onclick = () => run(last);
+    banner.replaceChildren(
+      el('div', {}, el('b', { textContent: r.finished ? 'Poslední simulace' : 'Rozpracovaná simulace' }),
+        el('small', { textContent: `${when(r.meta.started)} · ${r.solves.length} zamíchání${same ? ' · navážeš dalšími' : ' · nastavení se od té doby změnilo'}` })),
+      el('div', { className: 'row-btns' }, resume));
+    banner.hidden = false;
+    more.hidden = !same;
+  }
   dlg.showModal();
   return dlg;
 }

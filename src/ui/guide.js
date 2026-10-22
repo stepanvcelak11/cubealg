@@ -243,7 +243,7 @@ export function openGuide(opts = {}) {
     close.onclick = () => dialog.close();
     edit.onclick = () => { editing = !editing; render(); };
     shareBtn.onclick = share;
-    simBtn.onclick = () => deps.simulate?.();
+    simBtn.onclick = () => deps.simulate?.({ onEdit: () => { editing = true; render(); } });
     printBtn.onclick = () => {
       if (editing) { editing = false; render(); }
       document.body.classList.add('printing-guide');

@@ -51,7 +51,7 @@ initMethods({
   labTask,
   train: (id) => { trainSetTo(id); showPage('trainer'); },
   practice: (id) => { practiceStep(id); showPage('timer'); },
-  simulate: () => openSimulator(labErgo()),
+  simulate: (opts) => openSimulator(labErgo(), opts),
 });
 initTimer({ isActive: () => page === 'timer' });
 initStats();

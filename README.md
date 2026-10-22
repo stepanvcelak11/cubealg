@@ -48,12 +48,27 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
   **Simulátor metody** (průvodce → „Simulovat“): náhodná zamíchání se složí krok
-  po kroku podle dílků hotových po krocích. Krok vyřeší algoritmus ze sady kroku,
-  když na případ nějaký máš (rychlejší podle tvých časů z trenažéru, jinak méně
-  náročný; i s AUF), jinak hledání jako v Labu podle tvých vah. Výsledek: průměr
-  tahů na složení (± rozptyl, rozložení), tahy a náročnost každého kroku a jeho
-  podíl, krok s nejvíc tahy, kolik případů pokryla tvoje sada, ukázkové složení
-  se zamícháním a porovnání s poslední simulací ostatních metod (`src/sim/simulate.js`).
+  po kroku podle dílků hotových po krocích. U každého kroku si nastavíš, jak ho řešíš:
+  tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když
+  případ vyřeší – i s natočením horní, případně i spodní vrstvy před a po a s pomocným
+  algoritmem jako oprava parity M2 U2 M2), „jen sada“ (případ bez algoritmu se počítá
+  jako chybějící) nebo jen hledání (jako v Labu podle tvých vah), podle čeho vybírat
+  (rychlost / efektivita / všestranné), čas hledání a čas rozpoznání. Krok jde vypnout –
+  složí se najednou s dalším (vyplatí se kroky spojit?). **Barevná neutralita**: první
+  krok se zkusí v obou protilehlých / všech šesti orientacích a použije se nejlepší.
+  Zamíchání skládá víc vláken souběžně (`src/sim/sim-worker.js`); stejné **semínko** =
+  stejná zamíchání, takže změny jde férově porovnat. **Délka** podle počtu zamíchání
+  nebo času (1 h / 3 h / 8 h přes noc / dokud nezastavíš): běh se průběžně ukládá,
+  displej nezhasne, na konci přijde oznámení a příště jde navázat dalšími zamícháními.
+  Výsledek: průměr tahů na složení s intervalem spolehlivosti, medián a rozložení,
+  **odhad času** (rozpoznání + provedení – u algoritmů s časem z trenažéru jejich čas,
+  jinak tahy / TPS), u kroků tahy (průměr, medián, 90 %), náročnost, čas a podíl,
+  krok s nejvíc tahy a s nejvíc časem, pokrytí sadou, **případy, na které v sadě nemáš
+  algoritmus** (co v nich našlo hledání), ukázková složení se zamícháním a rozdíl proti
+  minulé simulaci. **Porovnání metod ve dvou sloupcích**: vlevo vestavěná metoda (CFOP,
+  Roux, ZZ – spočtené stejným simulátorem, `src/sim/references.js`) nebo jiná simulace,
+  vpravo tvoje; tabulka s tahy, časem a kroky a kroky obou metod vedle sebe. Měření
+  v Node: `node bench/method.mjs [zamíchání] [s na krok] [filtr] [json]`.
 - **Simulace soutěže** (tlačítko Soutěž v Timeru): kolo podle pravidel WCA –
   Average of 5, Mean of 3 (6×6, 7×7) nebo Best of 3 (naslepo), povinná inspekce,
   volitelný cutoff, časový limit a cíl. Během kola pokusy, po čtvrtém pokusu

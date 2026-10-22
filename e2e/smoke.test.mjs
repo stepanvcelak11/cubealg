@@ -950,30 +950,46 @@ test('generátor sady: noční běh do dokázání, uložený rozpracovaný běh
   await ctx.close();
 });
 
-test('simulátor metody: složí zamíchání po krocích a porovná metody', async () => {
+test('simulátor metody: nastavení kroků, souběžné skládání, navázání a porovnání se vestavěnými metodami', async () => {
   const guides = { default: { intro: '', steps: [
     { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
     { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
   ] } };
-  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': { count: 5, time: 1 } });
+  const opts = { length: 'c10', steps: { default: { k1: { time: 1 }, k2: { time: 1 } } } };
+  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts });
   await p.selectOption('#method', '+guide');
   await p.waitForSelector('.guide-dialog[open]');
   await p.locator('.guide-sim').tap();
   await p.waitForSelector('.sim-dialog[open]');
   assert.equal(await p.locator('.sim-step').count(), 2);
   assert.match(await p.locator('.sim-step').first().innerText(), /Hrana vpředu[\s\S]*1 hotových/);
+  // nastavení kroku: vlastní tahy
+  await p.locator('.sim-step').first().locator('summary').tap();
+  await p.locator('.sim-step').first().locator('select[aria-label="Tahy – krok 1"]').selectOption('custom');
+  assert.ok(await p.locator('.sim-chips label').count() > 6);
+  // porovnání vestavěných metod je vidět hned
+  assert.match(await p.locator('.sim-cmp-table').innerText(), /CFOP/);
   await p.locator('.sim-dialog button', { hasText: 'Spustit simulaci' }).tap();
-  await p.waitForSelector('.sim-hero', { timeout: 120000 });
-  assert.match(await p.locator('.sim-dialog .status').innerText(), /Hotovo: 5 složení/);
-  assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů/i);
+  await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
+  assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů[\s\S]*Odhad času/i);
   assert.equal(await p.locator('.sim-res-row').count(), 2);
-  assert.equal(await p.locator('.sim-res-row.worst').count(), 1);
-  assert.match(await p.locator('.sim-history').innerText(), /Porovnání metod[\s\S]*\(tahle\)/);
+  assert.ok(await p.locator('.sim-res-row.worst').count() >= 1);
   const hist = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));
   assert.equal(hist.length, 1);
-  assert.equal(hist[0].n, 5);
-  await p.locator('.sim-example summary').tap();
-  assert.match(await p.locator('.sim-example').innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);
+  assert.equal(hist[0].n, 10);
+  // vpravo tvoje simulace, vlevo vestavěná metoda
+  assert.match(await p.locator('.sim-cmp-pick.mine select option:checked').innerText(), /Základní/);
+  assert.match(await p.locator('.sim-cmp-total').innerText(), /tahů \([−+]\d+ %\)/);
+  assert.equal(await p.locator('.sim-cmp-col').count(), 2);
+  await p.locator('.sim-example summary', { hasText: 'Ukázková složení' }).tap();
+  assert.match(await p.locator('.sim-example').first().innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);
+  // zavřít a znovu otevřít: poslední běh jde doplnit dalšími zamícháními (stejné semínko)
+  await p.locator('.sim-head .icon-btn').tap();
+  await p.locator('.guide-sim').tap();
+  await p.waitForSelector('.sim-dialog[open]');
+  assert.match(await p.locator('.sim-dialog .gen-resume').innerText(), /Poslední simulace[\s\S]*10 zamíchání/);
+  await p.locator('.sim-dialog .gen-resume button', { hasText: 'Přidat zamíchání' }).tap();
+  await p.waitForFunction(() => /Hotovo: 20 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
   assert.deepEqual(errors, []);
   await ctx.close();
 });

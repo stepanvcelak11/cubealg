@@ -11,6 +11,7 @@ import { NetView } from './netview.js';
 import { algs, algSets } from './store.js';
 import { toast } from './share.js';
 import { recordPreference } from './store.js';
+import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 
 const OPTS = 'ergocube.lab.generator';
 // paměť hledání po případech: nejlepší algoritmy a prohledané délky (příště se navazuje,
@@ -280,23 +281,11 @@ export function openGenerator(ctx) {
     return t;
   }
 
-  // noční běh: displej nezhasne (jinak telefon výpočet uspí), na konci oznámení
-  let wakeLock = null;
-  const lockScreen = async () => { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { wakeLock = null; } };
-  const onVisible = () => { if (running && document.visibilityState === 'visible' && longRun) lockScreen(); };
-  document.addEventListener('visibilitychange', onVisible);
-  dlg.addEventListener('close', () => { document.removeEventListener('visibilitychange', onVisible); wakeLock?.release?.(); document.title = baseTitle; });
-  const baseTitle = document.title;
+  // noční běh: displej nezhasne, průběh v názvu karty, na konci oznámení
+  let awake = null;
+  const title = titleProgress();
+  dlg.addEventListener('close', () => { awake?.release(); title.reset(); });
   let longRun = false;
-  async function notifyDone(text) {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    try {
-      const reg = await navigator.serviceWorker?.getRegistration?.();
-      if (reg?.showNotification) await reg.showNotification('Generátor sady', { body: text, tag: 'ergocube-gen' });
-      else new Notification('Generátor sady', { body: text });
-    } catch { /* bez oznámení */ }
-    navigator.vibrate?.([200, 100, 200]);
-  }
 
   goBtn.onclick = async () => {
     if (!result || running) return;
@@ -325,12 +314,12 @@ export function openGenerator(ctx) {
     const job = { key: jobKey(), name: name.value.trim() || 'Nová sada', mode: mode.value, started: Date.now(), deadline, total: chosen.length, proven: 0, done: false };
     const saveJob = () => { if (longRun) storage.set(JOB, { ...job, proven: tally(chosen).proven }); };
     if (longRun) {
-      lockScreen();
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+      awake = keepAwake();
+      askNotify();
       saveJob();
       banner.hidden = true;
     }
-    const showTitle = () => { if (longRun) { const t = tally(chosen); document.title = `(${t.proven}/${chosen.length}) ${baseTitle}`; } };
+    const showTitle = () => { if (longRun) title.set(`(${tally(chosen).proven}/${chosen.length})`); };
 
     // 1. kolo: každý případ jednou, čas podle průměru
     for (let n = 0; n < chosen.length && running; n++) {
@@ -373,18 +362,18 @@ export function openGenerator(ctx) {
     running = false;
     for (const b of dlg.querySelectorAll('.gen-more')) b.disabled = false;
     client.cancel();
-    wakeLock?.release?.();
-    wakeLock = null;
+    awake?.release();
+    awake = null;
     stopBtn.hidden = true; countBtn.disabled = false;
     const t = tally(chosen);
     const all = chosen.length;
     const n0 = t.done < all ? `Zastaveno po ${t.done} z ${all} · ` : '';
     status.textContent = `${n0}Hotovo: ${t.ok} ověřených${t.proven ? ` (${t.proven} dokázaně nejpohodlnějších)` : ''}${t.warn ? `, ${t.warn} s upozorněním` : ''}${t.none ? `, ${t.none} bez řešení (zkus delší čas nebo víc tahů)` : ''} · vyber, co uložit`;
     if (longRun) {
-      document.title = baseTitle;
+      title.reset();
       // zastavený běh zůstane rozpracovaný (jde navázat), dokončený se uzavře
       if (finished) storage.set(JOB, { ...job, proven: t.proven, done: true });
-      if (finished) notifyDone(`${t.proven} z ${all} případů dokázaně nejpohodlnějších${t.proven < all ? ' (zbytek s nejlepším nalezeným)' : ''}. Otevři generátor a vyber, co uložit.`);
+      if (finished) notify('Generátor sady', `${t.proven} z ${all} případů dokázaně nejpohodlnějších${t.proven < all ? ' (zbytek s nejlepším nalezeným)' : ''}. Otevři generátor a vyber, co uložit.`);
     }
     showSave();
   };

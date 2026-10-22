@@ -1142,3 +1142,63 @@ body.timing .round-panel { visibility: hidden; }
 .sim-example ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 0.86rem; }
 .sim-history h3 { margin: 4px 0 8px; font-family: var(--display); font-size: 1.2rem; }
 .sim-history .compare td:first-child, .sim-history .compare th:first-child { text-align: left; }
+.sim-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sim-body h3 { margin: 6px 0 0; font-family: var(--display); font-size: 1.2rem; }
+.sim-step.off { opacity: 0.65; }
+.sim-step { flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; }
+.sim-step-head { width: 100%; }
+.sim-step-title { flex: 1; }
+.sim-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 700; color: var(--muted); flex: none; }
+.sim-step-more summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: var(--muted); padding: 2px 0; }
+.sim-step-more[open] summary { margin-bottom: 8px; }
+.sim-step .grid-fields { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.sim-step input:not([type]), .sim-step input[type="number"] { background: var(--panel); min-height: 38px; }
+.sim-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sim-chips label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 36px; padding: 4px 10px; border-radius: 12px; background: var(--panel); font-family: var(--mono); font-weight: 700; cursor: pointer; }
+.sim-chips input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.sim-chips label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
+.sim-chips label:has(input:focus-visible) { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.sim-steps.locked { pointer-events: none; opacity: 0.7; }
+.sim-hero { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.sim-hero-prev { flex-basis: 100%; }
+.sim-delta { font-size: 0.78rem; font-weight: 800; padding: 1px 7px; border-radius: 8px; background: var(--panel); }
+.sim-delta.good { color: var(--good); }
+.sim-delta.bad { color: var(--bad); }
+.sim-cover { color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+.sim-ex + .sim-ex { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--panel-3); }
+.sim-ex > b { display: block; margin-top: 8px; }
+.sim-missing ul { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; gap: 4px; }
+.sim-missing li { display: flex; align-items: center; gap: 8px; }
+.sim-missing li code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sim-missing li .icon-btn { min-width: 36px; min-height: 36px; }
+.sim-missing-step + .sim-missing-step { margin-top: 6px; }
+.sim-hist-list { display: grid; gap: 6px; }
+.sim-hist-item { display: flex; align-items: center; gap: 10px; padding: 10px 6px 10px 12px; border-radius: 16px; background: var(--panel-2); }
+.sim-hist-item.mine { box-shadow: inset 3px 0 0 var(--accent); }
+.sim-hist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sim-hist-main small { color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.sim-hist-steps { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-hist-nums { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.sim-hist-nums b { font-family: var(--display); }
+.sim-hist-nums small { color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+.sim-compare { display: grid; gap: 10px; }
+.sim-compare:empty { display: none; }
+.sim-cmp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sim-cmp-pick select { width: 100%; max-width: none; }
+.sim-cmp-pick.mine select { background-color: var(--accent-soft); }
+.sim-cmp-total { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px; border-radius: 18px; background: var(--panel-2); text-align: center; }
+.sim-cmp-total b { font-family: var(--display); font-size: 1.5rem; }
+.sim-cmp-total b.ok { color: var(--good); }
+.sim-cmp-total b.ko { color: var(--bad); }
+.sim-cmp-total small { color: var(--muted); font-weight: 700; font-size: 0.78rem; }
+.sim-cmp-table { table-layout: fixed; }
+.sim-cmp-table th:first-child, .sim-cmp-table td:first-child { width: 36%; text-align: left; }
+.sim-cmp-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-cmp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sim-cmp-steps { display: grid; gap: 6px; }
+.sim-cmp-step { padding: 8px 10px; border-radius: 14px; background: var(--panel-2); display: grid; gap: 5px; min-width: 0; }
+.sim-cmp-step-head { display: flex; justify-content: space-between; gap: 6px; font-size: 0.8rem; font-weight: 700; }
+.sim-cmp-step-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sim-cmp-col:last-child .sim-res-bar i { background: var(--sun-ink); }
+.sim-cmp-step .sim-res-bar { height: 7px; }
+.sim-cmp-col > b { font-size: 0.8rem; color: var(--muted); padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
