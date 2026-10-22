@@ -1188,6 +1188,7 @@ body.timing .round-panel { visibility: hidden; }
 .sim-real { padding: 10px 12px; border-radius: 18px; background: var(--panel-2); display: grid; gap: 8px; }
 .sim-real summary { cursor: pointer; font-weight: 800; font-size: 0.9rem; }
 .sim-real .compare td { font-size: 0.8rem; }
+.sim-real-table { width: 100%; }
 .sim-sources a { color: var(--accent); overflow-wrap: anywhere; }
 .sim-head h2 { margin: 0; font-family: var(--display); font-size: 1.6rem; }
 .sim-head .hint { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }

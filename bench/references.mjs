@@ -4,6 +4,7 @@
 //   node bench/references.mjs soubor1.txt soubor2.txt …
 import { readFileSync, writeFileSync } from 'node:fs';
 import { summarize } from '../src/sim/simulate.js';
+import { TEMPLATES } from '../src/sim/templates.js';
 
 const DESCRIPTIONS = {
   cfop: 'kříž, 4 páry F2L do kteréhokoli slotu, OLL a PLL (vnější tahy).',
@@ -33,6 +34,9 @@ for (const f of process.argv.slice(2)) {
 const order = ['cfop', 'roux', 'zz'];
 const refs = [...byId.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).map((r) => {
   const solves = r.solves.sort((a, b) => a.k - b.k);
+  // druh a rozpoznání kroků podle aktuálních šablon (mění se jen model času, ne tahy)
+  const tpl = TEMPLATES.find((t) => t.id === r.id);
+  r.steps = r.steps.map((s, i) => ({ ...s, kind: tpl?.steps[i]?.sim?.kind ?? 'intuitive', recog: tpl?.steps[i]?.sim?.recog ?? s.recog }));
   const sum = summarize(solves, r.steps.length, { tps: 4, recog: r.steps.map((s) => s.recog ?? 0), kinds: r.steps.map((s) => s.kind ?? 'intuitive') });
   const round = (x, d = 2) => +x.toFixed(d);
   return {

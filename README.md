@@ -44,7 +44,19 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   míst), 4. čím krok skládáš (sada algoritmů, co když v ní případ chybí, tahy,
   natočení vrstev, pomocné algoritmy) a nepovinně podrobnosti pro test a obrázek
   z Labu. Nastavení se ukládá přímo ke krokům metody (`src/ui/builder.js`,
-  `st.sim`). **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
+  `st.sim`). Kromě konkrétních dílků má krok **pravidla pro skupiny dílků**
+  (`src/core/rules.js`, editor `src/ui/ruleeditor.js`): jaké dílky (hrany / rohy
+  s barvou…, bez barvy…), kam (místa po vrstvách), jak (každé místo obsadí některý
+  z nich / všechny musí být v místech) a jak natočené (jakkoli / nálepkou barvy na
+  stranu / správně) – s popisem slovy. Tak jde zadat např. kříž z kterýchkoli
+  bílých a žlutých hran bílou/žlutou dolů, do slotu kterýkoli takový roh, natočení
+  horní a spodní vrstvy nebo separaci barev. Jádro hledání má pro „obsadit místa
+  kterýmkoli dílkem skupiny“ přesné databáze podle poloh nálepek skupiny
+  (`#classes` v `core/constraints.js` a `search/engine.js`). **Šablony** (CFOP,
+  Roux, ZZ, separační metoda; `src/sim/templates.js`) založí novou metodu se vším
+  nastaveným. Nácvik kroku v timeru po krocích s pravidly zamíchá tak, že náhodnou
+  kostku složí podle předchozích kroků metody.
+  **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
   **Průvodce metodou** (na čtení; „Upravit“ vede do Sestavit): úvod a kroky se slovním popisem,
   obrázkem kostky „před → po“ převzatým z Labu a odkazem na sadu algoritmů
   k tréninku, případně **ukázkou algoritmu**, která se dá přehrát tah po tahu.
@@ -76,12 +88,15 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   displej nezhasne, na konci přijde oznámení a příště jde navázat dalšími zamícháními.
   Výsledek: průměr tahů na složení s intervalem spolehlivosti, medián a rozložení,
   **odhad času** (rozpoznání + provedení – u algoritmů s časem z trenažéru jejich čas,
-  jinak tahy / TPS), u kroků tahy (průměr, medián, 90 %), náročnost, čas a podíl,
+  jinak tahy / TPS; u intuitivních kroků počítá s víc tahy a pomalejším tempem
+  člověka, `HUMAN` v `src/sim/simulate.js`), u kroků tahy (průměr, medián, 90 %), náročnost, čas a podíl,
   krok s nejvíc tahy a s nejvíc časem, pokrytí sadou, **případy, na které v sadě nemáš
   algoritmus** (co v nich našlo hledání), ukázková složení se zamícháním a rozdíl proti
   minulé simulaci. **Porovnání metod ve dvou sloupcích**: vlevo vestavěná metoda (CFOP,
   Roux, ZZ – spočtené stejným simulátorem, `src/sim/references.js`) nebo jiná simulace,
-  vpravo tvoje; tabulka s tahy, časem a kroky a kroky obou metod vedle sebe. Měření
+  vpravo tvoje; tabulka s tahy (simulace i odhad člověka), časem a kroky, kroky obou
+  metod vedle sebe a **data skutečných skladačů** (tahy z rekonstrukcí, nejlepší
+  oficiální výsledky, se zdroji). Měření
   v Node: `node bench/method.mjs [zamíchání] [s na krok] [filtr] [json]`.
   **Učebnice metody** (Metoda nebo průvodce → „Učebnice“): celá metoda v jednom HTML
   souboru – úvod a držení, kroky s obrázkem dílků a nastavením ze simulátoru, výsledek

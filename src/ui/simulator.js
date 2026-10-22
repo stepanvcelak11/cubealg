@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { methods, guides, algs } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
-import { summarize, seededRandom, humanMoves, HUMAN } from '../sim/simulate.js';
+import { summarize, seededRandom, humanMoves, humanTps } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
@@ -435,7 +435,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   const estTime = (src) => src.steps.reduce((a, st) => {
     const t = Number(tps.value) || 4;
     const kind = st.kind ?? 'intuitive';
-    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind) / (kind === 'intuitive' ? t * HUMAN.intuitiveTps : t);
+    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind) / humanTps(t, kind);
   }, 0);
   function renderCompare() {
     const list = sources();
@@ -495,7 +495,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const sources = [...new Map([...(L.real?.sources ?? []), ...(R.real?.sources ?? [])].map((x) => [x.url, x])).values()];
     return el('details', { className: 'sim-real', open: true },
       el('summary', { textContent: 'Skuteční skladači (data z internetu)' }),
-      el('table', { className: 'compare sim-cmp-table' },
+      el('table', { className: 'compare sim-real-table' },
         el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
         el('tbody', {}, ...rows.map(([label, key]) => el('tr', {}, el('td', { textContent: label }), el('td', { textContent: val(L, key) }), el('td', { textContent: val(R, key) }))))),
       el('p', { className: 'hint', textContent: 'Simulace ukazuje, kolik tahů metoda potřebuje, když se každý krok složí skoro nejlépe. Skuteční skladači dělají víc tahů a rychlost závisí na tom, jak dobře se metoda „točí“ a dívá dopředu – proto odhad času počítá u intuitivních kroků s víc tahy a pomalejším tempem. Rekordy navíc ovlivňuje i to, kolik lidí metodu používá (CFOP většina světové špičky).' }),

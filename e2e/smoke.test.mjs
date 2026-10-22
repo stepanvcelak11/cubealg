@@ -1057,10 +1057,31 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   // nesmysl hlásí: víc míst než dílků
   await p.locator('.bld-step.open .rule-chip', { hasText: 'Nahoře' }).first().tap();
   assert.match(await p.locator('.bld-step.open .rule-say.bad').innerText(), /Míst \(8\) je víc než dílků ve skupině \(4\)/);
+  await p.locator('.bld-step.open .rule-chip', { hasText: 'Nahoře' }).first().tap(); // zpět: kříž jen z bílých hran
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.equal(await p.locator('.sim-step').count(), 10);
   assert.match(await p.locator('.sim-step').nth(5).innerText(), /OLL[\s\S]*2× pravidlo/);
+  // nácvik kroku po kříži z pravidla: zamíchání vznikne složením kříže podle metody
+  await p.evaluate(async () => {
+    const { guides } = await import('./src/ui/store.js');
+    const { practiceStep } = await import('./src/ui/timer.js');
+    practiceStep(guides.get().steps[1].id);
+  });
+  await p.locator('.tabbar [data-tab="timer"]').tap();
+  assert.match(await p.locator('#t-step-info').innerText(), /předem: kroky 1–1 složené podle metody/);
+  await p.waitForFunction(() => !document.querySelector('#t-scramble').classList.contains('loading')
+    && /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent), null, { timeout: 90000 });
+  const crossOk = await p.evaluate(async () => {
+    const { solved, applyAlg } = await import('./src/core/cube.js');
+    const { compileRule } = await import('./src/core/rules.js');
+    const { compileGoal } = await import('./src/core/constraints.js');
+    const { frameMap, DEFAULT_FRAME } = await import('./src/ui/parts.js');
+    const { guides } = await import('./src/ui/store.js');
+    const loc = applyAlg(solved(), document.querySelector('#t-scramble').textContent);
+    return compileGoal(compileRule(guides.get().steps[0].rules[0], frameMap(DEFAULT_FRAME))).test(loc);
+  });
+  assert.equal(crossOk, true);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

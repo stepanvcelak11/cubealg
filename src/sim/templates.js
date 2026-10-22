@@ -28,8 +28,8 @@ export const TEMPLATES = [
     id: 'roux', name: 'Roux',
     intro: 'Dva bloky 1×2×3, rohy nahoře (CMLL) a zbylé hrany tahy M a U (LSE).',
     steps: [
-      { title: 'První blok', parts: rel(['DLF', 'DBL', 'DL', 'FL', 'BL']), sim: { ...custom('R', 'L', 'U', 'D', 'F', 'B', 'r', 'M'), recog: 0 } },
-      { title: 'Druhý blok', parts: rel(['DFR', 'DRB', 'DR', 'FR', 'BR']), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3 } },
+      { title: 'První blok', parts: rel(['DLF', 'DBL', 'DL', 'FL', 'BL']), sim: { ...custom('R', 'L', 'U', 'D', 'F', 'B', 'r', 'M'), recog: 0, kind: 'blocks' } },
+      { title: 'Druhý blok', parts: rel(['DFR', 'DRB', 'DR', 'FR', 'BR']), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3, kind: 'blocks' } },
       { title: 'CMLL', parts: rel(UC), sim: { recog: 0.6, kind: 'alg' } },
       { title: 'LSE', parts: rel([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.4, kind: 'alg' } },
     ],
@@ -39,8 +39,8 @@ export const TEMPLATES = [
     intro: 'Natočit všechny hrany a hrany vpředu a vzadu dole (EOLine), bloky tahy R U L, OCLL a PLL.',
     steps: [
       { title: 'EOLine', parts: { ...rel([...CROSS, ...E, ...UE], 'orientation'), ...rel(['DF', 'DB']) }, sim: { recog: 0 } },
-      { title: 'Levý blok', parts: rel(['DLF', 'DBL', 'DL', 'FL', 'BL']), sim: { moves: 'RUL', recog: 0.3 } },
-      { title: 'Pravý blok', parts: rel(['DFR', 'DRB', 'DR', 'FR', 'BR']), sim: { moves: 'RUL', recog: 0.3 } },
+      { title: 'Levý blok', parts: rel(['DLF', 'DBL', 'DL', 'FL', 'BL']), sim: { moves: 'RUL', recog: 0.3, kind: 'blocks' } },
+      { title: 'Pravý blok', parts: rel(['DFR', 'DRB', 'DR', 'FR', 'BR']), sim: { moves: 'RUL', recog: 0.3, kind: 'blocks' } },
       { title: 'OCLL', parts: rel(UC, 'orientation'), sim: { recog: 0.5, kind: 'alg' } },
       { title: 'PLL', parts: rel([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' } },
     ],

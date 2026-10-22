@@ -282,3 +282,6 @@ export function buildNearKernel(pieces, moveCount, invTrans, limit, cap) {
     return { keys, dist, radius, count };
   });
 }
+
+/** Stav paměti jádra (ladění): úlohy v jádru, jejich odhad a velikost paměti. */
+export const kernelStats = () => ({ live: live.size, liveBytes, memory: K ? K.memory.buffer.byteLength : 0 });

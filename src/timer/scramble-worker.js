@@ -27,7 +27,7 @@ async function practiceSim(plan) {
   const [{ makeStepSolver, betterFor }, { simulate }, { practiceState }, { solve }, { toFacelets, applyAlg }, { initKernel }] = await Promise.all([
     import('../sim/stepsolver.js'), import('../sim/simulate.js'), import('./practice.js'), import('./twophase.js'), import('../core/cube.js'), import('../search/kernel.js')]);
   await initKernel().catch(() => false);
-  const solver = makeStepSolver(plan);
+  const solver = makeStepSolver(plan, { quick: true });
   for (let attempt = 0; attempt < 3; attempt++) {
     const start = practiceState({});
     const { solves } = await simulate({ starts: [start], variants: plan.variants, solveStep: solver.solveStep, better: betterFor(plan) });

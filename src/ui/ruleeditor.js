@@ -28,6 +28,7 @@ export const newRule = () => structuredClone(RULE_PRESETS[0].rule);
  */
 export function ruleEditor(rule, frame, n, onChange, onDelete) {
   const map = frameMap(frame);
+  const uid = `${n}-${Math.random().toString(36).slice(2, 8)}`; // skupiny přepínačů nesmí kolidovat mezi kroky
   const color = (v) => COLOR_NAME[map[v]];
   const set = (patch) => { Object.assign(rule, patch); onChange(); };
   const toggle = (list, v) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
@@ -61,14 +62,14 @@ export function ruleEditor(rule, frame, n, onChange, onDelete) {
     return el('label', { className: `rule-opt${r.checked ? ' on' : ''}` }, r, el('span', {}, el('b', { textContent: label }), hint ? el('small', { textContent: hint }) : null));
   };
   const mode = el('div', { className: 'rule-opts' },
-    radio(`mode-${n}`, 'fill', 'Každé vybrané místo obsadí některý z nich', 'Např. kříž: na 4 místa dole patří kterékoli 4 hrany ze skupiny.'),
-    radio(`mode-${n}`, 'within', 'Všechny musí být v těchto místech', 'Např. separace: všechny hrany s barvou dole musí být dole.'));
+    radio(`mode-${uid}`, 'fill', 'Každé vybrané místo obsadí některý z nich', 'Např. kříž: na 4 místa dole patří kterékoli 4 hrany ze skupiny.'),
+    radio(`mode-${uid}`, 'within', 'Všechny musí být v těchto místech', 'Např. separace: všechny hrany s barvou dole musí být dole.'));
 
   // natočení
   const ori = el('div', { className: 'rule-opts' },
-    radio(`ori-${n}`, 'any', 'Jakkoli', null),
-    radio(`ori-${n}`, 'color', 'Nálepkou barvy na stranu', 'Např. bílou nebo žlutou dolů.'),
-    radio(`ori-${n}`, 'solved', 'Správně (jako ve složené kostce)', 'Hrany podle EO, rohy barvou nahoře/dole nahoru či dolů.'));
+    radio(`ori-${uid}`, 'any', 'Jakkoli', null),
+    radio(`ori-${uid}`, 'color', 'Nálepkou barvy na stranu', 'Např. bílou nebo žlutou dolů.'),
+    radio(`ori-${uid}`, 'solved', 'Správně (jako ve složené kostce)', 'Hrany podle EO, rohy barvou nahoře/dole nahoru či dolů.'));
   const oriColors = rule.oriColors?.length ? rule.oriColors : rule.colors ?? [];
   const oriMore = rule.ori === 'color' ? el('div', { className: 'rule-sub' },
     row('nálepka', ...VIEW.map((v) => chip(color(v), oriColors.includes(v), () => set({ oriColors: toggle(oriColors, v) }), map[v]))),

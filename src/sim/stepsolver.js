@@ -8,7 +8,7 @@
 //   stepOpts[i]: { mode: 'auto' | 'set' | 'search', view: 'speed' | 'efficient' | 'balanced', time (ms) }
 
 import { getPuzzle } from '../puzzles/index.js';
-import { prepare, NEAR_LIMIT } from '../search/engine.js';
+import { prepare, search as engineSearch, NEAR_LIMIT } from '../search/engine.js';
 import { explore, makeTracker } from '../search/explore.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
@@ -37,9 +37,10 @@ function memoryCache(maxBytes = 160 * 2 ** 20) {
 /**
  * Vytvoří řešič kroků pro plán.
  * @param {object} plan viz výše
- * @param {{nearLimit?: number, virtual?: boolean}} [opts] virtual = čas podle práce (testy)
+ * @param {{nearLimit?: number, virtual?: boolean, quick?: boolean}} [opts] virtual = čas podle práce (testy),
+ *   quick = první nejkratší řešení bez vylepšování (zamíchání pro nácvik)
  */
-export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4), virtual = false } = {}) {
+export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4), virtual = false, quick = false } = {}) {
   const config = { ...(plan.ergonomics ?? {}), triggers: buildTriggers() };
   const cache = memoryCache();
   const memo = new Map(); // stejný stav a krok → stejné řešení (opakovaná simulace)
@@ -67,7 +68,10 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     if (virtual) clock.setVirtual(true, 1);
     try {
       const full = prepare({ puzzle: P, constraints, moves, targets: [target], nearLimit, cache });
-      explore({
+      if (quick) {
+        const res = engineSearch(full, state, { maxLength: 20, extraDepth: 0, maxResults: 1, timeLimit: 20000 * timeScale });
+        for (const alg of res.solutions) handlers.onSolution(alg);
+      } else explore({
         P, start: state, target, constraints, moves, held, auf: null,
         options: { lambda: plan.lambda ?? 0.5, maxLength: 20, extraDepth: 1, maxResults: 800, timeLimit: (opts.time ?? 3000) * timeScale, nearLimit, library: (step.candidates ?? []).map((c) => c.model) },
         config, handlers, tracker, scoreOf, onTable: () => {}, t0: clock.now(), full, cache,

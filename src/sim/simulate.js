@@ -124,6 +124,9 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
   const solves = [];
   count = starts?.length ?? count;
   for (let k = 0; k < count && !stopped(); k++) {
+    // nová makroúloha: WeakRef (kernel.js) drží úlohy hledání do konce úlohy – bez
+    // pauzy by se při dlouhém běhu v jednom vlákně (Node) neuvolňovaly
+    if (k) await new Promise((r) => setTimeout(r, 0));
     let state = starts ? starts[k] : practiceState({}, rand);
     const start = state;
     const out = [];
@@ -177,26 +180,35 @@ const quantile = (xs, q) => {
 };
 
 /**
- * Model člověka pro odhad času (simulace najde u každého kroku skoro nejlepší řešení,
- * člověk ne). Intuitivní kroky (kříž, páry, bloky – tahy se vymýšlejí za běhu) stojí
- * člověka víc tahů než hledání a jdou pomaleji (dívá se dopředu); naučené algoritmy
- * mají tahy jako v simulaci a jdou plnou rychlostí. Koeficienty jsou nastavené tak,
- * aby vestavěné CFOP, Roux a ZZ vyšly v tazích jako u skutečných skladačů
- * (bench/references.mjs, src/sim/references.js).
+ * Model člověka pro odhad času. Simulace najde u každého kroku skoro nejlepší řešení,
+ * člověk ne – a různé druhy kroků skládá různě rychle:
+ *   alg        naučený algoritmus (OLL, PLL, CMLL…): tahy jako v simulaci, plné tempo
+ *   intuitive  intuitivní krok (kříž, páry, EOLine): tahy jako v simulaci, o něco pomaleji
+ *   blocks     stavění bloků (Roux, bloky ZZ): víc tahů a pomalejší tempo (plánování)
+ * Koeficienty jsou nastavené podle skutečných skladačů: tahy vestavěných metod vyjdou
+ * v rozmezí rekonstrukcí (CFOP 55–60, Roux 45–50, ZZ 50–58) a při stejné úrovni skladače
+ * vyjdou CFOP a Roux časově podobně, ZZ o něco pomaleji – jako se shoduje komunita.
  */
-export const HUMAN = { intuitiveMoves: 1.15, intuitiveTps: 0.8 };
+export const HUMAN = {
+  moves: { alg: 1, intuitive: 1, blocks: 1.2 },
+  tps: { alg: 1, intuitive: 0.9, blocks: 0.55 },
+};
+const kindOf = (kind) => (HUMAN.moves[kind] ? kind : 'intuitive');
 
-/** Kolik tahů na krok udělá člověk (intuitivní krok × koeficient). */
-export const humanMoves = (moves, kind) => (kind === 'intuitive' ? moves * HUMAN.intuitiveMoves : moves);
+/** Kolik tahů na krok udělá člověk. */
+export const humanMoves = (moves, kind) => moves * HUMAN.moves[kindOf(kind)];
+
+/** Tempo člověka v kroku (tahů za sekundu) při celkové rychlosti tps. */
+export const humanTps = (tps, kind) => tps * HUMAN.tps[kindOf(kind)];
 
 /**
- * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy člověka / TPS,
- * u intuitivních kroků pomaleji). Přeskočený krok nestojí nic.
+ * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy člověka / jeho
+ * tempo v kroku). Přeskočený krok nestojí nic.
  */
 export function stepTime(item, { tps = 4, recog = 0, kind = 'alg' } = {}) {
   if (!item || item.source === 'skip') return 0;
   if (Number.isFinite(item.time)) return recog + item.time / 1000 + (item.extra ?? 0) / tps;
-  return recog + humanMoves(item.length, kind) / (kind === 'intuitive' ? tps * HUMAN.intuitiveTps : tps);
+  return recog + humanMoves(item.length, kind) / humanTps(tps, kind);
 }
 
 /**
