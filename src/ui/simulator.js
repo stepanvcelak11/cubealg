@@ -475,9 +475,14 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       el('div', { className: 'sim-cmp' },
         el('div', { className: 'sim-cmp-pick' }, pick(cmpLeft, (v) => { cmpLeft = v; const all = storage.get(OPTS) ?? {}; storage.set(OPTS, { ...all, cmpLeft: v }); }, 'Metoda ke srovnání')),
         el('div', { className: 'sim-cmp-pick mine' }, pick(cmpRight, (v) => { cmpRight = v; }, 'Tvoje metoda'))),
-      el('div', { className: 'sim-cmp-total' },
-        el('b', { className: diff < -0.05 ? 'ok' : diff > 0.05 ? 'ko' : '', textContent: `${diff <= 0 ? '−' : '+'}${fmt(Math.abs(diff))} tahů (${diff <= 0 ? '−' : '+'}${Math.round(Math.abs(diff / L.moves) * 100)} %)` }),
-        el('small', { textContent: `vpravo proti vlevo · čas ${estTime(R) <= estTime(L) ? '−' : '+'}${fmt(Math.abs(estTime(R) - estTime(L)), 2)} s` })),
+      (() => {
+        // hlavně odhad času (počítá s člověkem), tahy simulace až vedle
+        const tL = estTime(L), tR = estTime(R), dt = tR - tL;
+        const sign = (x) => (x <= 0 ? '−' : '+');
+        return el('div', { className: 'sim-cmp-total' },
+          el('b', { className: dt < -0.05 ? 'ok' : dt > 0.05 ? 'ko' : '', textContent: `${sign(dt)}${fmt(Math.abs(dt), 2)} s (${sign(dt)}${Math.round(Math.abs(dt / tL) * 100)} %)` }),
+          el('small', { textContent: `odhad času vpravo proti vlevo · tahy člověka ${sign(humanOf(R) - humanOf(L))}${fmt(Math.abs(humanOf(R) - humanOf(L)))} · simulace ${sign(diff)}${fmt(Math.abs(diff))}` }));
+      })(),
       el('table', { className: 'compare sim-cmp-table' },
         el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
         el('tbody', {}, ...metrics.map(([label, f, show, lower]) => el('tr', {}, el('td', { textContent: label }),

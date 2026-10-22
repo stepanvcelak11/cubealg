@@ -1007,7 +1007,7 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   assert.equal(hist[0].n, 10);
   // vpravo tvoje simulace, vlevo vestavěná metoda
   assert.match(await p.locator('.sim-cmp-pick.mine select option:checked').innerText(), /Základní/);
-  assert.match(await p.locator('.sim-cmp-total').innerText(), /tahů \([−+]\d+ %\)/);
+  assert.match(await p.locator('.sim-cmp-total').innerText(), /[−+]\d+,\d+ s \([−+]\d+ %\)[\s\S]*tahy člověka/);
   assert.equal(await p.locator('.sim-cmp-col').count(), 2);
   await p.locator('.sim-example summary', { hasText: 'Ukázková složení' }).tap();
   assert.match(await p.locator('.sim-example').first().innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);

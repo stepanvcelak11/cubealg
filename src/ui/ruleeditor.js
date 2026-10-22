@@ -9,7 +9,31 @@
 import { el } from './dom.js';
 import { icon } from './icons.js';
 import { frameMap, COLOR_NAME } from './parts.js';
-import { describeRule, groupPieces, PLACE_LAYERS, RULE_PRESETS } from '../core/rules.js';
+import { describeRule, groupPieces, compileRule, PLACE_LAYERS, RULE_PRESETS } from '../core/rules.js';
+import { FACELETS, SLOTS, SLOT_OF } from '../core/geometry.js';
+import { holdFromFaces } from '../core/hold.js';
+import { netSvg } from './netsvg.js';
+
+const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
+
+/**
+ * Síť kostky s místy pravidla: kam má mířit nálepka (barva skupiny, u „jakkoli“
+ * obrys), zbytek míst šedě, středy pro orientaci. Natočená jako při skládání.
+ */
+function ruleNet(rule, frame, map) {
+  const stickers = FACELETS.map((f) => ({ color: f.face, style: SLOTS[SLOT_OF[f.index]].type === 'center' ? 'solid' : 'faint' }));
+  for (const s of stickers) if (s.style === 'faint') s.color = 'X';
+  const c = compileRule({ ...rule, mode: 'fill' }, map)['#classes']?.[0];
+  const colors = (rule.ori === 'color' && rule.oriColors?.length ? rule.oriColors : rule.colors ?? []).map((v) => map[v]);
+  // barva na místě: ta ze skupiny, která na tu stranu patří (dole bílá, nahoře žlutá…), jinak první
+  const shown = (p) => (colors.includes(FACELETS[p].face) ? FACELETS[p].face : colors[0] ?? 'X');
+  for (const pl of c?.places ?? []) {
+    for (const k of SLOTS[SLOT_OF[pl[0]]].facelets) stickers[k] = { color: 'X', style: 'solid' };
+    for (const p of pl) stickers[p] = { color: shown(p), style: rule.ori === 'color' ? 'solid' : 'dashed' };
+  }
+  return Object.assign(el('div', { className: 'rule-net', title: 'Síť kostky: nahoře horní strana, uprostřed boky, dole spodní strana' }),
+    { innerHTML: netSvg(stickers, holdFromFaces(OPPOSITE[frame.down], frame.front)) });
+}
 
 const VIEW = ['D', 'U', 'F', 'B', 'R', 'L'];
 const WHERE = { D: 'dole', U: 'nahoře', F: 'vpředu', B: 'vzadu', R: 'vpravo', L: 'vlevo' };
@@ -92,5 +116,7 @@ export function ruleEditor(rule, frame, n, onChange, onDelete) {
     el('span', { className: 'rule-label', textContent: 'Kam' }), places,
     el('span', { className: 'rule-label', textContent: 'Jak' }), mode,
     el('span', { className: 'rule-label', textContent: 'Natočení' }), ori, oriMore,
-    el('p', { className: `rule-say${problems.length ? ' bad' : ''}`, textContent: problems.length ? problems.join(' ') : describeRule(rule, map) }));
+    el('div', { className: 'rule-out' },
+      problems.length ? null : ruleNet(rule, frame, map),
+      el('p', { className: `rule-say${problems.length ? ' bad' : ''}`, textContent: problems.length ? problems.join(' ') : describeRule(rule, map) })));
 }

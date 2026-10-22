@@ -1157,6 +1157,9 @@ body.timing .round-panel { visibility: hidden; }
 .rule-opt.on { box-shadow: inset 0 0 0 2px var(--accent); }
 .rule-opt input { margin-top: 3px; accent-color: var(--accent); }
 .rule-sub { display: grid; gap: 4px; padding-left: 8px; }
+.rule-out { display: flex; align-items: center; gap: 10px; }
+.rule-net { flex: none; line-height: 0; }
+.rule-out .rule-say { flex: 1; }
 .rule-say { margin: 2px 0 0; padding: 8px 10px; border-radius: 12px; background: var(--accent-soft); font-size: 0.84rem; font-weight: 700; }
 .rule-say.bad { background: var(--sun-soft); }
 .rule-more { justify-self: start; font-size: 0.78rem; }
@@ -1189,6 +1192,7 @@ body.timing .round-panel { visibility: hidden; }
 .sim-real summary { cursor: pointer; font-weight: 800; font-size: 0.9rem; }
 .sim-real .compare td { font-size: 0.8rem; }
 .sim-real-table { width: 100%; }
+.sim-real-table td, .sim-real-table th { text-align: left; vertical-align: top; }
 .sim-sources a { color: var(--accent); overflow-wrap: anywhere; }
 .sim-head h2 { margin: 0; font-family: var(--display); font-size: 1.6rem; }
 .sim-head .hint { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
