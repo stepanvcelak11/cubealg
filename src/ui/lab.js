@@ -1661,6 +1661,11 @@ export function initLab({ onSub, openSet } = {}) {
 }
 
 /** Současné zadání Labu (pro obrázek kroku v průvodci metodou). */
+/** Hodnocení a poměr pohledů z Labu (pro simulátor metody). */
+export function labErgo() {
+  return { ergo: ui.ergo, lambda };
+}
+
 export function labTask() {
   return { ...taskSnapshot(), puzzle: model.id, ...(ui.chosen ? { alg: ui.chosen } : {}) };
 }

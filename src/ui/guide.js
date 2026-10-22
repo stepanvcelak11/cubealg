@@ -13,7 +13,7 @@ import { stepParts, partsBefore, partsCube, partsEditor, frameEditor, describePa
 
 let dialog = null;
 let editing = false;
-let deps = { labTask: () => null, train: () => {}, practice: null };
+let deps = { labTask: () => null, train: () => {}, practice: null, simulate: null };
 
 /** Text s odstavci (prázdný řádek) a zalomeními – bez HTML (data můžou být cizí). */
 function richText(text) {
@@ -231,16 +231,19 @@ export function openGuide(opts = {}) {
     const edit = el('button', { type: 'button', className: 'secondary small guide-edit' });
     const shareBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-share', title: 'Poslat metodu i s algoritmy jako soubor' }),
       { innerHTML: `${icon('share', { size: 16 })}<span>Sdílet</span>` });
+    const simBtn = Object.assign(el('button', { type: 'button', className: 'secondary small guide-sim', title: 'Složit náhodná zamíchání krok po kroku podle metody a spočítat tahy a náročnost' }),
+      { innerHTML: `${icon('stats', { size: 16 })}<span>Simulovat</span>` });
     const printBtn = Object.assign(el('button', { type: 'button', className: 'icon-btn guide-print', title: 'Vytisknout nebo uložit jako PDF', ariaLabel: 'Vytisknout nebo uložit jako PDF' }),
       { innerHTML: icon('print', { size: 20 }) });
     dialog = el('dialog', { className: 'help-dialog guide-dialog' },
       el('div', { className: 'guide-head' },
         el('div', {}, el('small', { className: 'hint', textContent: 'Průvodce metodou' }), el('h2', { className: 'guide-title' })),
-        edit, shareBtn, printBtn, close),
+        edit, simBtn, shareBtn, printBtn, close),
       el('div', { className: 'guide-body' }));
     close.onclick = () => dialog.close();
     edit.onclick = () => { editing = !editing; render(); };
     shareBtn.onclick = share;
+    simBtn.onclick = () => deps.simulate?.();
     printBtn.onclick = () => {
       if (editing) { editing = false; render(); }
       document.body.classList.add('printing-guide');

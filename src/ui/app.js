@@ -5,7 +5,8 @@ import { storage } from './dom.js';
 import { initTimer, practiceStep } from './timer.js';
 import { initStats, showStats } from './stats.js';
 import { initTrainer, showTrainer, trainSetTo } from './trainer.js';
-import { initLab, showLab, labTask, labFixed } from './lab.js';
+import { initLab, showLab, labTask, labFixed, labErgo } from './lab.js';
+import { openSimulator } from './simulator.js';
 import { initSettings } from './settings.js';
 import { initMethods } from './methods.js';
 import { takeShared, unpackTask, toast } from './share.js';
@@ -50,6 +51,7 @@ initMethods({
   labTask,
   train: (id) => { trainSetTo(id); showPage('trainer'); },
   practice: (id) => { practiceStep(id); showPage('timer'); },
+  simulate: () => openSimulator(labErgo()),
 });
 initTimer({ isActive: () => page === 'timer' });
 initStats();
