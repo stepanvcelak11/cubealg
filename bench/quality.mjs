@@ -4,6 +4,7 @@
 //
 //   node bench/quality.mjs [sekund na případ] [filtr názvu] [lib] [real]
 //   lib  = knihovna ze známých algoritmů ostatních případů (ne toho hledaného)
+//   js   = bez jádra WebAssembly (jen JS verze hledání)
 //   real = skutečný čas (jinak virtuální: čas podle prohledaných stavů – výsledky jsou
 //          při každém spuštění stejné, nezávisle na rychlosti a zatížení počítače)
 
@@ -13,6 +14,7 @@ import { explore, makeTracker, targetsOf } from '../src/search/explore.js';
 import { scoreFor } from '../src/ergonomics/puzzles.js';
 import { buildTriggers } from '../src/ergonomics/triggers.js';
 import { clock } from '../src/search/clock.js';
+import { initKernel } from '../src/search/kernel.js';
 
 const P = getPuzzle('333');
 const seconds = Number(process.argv[2] ?? 10);
@@ -86,6 +88,7 @@ export function solve(cs, { seconds: sec = seconds, options = {}, real = realTim
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (!flags.includes('js')) await initKernel();
   let sumRatio = 0, n = 0, wins = 0;
   for (const cs of CASES.filter((c) => !c.skip && c.name.includes(filter))) {
     const r = solve(cs, { options: useLib ? { library: CASES.filter((o) => o !== cs).map((o) => o.ref) } : {} });

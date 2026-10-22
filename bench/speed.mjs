@@ -6,6 +6,7 @@ import { getPuzzle } from '../src/puzzles/index.js';
 import { prepare, search, searchCost, costTables, NEAR_LIMIT } from '../src/search/engine.js';
 import { costModel, lowerCosts, targetsOf } from '../src/search/explore.js';
 import { buildTriggers } from '../src/ergonomics/triggers.js';
+import { initKernel, disableKernel } from '../src/search/kernel.js';
 
 const P = getPuzzle('333');
 const movesOf = (bases) => bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
@@ -38,6 +39,8 @@ export function measure(alg, { depth = 9, length = 11, bound = 12 } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // node bench/speed.mjs js = bez jádra WebAssembly
+  if (process.argv[2] === 'js') disableKernel(); else console.log('jádro WebAssembly:', await initKernel());
   for (const [name, alg] of [['T-perm', "R U R' U' R' F R2 U' R' U' R U R' F'"], ['Jb-perm', "R U R' F' R U R' U' R' F R2 U' R'"]]) {
     const r = measure(alg);
     console.log(`${name.padEnd(8)} příprava ${r.prep} ms · úplné ${r.full.nodes} uzlů / ${r.full.ms} ms = ${r.full.rate}/ms · pohodlí ${r.cost.nodes} uzlů / ${r.cost.ms} ms = ${r.cost.rate}/ms · s databází ceny ${r.hcost.nodes} uzlů / ${r.hcost.ms} ms (příprava ${r.hprep} ms)`);

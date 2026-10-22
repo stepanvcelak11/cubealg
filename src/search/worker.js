@@ -24,6 +24,7 @@ import { prepare, tableKeys, costTableKeys, NEAR_LIMIT } from './engine.js';
 /** Od jakého časového limitu se velké databáze vyplatí postavit (jinak jen uložené). */
 const BIG_TABLE_TIME = 30000;
 import { openTableCache } from './tablecache.js';
+import { initKernel } from './kernel.js';
 import { prepareSq1, searchSq1 } from './sq1engine.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
@@ -32,9 +33,12 @@ import { aufCost } from '../ergonomics/score.js';
 import { compileGoal } from '../core/constraints.js';
 import { explore, makeTracker, subsetsOf, targetsOf, costModel, lowerCosts } from './explore.js';
 
+// jádro WebAssembly (bez něj hledá JS verze se stejnými výsledky)
+const kernel = initKernel();
+
 self.onmessage = ({ data }) => {
   if (data.type !== 'search') return;
-  run(data).catch((e) => self.postMessage({ type: 'error', message: e.message }));
+  kernel.then(() => run(data)).catch((e) => self.postMessage({ type: 'error', message: e.message }));
 };
 
 async function run({ puzzle: id = '333', start, target, constraints, moves, held, auf, shard, seeds, options, ergonomics, sq1 }) {

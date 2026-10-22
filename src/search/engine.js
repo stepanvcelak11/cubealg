@@ -20,6 +20,7 @@
 import { clock } from './clock.js';
 import { MoveSet } from '../core/moveset.js';
 import { CUBE3 } from '../puzzles/cube3.js';
+import { kernelFits, idaRoot, costSearch, buildTableKernel, buildCostTableKernel, buildNearKernel } from './kernel.js';
 
 // Pro každý hlavolam: typ dílku → seznam pozic (nálepek) daného typu
 // a pozice → index v seznamu svého typu.
@@ -225,6 +226,8 @@ function buildTable(group, moveCount, invTrans) {
   const k = group.length;
   const sizes = group.map((p) => p.size);
   const total = sizes.reduce((a, b) => a * b, 1);
+  const fast = buildTableKernel(group, moveCount, invTrans);
+  if (fast) return { pieces: group.map((p) => p.name), sizes, dist: fast };
   const dist = new Uint8Array(total).fill(UNREACHABLE);
   const digits = new Uint8Array(k);
   const decode = (idx) => {
@@ -273,6 +276,8 @@ function buildCostTable(group, moveCount, invTrans, weights) {
   const k = group.length;
   const sizes = group.map((p) => p.size);
   const total = sizes.reduce((a, b) => a * b, 1);
+  const fast = buildCostTableKernel(group, moveCount, invTrans, weights);
+  if (fast) return { pieces: group.map((p) => p.name), sizes, dist: fast };
   const INF = 0xffff;
   const dist = new Uint16Array(total).fill(INF);
   const digits = new Uint8Array(k);
@@ -342,7 +347,7 @@ export function costTables(problem, floors, { q = 0.05, cache } = {}) {
   const ids = groups.map((g) => Int32Array.from(g, (p) => problem.pieceIndex.get(p.name)));
   const sizes = tables.map((t) => Int32Array.from(t.sizes));
   const dists = tables.map((t) => t.dist);
-  return (v) => {
+  const hcost = (v) => {
     let h = 0;
     for (let t = 0; t < dists.length; t++) {
       const id = ids[t], sz = sizes[t];
@@ -353,6 +358,8 @@ export function costTables(problem, floors, { q = 0.05, cache } = {}) {
     }
     return h === 0xffff ? Infinity : h * q;
   };
+  hcost.data = { ids, sizes, dists, q }; // pro jádro (kernel.js)
+  return hcost;
 }
 
 /**
@@ -378,8 +385,9 @@ function buildNear(pieces, moveCount, invTrans, limit) {
   while (cap < limit / 0.7 && cap * 2 * n <= 48 * 2 ** 20) cap *= 2;
   limit = Math.min(limit, Math.floor(cap * 0.7));
   const mask = cap - 1;
-  const keys = new Uint8Array(cap * n);
-  const dist = new Uint8Array(cap).fill(UNREACHABLE);
+  const fast = buildNearKernel(pieces, moveCount, invTrans, limit, cap);
+  let keys = new Uint8Array(fast ? 0 : cap * n);
+  let dist = fast ? null : new Uint8Array(cap).fill(UNREACHABLE);
   let count = 0;
   const hash = (v, off) => {
     let h = 2166136261;
@@ -399,60 +407,13 @@ function buildNear(pieces, moveCount, invTrans, limit) {
     }
   };
 
-  // vrstva 0: cílové stavy
-  let frontier = new Uint8Array(goals * n);
-  {
-    const digits = new Array(n).fill(0);
-    let at = 0;
-    for (const okValues of products) {
-      const g0 = okValues.reduce((a, vs) => a * vs.length, 1);
-      for (let g = 0; g < g0; g++) {
-        let r = g;
-        for (let i = n - 1; i >= 0; i--) { const len = okValues[i].length; digits[i] = okValues[i][r % len]; r = Math.floor(r / len); }
-        frontier.set(digits, at * n);
-        const i = slot(frontier, at * n);
-        if (dist[i] === UNREACHABLE) { keys.set(digits, i * n); dist[i] = 0; count++; at++; }
-      }
-    }
-    frontier = frontier.subarray(0, at * n);
-  }
   let radius = 0;
-  const invs = pieces.map((p) => invTrans[p.kind]);
-  const sizes = pieces.map((p) => p.size);
-  const pred = new Uint8Array(n);
-  for (;;) {
-    const states = frontier.length / n;
-    // další vrstva se musí vejít celá, jinak by tabulka neplatila pro vzdálenost radius + 1
-    let next = new Uint8Array(Math.min(states * moveCount, limit) * n);
-    let added = 0, full = false;
-    for (let s = 0; s < states && !full; s++) {
-      const off = s * n;
-      for (let m = 0; m < moveCount; m++) {
-        for (let i = 0; i < n; i++) pred[i] = invs[i][m * sizes[i] + frontier[off + i]];
-        const at = slot(pred, 0);
-        if (dist[at] !== UNREACHABLE) continue;
-        if (count >= limit) { full = true; break; }
-        keys.set(pred, at * n);
-        dist[at] = radius + 1;
-        count++;
-        if (added * n >= next.length) { const bigger = new Uint8Array(next.length * 2); bigger.set(next); next = bigger; }
-        next.set(pred, added * n);
-        added++;
-      }
-    }
-    if (full) {
-      // nedokončenou vrstvu zahodit
-      for (let i = 0; i < cap; i++) if (dist[i] === radius + 1) dist[i] = UNREACHABLE - 1;
-      break;
-    }
-    if (!added) break;
-    radius += 1;
-    frontier = next.subarray(0, added * n);
-  }
+  if (fast) ({ keys, dist, radius, count } = fast);
+  else radius = layers();
   // Pozn.: sloty z nedokončené vrstvy (UNREACHABLE - 1) zůstávají obsazené, aby
   // nepřerušily řetězce sond; při hledání se berou jako „mimo tabulku“.
   return {
-    radius,
+    radius, keys, dist, mask, // surová tabulka pro jádro (kernel.js)
     /** Vzdálenost stavu od cíle, nebo -1 (dál než radius). */
     get(v) {
       const d = dist[slot(v, 0)];
@@ -460,6 +421,61 @@ function buildNear(pieces, moveCount, invTrans, limit) {
     },
     size: count,
   };
+
+  // zpětné BFS po vrstvách (bez jádra WebAssembly); vrací dosažený poloměr
+  function layers() {
+    // vrstva 0: cílové stavy
+    let frontier = new Uint8Array(goals * n);
+    {
+      const digits = new Array(n).fill(0);
+      let at = 0;
+      for (const okValues of products) {
+        const g0 = okValues.reduce((a, vs) => a * vs.length, 1);
+        for (let g = 0; g < g0; g++) {
+          let r = g;
+          for (let i = n - 1; i >= 0; i--) { const len = okValues[i].length; digits[i] = okValues[i][r % len]; r = Math.floor(r / len); }
+          frontier.set(digits, at * n);
+          const i = slot(frontier, at * n);
+          if (dist[i] === UNREACHABLE) { keys.set(digits, i * n); dist[i] = 0; count++; at++; }
+        }
+      }
+      frontier = frontier.subarray(0, at * n);
+    }
+    let radius = 0;
+    const invs = pieces.map((p) => invTrans[p.kind]);
+    const sizes = pieces.map((p) => p.size);
+    const pred = new Uint8Array(n);
+    for (;;) {
+      const states = frontier.length / n;
+      // další vrstva se musí vejít celá, jinak by tabulka neplatila pro vzdálenost radius + 1
+      let next = new Uint8Array(Math.min(states * moveCount, limit) * n);
+      let added = 0, full = false;
+      for (let s = 0; s < states && !full; s++) {
+        const off = s * n;
+        for (let m = 0; m < moveCount; m++) {
+          for (let i = 0; i < n; i++) pred[i] = invs[i][m * sizes[i] + frontier[off + i]];
+          const at = slot(pred, 0);
+          if (dist[at] !== UNREACHABLE) continue;
+          if (count >= limit) { full = true; break; }
+          keys.set(pred, at * n);
+          dist[at] = radius + 1;
+          count++;
+          if (added * n >= next.length) { const bigger = new Uint8Array(next.length * 2); bigger.set(next); next = bigger; }
+          next.set(pred, added * n);
+          added++;
+        }
+      }
+      if (full) {
+        // nedokončenou vrstvu zahodit
+        for (let i = 0; i < cap; i++) if (dist[i] === radius + 1) dist[i] = UNREACHABLE - 1;
+        break;
+      }
+      if (!added) break;
+      radius += 1;
+      frontier = next.subarray(0, added * n);
+    }
+    return radius;
+  }
 }
 
 /** Inverzní přechody (předchůdce hodnoty po tahu) pro každý typ dílku. */
@@ -578,7 +594,7 @@ export function evaluator(problem) {
     for (let k = 0; k < rest.length; k++) { const i = rest[k]; next[i] = pTrans[i][m * pSize[i] + cur[i]]; }
     return true;
   };
-  return { goalOf, heuristic, estimate, advance, near, nearRadius };
+  return { goalOf, heuristic, estimate, advance, near, nearRadius, order, tableIdx, rest };
 }
 
 /**
@@ -669,6 +685,28 @@ export function search(problem, start, {
     }
   };
 
+  // stejné hledání v jádru WebAssembly (kernel.js), když je načtené
+  const wasm = kernelFits(problem) && maxLength < 60;
+  const ev = wasm ? evaluator(problem) : null;
+  const kernelRoot = (r) => {
+    const st = { nodes, branch, done: doneBranches };
+    const onBudget = () => {
+      clock.nodes(8192);
+      if (clock.now() - t0 > timeLimit) { stopped = 'time'; return true; }
+      onProgress?.({ depth: bound, nodes: st.nodes, found: solutions.length });
+      return false;
+    };
+    const onFound = (p, goal) => {
+      const alg = Array.from(p, (i) => names[i]).join(' ');
+      solutions.push(alg);
+      onSolution?.(alg, bound, { pre: r.pre, target: goal });
+      if (solutions.length >= maxResults) { stopped = 'results'; return true; }
+      return false;
+    };
+    idaRoot(problem, ev, r.v, bound, skipNow, shard, st, onBudget, onFound);
+    nodes = st.nodes; branch = st.branch; doneBranches = st.done;
+  };
+
   let optimal = null;
   const first = Math.max(1, h0, minLength);
   let cleared = first;
@@ -680,8 +718,11 @@ export function search(problem, start, {
     for (const r of roots) {
       if (r.h > bound) { branch += moveCount; doneBranches = branch; continue; }
       root = r;
-      stack[0].set(r.v);
-      dfs(0, -1);
+      if (wasm) kernelRoot(r);
+      else {
+        stack[0].set(r.v);
+        dfs(0, -1);
+      }
       if (stopped) break;
     }
     if (optimal === null && solutions.length) optimal = bound;
@@ -776,12 +817,27 @@ export function searchCost(problem, start, { cost, minMove, bound, length, hcost
     }
     if (depth === 0) done = Math.max(done, (root.index + 1) * moveCount);
   };
-  for (const r of roots) {
-    if (goalOf(r.v) >= 0 || (r.index + 1) * moveCount <= skip) continue;
-    root = r;
-    stack[0].set(r.v);
-    dfs(0, -1, cost.start, r.g0 ?? 0);
-    if (stopped) break;
+  if (kernelFits(problem) && length < 60) {
+    // stejné hledání v jádru WebAssembly (kernel.js)
+    const st = { nodes: 0, found: 0, bound, done, skip };
+    const list = roots.map((r) => ({ ...r, skipRoot: goalOf(r.v) >= 0 || (r.index + 1) * moveCount <= skip }));
+    const onBudget = () => {
+      clock.nodes(8192);
+      if (clock.now() - t0 > timeLimit) { stopped = 'time'; return true; }
+      onProgress?.({ nodes: st.nodes });
+      return false;
+    };
+    costSearch(problem, evaluator(problem), { cost, minMove, length, hcost, finish, shard }, list, st, onBudget,
+      (p, total, goal, r) => onSolution?.(p.map((i) => names[i]).join(' '), total, { pre: r.pre, target: goal }));
+    ({ nodes, found, bound, done } = st);
+  } else {
+    for (const r of roots) {
+      if (goalOf(r.v) >= 0 || (r.index + 1) * moveCount <= skip) continue;
+      root = r;
+      stack[0].set(r.v);
+      dfs(0, -1, cost.start, r.g0 ?? 0);
+      if (stopped) break;
+    }
   }
   clock.nodes(nodes % 8192);
   return { reason: stopped ?? 'done', nodes, found, bound, branch: done, elapsed: clock.now() - t0 };
