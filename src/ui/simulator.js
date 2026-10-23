@@ -67,10 +67,10 @@ function scrambleOf(start) {
 
 let deps = { lab: () => ({ ergo: {}, lambda: 0.5 }), onEdit: null };
 let current = null; // { running(), destroy() }
-let pendingHarvest = null; // id kroku: po otevření testu ho spustit a nalezená řešení uložit jako sadu
+let pendingHarvest = null; // id kroků: po otevření testu ho spustit a nalezená řešení uložit jako jejich sady
 
-/** Otevře test tak, že ho spustí a řešení kroku `stepId` uloží jako jeho sadu algoritmů. */
-export function harvestStep(stepId) { pendingHarvest = stepId; }
+/** Otevře test tak, že ho spustí a řešení kroku (nebo kroků) uloží jako jejich sady algoritmů. */
+export function harvestStep(stepIds) { pendingHarvest = [stepIds].flat(); }
 const HARVEST_MAX = 800; // nejvýš tolik různých řešení na krok
 
 /**
@@ -113,7 +113,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   host.append(body);
   let alive = true;
   const harvest = new Map(); // krok → Map(algoritmus → { n, a, b, hold })
-  let harvestTarget = null;
+  let harvestTargets = [];
   let running = false;
   let pool = [];
   let awake = null;
@@ -180,30 +180,38 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   const realismOut = el('small', { className: 'sim-realism-out', textContent: '' });
   const R = () => Number(realism.value) / 100;
   realismOut.textContent = realismText();
-  const go = el('button', { type: 'button', className: 'primary', textContent: 'Spustit simulaci' });
+  const go = el('button', { type: 'button', className: 'primary sim-go', textContent: 'Spustit test' });
   const more = el('button', { type: 'button', className: 'secondary', textContent: 'Přidat zamíchání', hidden: true, title: 'Pokračuje dalšími zamícháními (stejné semínko) a výsledky doplní' });
   const stop = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
   const status = el('p', { className: 'status sim-status' });
   const bar = el('div', { className: 'gen-bar' });
   const track = el('div', { className: 'gen-track sim-track', hidden: true }, bar);
   const banner = el('div', { className: 'gen-resume', hidden: true });
-  const results = el('div', { className: 'sim-results' });
+  const results = el('div', { className: 'sim-results sim-card' });
   const history = el('div', { className: 'sim-history' });
-  const compare = el('div', { className: 'sim-compare' });
+  const compare = el('div', { className: 'sim-compare sim-card' });
+  const head = (n, title, hint, extra) => el('header', { className: 'bld-q sim-card-head' }, el('span', { className: 'bld-qn', textContent: n }),
+    el('div', {}, el('b', { textContent: title }), hint ? el('small', { textContent: hint }) : null), extra ?? null);
 
   body.append(
-    el('p', { className: 'hint', textContent: 'Náhodná zamíchání se složí krok po kroku podle tvé metody. Krok vyřeší algoritmus z tvé sady, když na případ nějaký máš, jinak ho najde hledání (podle tvých vah ergonomie). Tahy se počítají včetně natočení vrstev.' }),
     banner,
-    el('div', { className: 'sim-section-head' }, el('h3', { textContent: 'Kroky' }), editBtn('Upravit kroky', 'secondary small')),
-    stepList,
-    el('h3', { textContent: 'Simulace' }),
-    el('div', { className: 'grid-fields' },
-      field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
-      field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
-      field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'),
-      field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)'),
-      el('label', { className: 'field sim-realism', title: 'Počítač najde u intuitivních kroků skoro nejlepší řešení; člověk dělá víc tahů a pomaleji. Posuň k „člověk“ pro reálnější odhad.' }, 'Realismus odhadu', realism, realismOut)),
-    el('div', { className: 'row-btns' }, go, more, stop), track, status, results, compare, history);
+    el('section', { className: 'sim-card sim-setup' },
+      head('1', 'Spustit test', 'Náhodná zamíchání se složí krok po kroku podle tvé metody – algoritmem ze sady, jinak hledáním. Výsledek: tahy, odhad času a srovnání s CFOP, Roux a ZZ.'),
+      el('div', { className: 'grid-fields' },
+        field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
+        field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)'),
+        el('label', { className: 'field sim-realism', title: 'Počítač najde u intuitivních kroků skoro nejlepší řešení; člověk dělá víc tahů a pomaleji. Posuň k „člověk“ pro reálnější odhad.' }, 'Realismus odhadu', realism, realismOut)),
+      el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko)' }),
+        el('div', { className: 'grid-fields' },
+          field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
+          field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'))),
+      el('div', { className: 'row-btns sim-run-btns' }, go, more, stop), track, status),
+    results, compare,
+    el('details', { className: 'sim-card sim-steps-box' },
+      el('summary', {}, el('b', { textContent: `Co se testuje (${stepsWithParts.length} ${stepsWithParts.length === 1 ? 'krok' : stepsWithParts.length < 5 ? 'kroky' : 'kroků'})` }),
+        el('small', { textContent: 'kroky a jejich nastavení – upravíš v Sestavit' })),
+      stepList, el('div', { className: 'row-btns' }, editBtn('Upravit kroky', 'secondary small'))),
+    history);
 
   let sigNow = '';
   let plan = null, planSteps = [];
@@ -221,7 +229,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     if (!running && last) {
       const same = last.meta.sig === sigNow;
       more.hidden = !same;
-      if (!same) status.textContent = 'Nastavení se změnilo – „Spustit simulaci“ začne znovu (výsledky níž jsou z minulého nastavení)';
+      if (!same) status.textContent = 'Nastavení se změnilo – „Spustit test“ začne znovu (výsledky níž jsou z minulého nastavení)';
     }
   }
 
@@ -343,10 +351,11 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const sum = renderResults(solves, meta);
     status.textContent = `${finished ? 'Hotovo' : 'Zastaveno'}: ${solves.length} zamíchání${sum?.failed ? ` (${sum.failed} se nepodařilo složit – zkus delší hledání, víc tahů nebo „Moje sada, jinak hledání“)` : ''} · ${fmtTime(performance.now() - t0)}`;
     if (sum?.count) { addHistory(sum, meta); renderHistory(); }
-    if (harvestTarget) {
-      const i = meta.stepIds.indexOf(harvestTarget);
-      harvestTarget = null;
-      if (i >= 0) saveHarvest(i, meta);
+    const targets = harvestTargets.splice(0);
+    if (targets.length === 1) { const i = meta.stepIds.indexOf(targets[0]); if (i >= 0) saveHarvest(i, meta); }
+    else if (targets.length) {
+      const done = targets.map((id) => meta.stepIds.indexOf(id)).filter((i) => i >= 0).map((i) => saveHarvest(i, meta, true)).filter(Boolean);
+      toast(`Algoritmy uložené: ${done.map((x) => `${x.title} +${x.added}`).join(' · ') || 'nic nového'} – spusť test znovu, kroky je budou používat`);
     }
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
@@ -354,12 +363,12 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   go.onclick = () => { last = null; harvest.clear(); run(null); };
 
   /** Nalezená řešení kroku i uloží jako algoritmy jeho sady (sadu případně založí). */
-  function saveHarvest(i, meta) {
+  function saveHarvest(i, meta, quiet = false) {
     const found = harvest.get(i);
-    if (!found?.size) { toast('Krok nemá žádná nalezená řešení (sada ho už celý pokryla, nebo se přeskočil)'); return; }
+    if (!found?.size) { if (!quiet) toast('Krok nemá žádná nalezená řešení (sada ho už celý pokryla, nebo se přeskočil)'); return null; }
     const guide = guides.get(method);
     const st = guide.steps.find((x) => x.id === meta.stepIds[i]);
-    if (!st) return;
+    if (!st) return null;
     const title = st.title || `Krok ${i + 1}`;
     let setId = st.set && algSets.list(method).some((x) => x.id === st.set) ? st.set : null;
     if (!setId) { setId = algSets.add(title); st.set = setId; }
@@ -375,7 +384,8 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     setStepConfig(method, st, { mode: 'auto' });
     found.clear();
     guides.set(method, guide);
-    toast(`${title}: ${added} ${added === 1 ? 'nový algoritmus' : added < 5 ? 'nové algoritmy' : 'nových algoritmů'} v sadě – spusť test znovu, krok je bude používat`);
+    if (!quiet) toast(`${title}: ${added} ${added === 1 ? 'nový algoritmus' : added < 5 ? 'nové algoritmy' : 'nových algoritmů'} v sadě – spusť test znovu, krok je bude používat`);
+    return { title, added };
   }
   more.onclick = () => { if (last && last.meta.sig === sigNow) run(last); };
   stop.onclick = () => { stopAll(); stopResolve(); };
@@ -409,6 +419,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     });
     const examples = pickExamples(solves);
     results.replaceChildren(...[ // replaceChildren nevynechá null jako el()
+      head('2', 'Výsledek', `${sum.count} zamíchání · u každého kroku průměr tahů a odhad času`),
       el('div', { className: 'sim-hero' },
         el('div', {}, el('span', { className: 'tile-label', textContent: 'Průměr na složení' }), el('b', { textContent: `${fmt(sum.moves)} tahů` }),
           el('small', { textContent: `± ${fmt(sum.ci)} (95 %) · medián ${sum.median} · od ${sum.min} do ${sum.max} · ${sum.count} zamíchání` })),
@@ -534,7 +545,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
         el('div', { className: 'sim-cmp-step-head' }, el('span', { textContent: st.title }), el('b', { textContent: fmt(st.moves) })),
         el('div', { className: 'sim-res-bar' }, el('i', { style: `width: ${(st.moves / max) * 100}%` }))))));
     compare.replaceChildren(
-      el('h3', { textContent: 'Porovnání metod' }),
+      head('3', 'Srovnání s jinými metodami', 'Vlevo metoda ke srovnání, vpravo tvoje – stejný odhad času pro obě.'),
       el('div', { className: 'sim-cmp' },
         el('div', { className: 'sim-cmp-pick' }, pick(cmpLeft, (v) => { cmpLeft = v; const all = storage.get(OPTS) ?? {}; storage.set(OPTS, { ...all, cmpLeft: v }); }, 'Metoda ke srovnání')),
         el('div', { className: 'sim-cmp-pick mine' }, pick(cmpRight, (v) => { cmpRight = v; }, 'Tvoje metoda'))),
@@ -561,7 +572,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const val = (src, key) => (src.real ? src.real[key] ?? '–' : 'jen simulace');
     const rows = [['Tahů v reálných složeních', 'moves'], ['Nejlepší výsledky', 'best'], ['Poznámka', 'note']];
     const sources = [...new Map([...(L.real?.sources ?? []), ...(R.real?.sources ?? [])].map((x) => [x.url, x])).values()];
-    return el('details', { className: 'sim-real', open: true },
+    return el('details', { className: 'sim-real' },
       el('summary', { textContent: 'Skuteční skladači (data z internetu)' }),
       el('table', { className: 'compare sim-real-table' },
         el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
@@ -575,7 +586,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const list = storage.get(HISTORY) ?? [];
     if (!list.length) { history.replaceChildren(); return; }
     const best = Math.min(...list.map((h) => h.moves));
-    history.replaceChildren(el('h3', { textContent: 'Historie simulací' }),
+    history.replaceChildren(el('details', { className: 'sim-card' }, el('summary', {}, el('b', { textContent: `Historie testů (${list.length})` }), el('small', { textContent: 'minulé výsledky všech metod' })),
       el('div', { className: 'sim-hist-list' }, ...list.slice(0, 15).map((h) => {
         const del = Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Smazat z historie', ariaLabel: 'Smazat z historie' }), { innerHTML: icon('trash', { size: 16 }) });
         del.onclick = () => { storage.set(HISTORY, (storage.get(HISTORY) ?? []).filter((x) => !(x.sig === h.sig && x.at === h.at))); renderHistory(); };
@@ -587,7 +598,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
             h.ci ? el('small', { textContent: `± ${fmt(h.ci)}` }) : null, h.time ? el('small', { textContent: `${fmt(h.time, 2)} s` }) : null),
           del);
       })),
-      el('p', { className: 'hint', textContent: 'Férové porovnání: stejné semínko a dost zamíchání (± u průměru říká, o kolik se může lišit náhodou).' }));
+      el('p', { className: 'hint', textContent: 'Férové porovnání: stejné semínko a dost zamíchání (± u průměru říká, o kolik se může lišit náhodou).' })));
   }
 
   // --- start: minulý nebo rozpracovaný běh ------------------------------------------------------
@@ -610,7 +621,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   }
   // otevřeno s „Vytvořit algoritmy pro krok“: hned spustit a na konci uložit
   if (pendingHarvest) {
-    harvestTarget = pendingHarvest;
+    harvestTargets = pendingHarvest;
     pendingHarvest = null;
     queueMicrotask(() => go.click());
   }

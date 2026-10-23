@@ -36,21 +36,22 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
 - **Metody** – výběr metody v horní liště (např. CFOP a tvoje vlastní) přepne celou
   aplikaci: složení v timeru, statistiky i sady algoritmů z Labu a Trenažéru patří
   k aktivní metodě. Ve statistikách jde metody (i skupiny) porovnat vedle sebe.
-  **Sekce Metoda** (v liště): celá vlastní metoda na jednom místě. **Sestavit** –
-  nahoře název, držení a úvod, pod tím kroky v pořadí; u každého kroku popořadě
-  1. název a popis, 2. co je po kroku hotové (předvolby nebo klepání na dílky),
-  3. musí to být přesně tady? (přesně tady / na kterémkoli boku – např. kterýkoli
-  ze 4 párů / jen s vybranými barvami dole a vpředu / kdekoli…, s počtem možných
-  míst), 4. čím krok skládáš (sada algoritmů, co když v ní případ chybí, tahy,
-  natočení vrstev, pomocné algoritmy) a nepovinně podrobnosti pro test a obrázek
-  z Labu. Nastavení se ukládá přímo ke krokům metody (`src/ui/builder.js`,
-  `st.sim`). Karta kroku má tři otázky: **1. Co má být po kroku hotové** (ťukání na
-  dílky kostky přepíná hotovo / jen orientace / jen pozice / nic; volnost „smí se složit
-  i jinde“), **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat: test najde
-  řešení případů a uloží je jako sadu kroku / algoritmy – moje sada, chybějící doplní),
-  **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat). Tlačítko
-  **Vyzkoušet krok** složí náhodné zamíchání kroky 1…i a ukáže řešení i varování;
-  ostatní je pod „Pokročilé“. Pokročilé zadání (`src/core/cells.js`,
+  **Sekce Metoda** (v liště): celá vlastní metoda na jednom místě. **Sestavit**
+  (`src/ui/builder.js`) má dvě obrazovky. *Přehled*: „Co teď udělat“ (kroky bez
+  zadání, kroky, kterým chybí algoritmy – vygenerují se všechny jedním testem),
+  kroky jako časová osa s náhledem kostky po každém kroku a stavem (intuitivně /
+  počet algoritmů / chybí algoritmy), nastavení metody (název, držení, úvod)
+  a šablony. *Krok*: horní lišta (zpět, krok i z n, předchozí/další), čipy všech
+  kroků, název a pořadí, pak čtyři karty – **1. Co má být po kroku hotové**: kostka
+  pokračuje z minulého kroku (hotové z dřívějška je vidět, nové má růžový rámeček),
+  dokreslí se jen nové *štětcem* – hotovo / správná vrstva (kterýkoli dílek své
+  vrstvy barvou vrstvy nahoru či dolů – separace) / jen orientace / jen pozice /
+  guma – klepnutím na dílek nebo celou vrstvu (jen hrany, jen rohy); volnost „smí se
+  složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat /
+  moje sada). **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat).
+  **4. Vyzkoušet** (náhodné zamíchání kroky 1…i). Dole předchozí/další krok nebo
+  „Přidat další krok“. Na širokém displeji je osa vlevo vedle kroku. Nastavení se
+  ukládá ke krokům (`st.sim`). Pokročilé zadání (`src/core/cells.js`,
   editor `src/ui/celleditor.js`): rozložená kostka, klepnutím se vybírají místa (i víc
   najednou nebo celé vrstvy) a ke každému místu dvě otázky – *co tu musí být* (nic /
   jeho vlastní dílek / některý z vybraných dílků, např. všechny s bílou nebo žlutou)
@@ -60,7 +61,7 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   Jádro hledání má pro „některý z dílků“ přesné databáze podle poloh nálepek skupiny
   (`#classes` v `core/constraints.js` a `search/engine.js`). Starší zadání (dílky se
   styly, pravidla `core/rules.js`) se při otevření kroku převede. **Šablony** (CFOP,
-  Roux, ZZ, separační metoda; `src/sim/templates.js`) založí novou metodu se vším
+  Roux, ZZ, Petrus, separační metoda; `src/sim/templates.js`) založí novou metodu se vším
   nastaveným. Nácvik kroku v timeru po krocích s „některým z dílků“ zamíchá tak, že
   náhodnou kostku složí podle předchozích kroků metody.
   **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
@@ -75,7 +76,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   jen natočený; podle zvoleného držení metody). Zamíchání pak nechá hotové všechno
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
-  **Test metody** (Metoda → Otestovat, i z průvodce; běží dál, i když přepneš jinam):
+  **Test metody** (Metoda → Otestovat, i z průvodce; běží dál, i když přepneš jinam)
+  je rozdělený do karet: 1. Spustit test (délka, tahy za sekundu, realismus; semínko
+  a otočení kostky pod „Další nastavení“), 2. Výsledek, 3. Srovnání s jinými metodami,
+  pak sbalené „Co se testuje“ a historie testů:
   náhodná zamíchání se složí krok po kroku podle dílků hotových po krocích. Krok se řeší
   podle nastavení ze Sestavit:
   tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když

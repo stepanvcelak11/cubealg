@@ -1,9 +1,11 @@
-// Editor cíle kroku políčko po políčku (core/cells.js): rozložená kostka, klepnutím
-// se vybírají místa (i víc najednou nebo celé vrstvy) a pod ní jsou dvě otázky:
-//   Co tu musí být?  nic / jeho vlastní dílek / některý z vybraných dílků
-//   Jak natočený?    správně / jakkoli / barva na stranu
-// Kostka hned ukazuje, co na kterém políčku po kroku musí být. Místa, dílky i barvy
-// se ukládají ve skutečných názvech kostky; popisky jsou podle držení metody.
+// Editor cíle kroku políčko po políčku (core/cells.js) na rozložené kostce, která
+// pokračuje z minulého kroku (hotové z dřívějška je vidět, nové má rámeček).
+//   Základ: štětec (hotovo / správná vrstva / jen orientace / jen pozice / guma) –
+//           klepnutí na dílek nebo celou vrstvu nastaví jeho stav po kroku.
+//   Pokročilé: výběr míst a dvě otázky – Co tu musí být? (vlastní dílek / některý
+//           z vybraných dílků) a Jak natočený? (správně / jakkoli / barva na stranu).
+// Místa, dílky i barvy se ukládají ve skutečných názvech kostky; popisky jsou podle
+// držení metody.
 
 import { el } from './dom.js';
 import { SLOTS, SLOT_OF, FACELETS, slotByName } from '../core/geometry.js';
@@ -23,10 +25,57 @@ const LAYOUT = {
 };
 
 const selections = new Map(); // id kroku → Set vybraných míst (přežije překreslení)
-const modes = new Map(); // id kroku → 'tap' (ťukání přepíná stav) | 'select' (výběr míst, pokročilé)
-// ťukání: nic → hotovo → jen orientace → jen pozice → nic
-const TAP = [null, 'solved', 'oriented', 'place'];
-const tapState = (c) => (!c ? null : c.own === 'solved' ? 'solved' : c.own === 'any' ? 'place' : c.ori === 'correct' && c.pieces?.length >= 8 ? 'oriented' : 'custom');
+const modes = new Map(); // id kroku → 'tap' (štětec: klepnutí nastaví stav) | 'select' (výběr míst, pokročilé)
+const brushes = new Map(); // id kroku → zvolený štětec
+const brushKinds = new Map(); // id kroku → štětec na vrstvu jen pro 'edge' | 'corner' | 'all'
+
+/**
+ * Štětce jednoduchého zadání (klepnutí na dílek nastaví jeho stav po kroku):
+ *   solved   hotovo – vlastní dílek, správně natočený
+ *   layer    správná vrstva – kterýkoli dílek, který do vrstvy patří, barvou vrstvy nahoru/dolů
+ *            (separace: žluté nahoře, bílé dole; na barvách boků nezáleží)
+ *   oriented jen orientace – kterýkoli dílek, správně natočený (EO, OLL)
+ *   place    jen pozice – vlastní dílek na svém místě, natočený jakkoli
+ *   none     guma – zpět na stav z dřívějších kroků (nebo „nezajímá“)
+ */
+export const BRUSHES = [
+  { id: 'solved', label: 'hotovo', hint: 'Správný dílek, správně natočený – jako ve složené kostce.' },
+  { id: 'layer', label: 'správná vrstva', hint: 'Kterýkoli dílek, který patří do této vrstvy, barvou vrstvy nahoru/dolů (např. žluté nahoře, bílé dole). Na barvách boků nezáleží.' },
+  { id: 'oriented', label: 'jen orientace', hint: 'Kterýkoli dílek, ale správně natočený (EO, OLL).' },
+  { id: 'place', label: 'jen pozice', hint: 'Správný dílek na svém místě, natočení nevadí.' },
+  { id: 'none', label: 'guma', hint: 'Zruší zadání dílku v tomto kroku – zůstane, jak bylo po dřívějších krocích (nebo na něm nezáleží).' },
+];
+const sameCell = (a, b) => !!a && !!b && JSON.stringify({ ...a, pieces: a.pieces ? [...a.pieces].sort() : undefined }) === JSON.stringify({ ...b, pieces: b.pieces ? [...b.pieces].sort() : undefined });
+
+/** Vrstva místa v pohledu metody: 'U' nahoře, 'D' dole, 'E' uprostřed. */
+export function layerOf(name, frame) {
+  const map = frameMap(frame);
+  const faces = slotByName(name).facelets.map((f) => FACELETS[f].face);
+  return faces.includes(map.U) ? 'U' : faces.includes(map.D) ? 'D' : 'E';
+}
+
+/** Buňka štětce `brush` pro místo (skutečný název) při držení `frame`. */
+export function brushCell(brush, name, frame) {
+  const map = frameMap(frame);
+  const type = slotByName(name).type;
+  if (brush === 'solved') return { own: 'solved' };
+  if (brush === 'place') return { own: 'any' };
+  if (brush === 'oriented') return { pieces: piecesWithColors(type), ori: 'correct' };
+  if (brush === 'layer') {
+    const v = layerOf(name, frame);
+    // uprostřed: hrany bez barvy horní a spodní strany, správně natočené
+    if (v === 'E') return { pieces: piecesWithColors(type, [], [map.U, map.D]), ori: 'correct' };
+    return { pieces: piecesWithColors(type, [map[v]]), ori: { side: map[v], colors: [map[v]] } };
+  }
+  return null;
+}
+
+/** Stav buňky jako štětec (custom = zadání z pokročilého výběru, které štětec neumí). */
+export function brushOf(cell, name, frame) {
+  if (!cell) return 'none';
+  for (const b of ['solved', 'place', 'layer', 'oriented']) if (sameCell(cell, brushCell(b, name, frame))) return b;
+  return 'custom';
+}
 
 // předvolby „některý z dílků“ v pohledu metody (dole = D)
 const typeOf = (n) => (n.length === 3 ? 'corner' : 'edge');
@@ -72,26 +121,34 @@ export function cellsSummary(cells) {
   const list = Object.values(cells ?? {}).filter(Boolean);
   if (!list.length) return 'nic';
   const own = list.filter((c) => c.own === 'solved').length, ownAny = list.filter((c) => c.own === 'any').length, group = list.filter((c) => c.pieces).length;
-  return [own && `${own} hotových`, ownAny && `${ownAny} na místě`, group && `${group} ${group === 1 ? 'místo' : group < 5 ? 'místa' : 'míst'} s kterýmkoli dílkem`].filter(Boolean).join(', ');
+  const n = (k, one, few, many) => `${k} ${k === 1 ? one : k < 5 ? few : many}`;
+  return [own && n(own, 'hotový dílek', 'hotové dílky', 'hotových dílků'), ownAny && `${ownAny} na svém místě`,
+    group && `${n(group, 'místo', 'místa', 'míst')} s kterýmkoli dílkem`].filter(Boolean).join(', ');
 }
 
-/** Vzhled políček: co na kterém políčku po kroku musí být (pro síť i náhledy). */
+/**
+ * Vzhled políček: co na kterém políčku po kroku musí být (pro síť i náhledy).
+ * Hotové z dřívějších kroků se kreslí normálně (kostka pokračuje z minulého kroku),
+ * co přidává tento krok, má barevný rámeček (když nějaké dřívější je).
+ */
 export function cellLooks(cells, before = {}) {
   const look = FACELETS.map((f) => (SLOTS[SLOT_OF[f.index]].type === 'center' ? { fill: [f.face] } : { fill: null }));
-  const paint = (cs, faded) => {
+  const fresh = Object.values(before ?? {}).some(Boolean);
+  const paint = (cs, own) => {
     for (const [name, c] of Object.entries(cs ?? {})) {
       if (!c) continue;
       const slot = slotByName(name);
+      const mark = own && fresh;
       for (const k of slot.facelets) {
-        if (c.own) { look[k] = { fill: [FACELETS[k].face], dashed: c.own === 'any', faded }; continue; }
+        if (c.own) { look[k] = { fill: [FACELETS[k].face], dashed: c.own === 'any', fresh: mark }; continue; }
         if (c.ori && typeof c.ori === 'object') {
-          look[k] = FACELETS[k].face === c.ori.side ? { fill: c.ori.colors, faded } : { fill: null, mark: true, faded };
-        } else look[k] = { fill: null, mark: true, ring: c.ori === 'correct' && k === slot.facelets[0], faded };
+          look[k] = FACELETS[k].face === c.ori.side ? { fill: c.ori.colors, fresh: mark } : { fill: null, mark: true, fresh: mark };
+        } else look[k] = { fill: null, mark: true, ring: c.ori === 'correct' && k === slot.facelets[0], fresh: mark };
       }
     }
   };
-  paint(before, true);
-  paint(cells, false);
+  paint(before, false);
+  paint(cells, true);
   return look;
 }
 
@@ -100,7 +157,7 @@ export function cellsNetSvg(look, frame, { sel = new Set(), size = 300, interact
   const [c1, c2, c3] = holdOf(holdFromFaces(OPP[frame.down], frame.front)).linear();
   const view = (v) => { const css = [v[0], -v[1], v[2]]; return [dot(c1, css), dot(c2, css), dot(c3, css)]; };
   const sideOf = (n) => (n[1] < -0.5 ? 'U' : n[1] > 0.5 ? 'D' : n[2] > 0.5 ? 'F' : n[2] < -0.5 ? 'B' : n[0] > 0.5 ? 'R' : 'L');
-  const out = [];
+  const out = [], top = [];
   for (const f of FACELETS) {
     const [col, row, flat] = LAYOUT[sideOf(view(f.normal))];
     const [x, y] = flat(view(f.pos)).map((c) => Math.round(c) + 1);
@@ -112,16 +169,18 @@ export function cellsNetSvg(look, frame, { sel = new Set(), size = 300, interact
     const attrs = interactive && slot.type !== 'center' ? ` data-slot="${slot.name}" class="cell-hit"` : '';
     if (lk.fill?.length) {
       const n = lk.fill.length;
-      lk.fill.forEach((c, i) => out.push(`<rect x="${X + (W * i) / n}" y="${Y}" width="${W / n}" height="${W}" fill="${HEX[c]}" opacity="${op}"${i === 0 ? '' : ''}/>`));
+      lk.fill.forEach((c, i) => out.push(`<rect x="${X + (W * i) / n}" y="${Y}" width="${W / n}" height="${W}" fill="${HEX[c]}" opacity="${op}"/>`));
       out.push(`<rect x="${X}" y="${Y}" width="${W}" height="${W}" rx="0.14" fill="none" stroke="${lk.dashed ? '#14151c' : 'rgb(20 21 28 / 0.35)'}" stroke-width="${lk.dashed ? 0.08 : 0.04}" ${lk.dashed ? 'stroke-dasharray="0.16 0.1"' : ''} opacity="${op}"/>`);
     } else {
       out.push(`<rect x="${X}" y="${Y}" width="${W}" height="${W}" rx="0.14" fill="${lk.mark ? '#8a8f9c' : '#d6d8de'}" opacity="${lk.mark ? op : 1}"/>`);
       if (lk.ring) out.push(`<circle cx="${X + W / 2}" cy="${Y + W / 2}" r="0.16" fill="#fff" opacity="${op}"/>`);
     }
-    if (selected) out.push(`<rect x="${X - 0.03}" y="${Y - 0.03}" width="${W + 0.06}" height="${W + 0.06}" rx="0.16" fill="none" stroke="var(--accent, #4b4bff)" stroke-width="0.14"/>`);
-    if (attrs) out.push(`<rect x="${X}" y="${Y}" width="${W}" height="${W}" fill="transparent"${attrs}/>`);
+    // nové v tomto kroku: rámeček (kreslí se navrch, aby ho sousední políčka nepřekryla)
+    if (lk.fresh) top.push(`<rect x="${X + 0.02}" y="${Y + 0.02}" width="${W - 0.04}" height="${W - 0.04}" rx="0.14" fill="none" stroke="#e8467c" stroke-width="0.1"/>`);
+    if (selected) top.push(`<rect x="${X - 0.03}" y="${Y - 0.03}" width="${W + 0.06}" height="${W + 0.06}" rx="0.16" fill="none" stroke="var(--accent, #4b4bff)" stroke-width="0.14"/>`);
+    if (attrs) top.push(`<rect x="${X}" y="${Y}" width="${W}" height="${W}" fill="transparent"${attrs}/>`);
   }
-  return `<svg viewBox="-0.15 -0.15 12.3 9.3" width="${size}" style="max-width:100%;height:auto" role="img" aria-label="Kostka po kroku (síť)">${out.join('')}</svg>`;
+  return `<svg viewBox="-0.15 -0.15 12.3 9.3" width="${size}" style="max-width:100%;height:auto" role="img" aria-label="Kostka po kroku (síť)">${out.join('')}${top.join('')}</svg>`;
 }
 
 /**
@@ -146,18 +205,25 @@ export function cellEditor(step, before, frame, onChange) {
   // --- síť ------------------------------------------------------------------------------------
   const net = el('div', { className: 'cell-net' });
   net.innerHTML = cellsNetSvg(cellLooks(cells, before), frame, { sel, interactive: true });
-  const mode = modes.get(step.id) ?? (Object.values(cells).some((c) => tapState(c) === 'custom') ? 'select' : 'tap');
+  const mode = modes.get(step.id) ?? (Object.entries(cells).some(([n, c]) => brushOf(c, n, frame) === 'custom') ? 'select' : 'tap');
   modes.set(step.id, mode); // zvolený režim zůstane i po úpravách
+  const brush = brushes.get(step.id) ?? 'solved';
+  /** Štětec na místa: nastaví jejich stav; když už ho mají všechna, zruší ho (klepnutí znovu = zpět). */
+  const paint = (names) => {
+    const has = (n) => brush !== 'none' && sameCell(cells[n], brushCell(brush, n, frame));
+    const off = brush === 'none' || names.every(has);
+    for (const n of names) {
+      const c = off ? null : brushCell(brush, n, frame);
+      // stejné jako po dřívějších krocích = nic nového (zůstane zachované samo)
+      if (!c || sameCell(c, before[n])) delete cells[n]; else cells[n] = c;
+    }
+    commit();
+  };
   net.onclick = (e) => {
     const name = e.target?.dataset?.slot;
     if (!name) return;
-    if (mode === 'tap') {
-      const cur = tapState(cells[name]);
-      const nextState = cur === 'custom' ? null : TAP[(TAP.indexOf(cur) + 1) % TAP.length];
-      const type = slotByName(name).type;
-      if (!nextState) delete cells[name];
-      else cells[name] = nextState === 'solved' ? { own: 'solved' } : nextState === 'place' ? { own: 'any' } : { pieces: piecesWithColors(type), ori: 'correct' };
-    } else if (sel.has(name)) sel.delete(name); else sel.add(name);
+    if (mode === 'tap') { paint([name]); return; }
+    if (sel.has(name)) sel.delete(name); else sel.add(name);
     commit();
   };
   const switchMode = (m) => { modes.set(step.id, m); if (m === 'tap') sel.clear(); commit(); };
@@ -302,27 +368,48 @@ export function cellEditor(step, before, frame, onChange) {
     onclick: () => { if (confirm('Vymazat celé zadání kroku?')) { for (const k of Object.keys(cells)) delete cells[k]; sel.clear(); commit(); } } });
 
   if (mode === 'tap') {
-    // základ: ťukání na dílky přepíná stav; legenda vypadá jako políčka na kostce
-    const key = (look, label, hint) => el('span', { className: 'cell-key', title: hint }, Object.assign(el('span', { className: 'cell-key-sw' }), { innerHTML: look }), label);
-    const sw = (inner) => `<svg viewBox="0 0 1 1" width="16" height="16">${inner}</svg>`;
+    // základ: štětec – vybereš, jak má být dílek po kroku, a klepeš na dílky (nebo celé vrstvy)
+    const sw = (inner) => `<svg viewBox="0 0 1 1" width="22" height="22" aria-hidden="true">${inner}</svg>`;
+    const LOOK = {
+      solved: '<rect width="1" height="1" rx="0.18" fill="#22b455"/>',
+      layer: '<rect width="1" height="1" rx="0.18" fill="#8a8f9c"/><rect width="1" height="0.5" rx="0.18" fill="#ffd60a"/><rect y="0.3" width="1" height="0.2" fill="#ffd60a"/>',
+      oriented: '<rect width="1" height="1" rx="0.18" fill="#8a8f9c"/><circle cx="0.5" cy="0.5" r="0.18" fill="#fff"/>',
+      place: '<rect x="0.05" y="0.05" width="0.9" height="0.9" rx="0.18" fill="#22b455" opacity="0.55" stroke="#14151c" stroke-width="0.08" stroke-dasharray="0.16 0.1"/>',
+      none: '<rect width="1" height="1" rx="0.18" fill="#d6d8de"/><path d="M0.3 0.3 0.7 0.7M0.7 0.3 0.3 0.7" stroke="#5d6070" stroke-width="0.09" stroke-linecap="round"/>',
+    };
+    const palette = el('div', { className: 'cell-brushes', role: 'radiogroup', ariaLabel: 'Štětec' }, ...BRUSHES.map((x) => {
+      const b = el('button', { type: 'button', className: `cell-brush${brush === x.id ? ' on' : ''}`, role: 'radio', ariaChecked: String(brush === x.id), title: x.hint,
+        onclick: () => { brushes.set(step.id, x.id); commit(); } });
+      b.dataset.brush = x.id;
+      b.innerHTML = `${sw(LOOK[x.id])}<span>${x.label}</span>`;
+      return b;
+    }));
+    const kinds = brushKinds.get(step.id) ?? 'all';
+    const layerNames = (v) => PIECE_SLOTS.filter((x) => (v === 'all' || layerOf(x.name, frame) === v) && (kinds === 'all' || x.type === kinds)).map((x) => x.name);
+    const layerBtn = (v, label) => el('button', { type: 'button', className: 'rule-chip', textContent: label, onclick: () => paint(layerNames(v)) });
+    const kindBtn = (k, label) => el('button', { type: 'button', className: `rule-chip${kinds === k ? ' on' : ''}`, textContent: label, onclick: () => { brushKinds.set(step.id, k); commit(); } });
+    const cur = BRUSHES.find((x) => x.id === brush);
     return el('div', { className: 'cell-editor' },
-      el('div', { className: 'row-btns cell-tools' }, preset, clear),
-      el('p', { className: 'hint cell-hint', textContent: 'Ťukej na dílky kostky – každé ťuknutí přepne stav:' }),
-      el('div', { className: 'cell-keys' },
-        key(sw('<rect width="1" height="1" rx="0.15" fill="#22b455"/>'), 'hotovo', 'Správné místo i natočení (barvy jako ve složené kostce)'),
-        key(sw('<rect width="1" height="1" rx="0.15" fill="#8a8f9c"/><circle cx="0.5" cy="0.5" r="0.18" fill="#fff"/>'), 'jen orientace', 'Kterýkoli dílek, ale správně natočený (EO, OLL)'),
-        key(sw('<rect x="0.05" y="0.05" width="0.9" height="0.9" rx="0.15" fill="#22b455" opacity="0.55" stroke="#14151c" stroke-width="0.08" stroke-dasharray="0.16 0.1"/>'), 'jen pozice', 'Vlastní dílek na svém místě, natočení nevadí'),
-        key(sw('<rect width="1" height="1" rx="0.15" fill="#d6d8de"/>'), 'nezajímá mě', 'Na dílku po kroku nezáleží')),
+      el('p', { className: 'cell-hint', textContent: '1) Vyber štětec – jak má být dílek po kroku:' }),
+      palette,
+      el('p', { className: 'hint cell-brush-hint', textContent: cur.hint }),
+      el('p', { className: 'cell-hint', textContent: '2) Klepni na dílky kostky, nebo rovnou na celou vrstvu:' }),
+      el('div', { className: 'cell-layers' },
+        el('div', { className: 'rule-chips' }, layerBtn('U', 'Horní vrstva'), layerBtn('E', 'Střední vrstva'), layerBtn('D', 'Spodní vrstva'), layerBtn('all', 'Celá kostka')),
+        el('div', { className: 'rule-chips cell-kinds' }, el('span', { className: 'hint', textContent: 'jen:' }), kindBtn('all', 'hrany i rohy'), kindBtn('edge', 'hrany'), kindBtn('corner', 'rohy'))),
       net,
-      el('p', { className: 'hint cell-legend', textContent: 'Bledé = hotové z dřívějších kroků (zůstane zachované samo).' }),
-      el('button', { type: 'button', className: 'link-btn cell-adv', textContent: 'Pokročilé: kterýkoli dílek ze skupiny (např. kříž z bílých i žlutých hran) →', onclick: () => switchMode('select') }),
-      overview ? el('b', { className: 'bld-sub', textContent: 'Celé zadání kroku' }) : null, overview);
+      Object.values(before).some(Boolean)
+        ? el('p', { className: 'hint cell-legend' }, el('i', { className: 'cell-fresh-key' }), ' růžový rámeček = přidává tento krok · bez rámečku = hotové z dřívějších kroků (zůstane zachované)')
+        : el('p', { className: 'hint cell-legend', textContent: 'Klepnutí znovu stejným štětcem dílek vrátí.' }),
+      el('div', { className: 'row-btns cell-tools' }, preset, clear),
+      el('button', { type: 'button', className: 'link-btn cell-adv', textContent: 'Pokročilé: vlastní skupina dílků a barev (např. kříž z bílých i žlutých hran) →', onclick: () => switchMode('select') }),
+      overview ? el('details', { className: 'cell-summary' }, el('summary', { textContent: 'Zadání kroku slovy' }), overview) : null);
   }
   return el('div', { className: 'cell-editor' },
     el('div', { className: 'row-btns cell-tools' }, preset, clear),
-    el('button', { type: 'button', className: 'link-btn cell-adv', textContent: '← Zpět na jednoduché ťukání', onclick: () => switchMode('tap') }),
+    el('button', { type: 'button', className: 'link-btn cell-adv', textContent: '← Zpět na štětec', onclick: () => switchMode('tap') }),
     net,
-    el('p', { className: 'hint cell-legend' }, 'Barevné políčko = tahle barva tam musí být (víc barev = kterákoli z nich) · tmavě šedé = na dílku záleží, ale ne na barvě tohoto políčka (bílá tečka = správně natočený) · světlé = nezáleží · bledé = hotové z dřívějších kroků'),
+    el('p', { className: 'hint cell-legend' }, 'Barevné políčko = tahle barva tam musí být (víc barev = kterákoli z nich) · tmavě šedé = na dílku záleží, ale ne na barvě tohoto políčka (bílá tečka = správně natočený) · světlé = nezáleží · růžový rámeček = přidává tento krok'),
     quick, panel,
     overview ? el('b', { className: 'bld-sub', textContent: 'Celé zadání kroku' }) : null, overview);
 }

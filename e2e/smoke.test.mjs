@@ -483,7 +483,7 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   await p.waitForSelector('[data-page="method"]:not([hidden]) .bld-base');
   assert.equal(await p.locator('.guide-dialog[open]').count(), 0);
   await p.locator('.bld-base textarea').fill('Moje metoda: nejdřív roh, pak zbytek.');
-  await p.locator('.bld-add').selectOption('empty');
+  await p.locator('.bld-add').tap();
   await p.locator('input[aria-label="Název kroku 1"]').fill('Vložení rohu');
   await p.locator('.bld-more summary', { hasText: 'Pokročilé' }).tap();
   await p.locator('textarea[aria-label="Popis kroku 1"]').fill('Roh nad slotem vložíš trojicí tahů.\nDívej se na bílou nálepku.');
@@ -585,14 +585,14 @@ test('vlastní metoda: části bez Labu (předvolba), nácvik z průvodce a zast
   await p.waitForSelector('#t-practice:not([hidden])');
   // z timeru (nastavit kroky) do sestavení metody
   await p.evaluate(async () => (await import('./src/ui/methods.js')).showGuide({ edit: true }));
-  await p.waitForSelector('[data-page="method"]:not([hidden]) .bld-step');
+  await p.waitForSelector('[data-page="method"]:not([hidden]) .bld-tl-item');
   // první krok: levý blok Roux (bílá dole, zelená vpředu)
-  await p.locator('.bld-step-toggle').first().tap();
+  await p.locator('.bld-tl-item').first().tap();
   await p.locator('.bld-step.open select[aria-label="Přidat předvolbu"]').selectOption('roux1');
-  assert.match(await p.locator('.bld-step.open .bld-step-toggle small').innerText(), /po kroku: 5 hotových/);
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /2× roh jeho vlastní dílek, správně natočený[\s\S]*3× hrana jeho vlastní dílek/);
+  assert.match(await p.locator('.bld-tl-item.active small').innerText(), /5 hotových dílků/);
+  assert.match(await p.locator('.bld-step.open .cell-overview').textContent(), /2× roh jeho vlastní dílek, správně natočený[\s\S]*3× hrana jeho vlastní dílek/);
   // druhý krok: pravý blok na kterémkoli boku
-  await p.locator('.bld-step-toggle').nth(1).tap();
+  await p.locator('.bld-ed-arrows button[aria-label="Další krok"]').tap();
   await p.locator('.bld-step.open').last().locator('select[aria-label="Přidat předvolbu"]').selectOption('roux2');
   await p.locator('.bld-step.open').last().locator('select[aria-label="Kde smí být – krok 2"]').selectOption('side');
   assert.match(await p.locator('.bld-step.open').last().locator('.bld-places').innerText(), /možných míst \(4\)/);
@@ -982,23 +982,24 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   await p.selectOption('#method', '+guide');
   await p.waitForSelector('.guide-dialog[open]');
   await p.locator('.guide-sim').tap();
-  await p.waitForSelector('[data-page="method"]:not([hidden]) .sim-step');
+  await p.waitForSelector('[data-page="method"]:not([hidden]) .sim-setup');
   assert.equal(await p.locator('.guide-dialog[open]').count(), 0);
+  await p.locator('.sim-steps-box summary').tap();
   assert.equal(await p.locator('.sim-step').count(), 2);
-  assert.match(await p.locator('.sim-step').first().innerText(), /Hrana vpředu[\s\S]*1 hotových/);
+  assert.match(await p.locator('.sim-step').first().innerText(), /Hrana vpředu[\s\S]*1 hotov/);
   // nastavení kroků je v Sestavit: volnost „jen vybrané barvy“ (bílá nebo žlutá dole) a vlastní tahy
-  await p.locator('.sim-section-head button', { hasText: 'Upravit kroky' }).tap();
-  await p.locator('.bld-step-toggle').first().tap();
+  await p.locator('.sim-steps-box button', { hasText: 'Upravit kroky' }).tap();
+  await p.locator('.bld-tl-item').first().tap();
   await p.locator('.bld-step.open select[aria-label="Kde smí být – krok 1"]').selectOption('colors');
   assert.equal(await p.locator('.bld-step.open .sim-colors').first().locator('input:checked').count(), 2);
   assert.match(await p.locator('.bld-step.open .bld-places').innerText(), /možných míst \(8\)/);
   await p.locator('.bld-step.open select[aria-label="Tahy – krok 1"]').selectOption('custom');
   assert.ok(await p.locator('.sim-chips label').count() > 6);
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
-  assert.match(await p.locator('.sim-step').first().innerText(), /vybrané barvy \(8 míst\)/);
+  assert.match(await p.locator('.sim-step').first().textContent(), /vybrané barvy \(8 míst\)/);
   // porovnání vestavěných metod je vidět hned
   assert.match(await p.locator('.sim-cmp-table').innerText(), /CFOP/);
-  await p.locator('.sim-page button', { hasText: 'Spustit simulaci' }).tap();
+  await p.locator('.sim-page button', { hasText: 'Spustit test' }).tap();
   await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
   assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů[\s\S]*Odhad času/i);
   assert.equal(await p.locator('.sim-res-row').count(), 2);
@@ -1040,10 +1041,10 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
   await p.locator('.bld-tpl').selectOption('separation');
-  await p.waitForFunction(() => document.querySelectorAll('.bld-step').length === 10);
+  await p.waitForFunction(() => document.querySelectorAll('.bld-tl-item').length === 10);
   assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
   // kříž: na 4 místech dole kterákoli hrana s bílou nebo žlutou, tou nálepkou dolů
-  await p.locator('.bld-step-toggle').first().tap();
+  await p.locator('.bld-tl-item').first().tap();
   assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
   // políčko po políčku: vybrat hrany dole a nechat jen bílé hrany
   await p.locator('.bld-step.open .cell-quick button', { hasText: 'Hrany dole' }).tap();
@@ -1066,7 +1067,7 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.equal(await p.locator('.sim-step').count(), 10);
-  assert.match(await p.locator('.sim-step').nth(5).innerText(), /OLL[\s\S]*16 míst s kterýmkoli dílkem/);
+  assert.match(await p.locator('.sim-step').nth(5).textContent(), /OLL[\s\S]*16 míst s kterýmkoli dílkem/);
   // nácvik kroku po kříži z pravidla: zamíchání vznikne složením kříže podle metody
   await p.evaluate(async () => {
     const { guides } = await import('./src/ui/store.js');
@@ -1098,17 +1099,26 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   const opts = { length: 'c10', steps: { default: { k1: { time: 0.5 }, k2: { time: 0.5 } } } };
   const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts, 'ergocube.method.sub': 'build' });
   await p.locator('.tabbar [data-tab="method"]').tap();
-  await p.locator('.bld-step-toggle').nth(1).tap();
-  // ťukání na dílek přepíná stav: hotovo → jen orientace → jen pozice → nic
+  await p.locator('.bld-tl-item').nth(1).tap();
+  // štětec: klepnutí na dílek nastaví stav (hotovo, jen orientace, jen pozice), znovu = zpět
   const tap = () => p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
+  const brush = (id) => p.locator(`.bld-step.open .cell-brush[data-brush="${id}"]`).tap();
+  const say = () => p.locator('.bld-step.open .cell-overview').textContent();
   await tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh jeho vlastní dílek, správně natočený/);
+  assert.match(await say(), /1× roh jeho vlastní dílek, správně natočený/);
+  await brush('oriented'); await tap();
+  assert.match(await say(), /1× roh kterýkoli roh, správně natočený/);
+  await brush('place'); await tap();
+  assert.match(await say(), /1× roh jeho vlastní dílek, natočený jakkoli/);
   await tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh kterýkoli roh, správně natočený/);
-  await tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh jeho vlastní dílek, natočený jakkoli/);
-  await tap();
-  assert.doesNotMatch(await p.locator('.bld-step.open .cell-overview').innerText(), /roh/);
+  assert.doesNotMatch(await say(), /roh/);
+  // správná vrstva: rohy spodní vrstvy = kterýkoli roh s bílou, bílou dolů (separace)
+  await brush('layer');
+  await p.locator('.bld-step.open .cell-kinds button', { hasText: /^rohy$/ }).tap();
+  await p.locator('.bld-step.open .cell-layers button', { hasText: 'Spodní vrstva' }).tap();
+  assert.match(await say(), /4× roh kterýkoli roh s bílou barvou, tou barvou dolů/);
+  await p.locator('.bld-step.open .cell-layers button', { hasText: 'Spodní vrstva' }).tap();
+  assert.doesNotMatch(await say(), /roh/);
   // okamžitá kontrola: krok vyzkoušený na náhodném zamíchání
   await p.locator('.bld-step.open button', { hasText: 'Vyzkoušet krok' }).tap();
   await p.waitForFunction(() => /Funguje: kroky 1–2/.test(document.querySelector('.bld-step.open .bld-check')?.textContent ?? ''), null, { timeout: 60000 });
