@@ -1078,7 +1078,7 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.equal(await p.locator('.sim-step').count(), 10);
-  assert.match(await p.locator('.sim-step').nth(5).textContent(), /OLL[\s\S]*16 míst s kterýmkoli dílkem/);
+  assert.match(await p.locator('.sim-step').nth(5).textContent(), /OLL[\s\S]*16 dílků s barvami/);
   // nácvik kroku po kříži z pravidla: zamíchání vznikne složením kříže podle metody
   await p.evaluate(async () => {
     const { guides } = await import('./src/ui/store.js');
