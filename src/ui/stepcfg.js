@@ -4,7 +4,7 @@
 
 import { storage } from './dom.js';
 import { algs } from './store.js';
-import { stepDefaults } from '../sim/plan.js';
+import { stepDefaults, solveByOf } from '../sim/plan.js';
 
 /** Úplné nastavení kroku (výchozí hodnoty + uložené). */
 export function stepConfig(method, st) {
@@ -21,14 +21,7 @@ export function setStepConfig(method, st, patch) {
   st.sim = { ...(legacy ?? {}), ...(st.sim ?? {}), ...patch };
 }
 
-/**
- * Jak se krok řeší: 'intuitive' | 'generate' (algoritmy vytvoří test) | 'own' (moje sada)
- * | 'fixed' (pevný algoritmus jen někdy, např. parita). Bez volby: krok se sadou „moje sada“,
- * naučené algoritmy (OLL, PLL…) „vygenerovat“, jinak intuitivně.
- */
-export function solveByOf(cfg, st) {
-  return cfg.solveBy ?? (st.set && !cfg.genSet ? 'own' : cfg.kind === 'alg' ? 'generate' : 'intuitive');
-}
+export { solveByOf };
 
 const hash = (text) => {
   let h1 = 2166136261, h2 = 5381;

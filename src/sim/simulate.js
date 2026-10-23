@@ -207,7 +207,8 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
       v = pick.j;
       done = pick.goal;
       if (i === 0) first = v;
-      out.push({ ...r, variant: v });
+      // cíl kroku (dosud hotové + nové dílky) – nalezená řešení se podle něj slučují po případech
+      out.push({ ...r, variant: v, goal: pick.goal });
     }
     if (stopped() && out.length < steps && ok) break;
     solves.push({ start, steps: out, ok, variant: first });

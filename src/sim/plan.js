@@ -29,7 +29,7 @@ export const STEP_MOVES = {
 /** Základy tahů kroku podle jeho nastavení (předvolba nebo vlastní výběr). */
 export const stepBases = (cfg) => (cfg.moves === 'custom' && cfg.custom?.length ? cfg.custom : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).bases);
 export const MOVE_BASES = ['R', 'L', 'U', 'D', 'F', 'B', 'M', 'E', 'S', 'r', 'l', 'u', 'd', 'f', 'b'];
-export const ADJUST = { none: 'Žádné', U: 'Horní vrstva (AUF)', UD: 'Horní i spodní (AUF + ADF)' };
+export const ADJUST = { auto: 'Automaticky (podle kroku)', none: 'Žádné', U: 'Horní vrstva (AUF)', UD: 'Horní i spodní (AUF + ADF)' };
 export const NEUTRAL = { fixed: 'Pevná (podle metody)', dual: 'Dvě barvy (protilehlé)', all: 'Libovolná barva' };
 /** Volnost kroku: ve kterých orientacích (vůči té dosavadní) se smí krok složit. */
 export const FREEDOM = {
@@ -49,10 +49,33 @@ const NEUTRAL_FREE = { fixed: 'fixed', dual: 'dual', all: 'all' };
 /** Výchozí nastavení kroku. */
 export const stepDefaults = (hasSet) => ({
   on: true, moves: 'faces', custom: null, mode: hasSet ? 'auto' : 'search', view: 'speed',
-  adjust: hasSet ? 'U' : 'none', helpers: '', time: 3, recog: hasSet ? 0.6 : 0.3, free: 'fixed',
+  adjust: 'auto', helpers: '', time: 3, recog: hasSet ? 0.6 : 0.3, free: 'fixed',
   // druh kroku pro odhad času: naučený algoritmus, nebo intuitivní (člověk tahy vymýšlí)
   kind: hasSet ? 'alg' : 'intuitive',
 });
+
+/**
+ * Jak se krok řeší: 'intuitive' | 'generate' (algoritmy vytvoří test) | 'own' (moje sada)
+ * | 'fixed' (pevný algoritmus jen někdy, např. parita). Bez volby: krok se sadou „moje sada“,
+ * naučené algoritmy (OLL, PLL…) „vygenerovat“, jinak intuitivně.
+ */
+export function solveByOf(cfg, st) {
+  return cfg.solveBy ?? (st.set && !cfg.genSet ? 'own' : cfg.kind === 'alg' ? 'generate' : 'intuitive');
+}
+
+/**
+ * Natočení vrstev „automaticky“: vrstva (horní / spodní) se smí natočit před algoritmem
+ * a po něm, když ji krok smí točit a před krokem v ní ještě není žádný dílek hotový
+ * na svém místě (OLL, PLL: horní; separace, PBL: obě; CMLL: jen horní – dole jsou bloky).
+ * @param {string[]} bases tahy kroku (v držení)
+ * @param {object} before hotové dílky před krokem (skutečné názvy)
+ * @param {Record<string, string>} map stěny orientace (frameMap)
+ * @returns {('U'|'D')[]} vrstvy v držení
+ */
+export function autoAdjust(bases, before, map) {
+  return ['U', 'D'].filter((L) => bases.includes(L)
+    && !Object.entries(before).some(([n, c]) => n.length > 1 && n.includes(map[L]) && c === 'solved'));
+}
 
 const FACES = ['U', 'D', 'F', 'B', 'R', 'L'];
 const fid = (f) => `${f.down}${f.front}`;
@@ -162,6 +185,9 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     const cfg = { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) };
     if (fixed) cfg.on = true;
     else if (cfg.solveBy === 'fixed') cfg.solveBy = 'intuitive';
+    // algoritmy kroku vytvoří test: co najde, rovnou používá (sada roste během testu)
+    cfg.learn = !fixed && solveByOf(cfg, st) === 'generate';
+    if (cfg.learn && cfg.mode === 'search') cfg.mode = 'auto';
     all.push({ st, index, parts: fixed ? {} : parts, algs, cfg, fixed });
   });
   // poslední krok s dílky se simuluje vždy (jinak by se nic neskládalo)
@@ -202,19 +228,22 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     nextOf.push(map);
     reach = [...after.values()];
   });
+  // držení orientací: algoritmus uložený v některém z nich se zapisuje vůči orientaci (y, x2… jen otočí kostku)
+  const holds = new Set(frames.map((f) => { const m = frameMap(f); return holdFromFaces(m.U, m.F); }));
   const scores = new Map(); // náročnost algoritmu nezávisí na orientaci
   const scoreOnce = (display) => { if (!scores.has(display)) scores.set(display, scoreFor(P, display, ergo).total); return scores.get(display); };
   const variants = frames.map((f, v) => {
     const map = frameMap(f);
     const hold = holdOf(holdFromFaces(map.U, map.F));
     const toModel = (display) => hold.toModelString(display);
+    const goals = goals0.map((g) => remap(g, frame, f));
     return {
       label: `${LABEL[f.down]} dole, ${LABEL[f.front]} vpředu`,
       frame: f,
       hold: holdFromFaces(map.U, map.F), // držení orientace (zápis algoritmů)
       // středy až v posledním kroku: tahy středem (M, r…) je smí cestou posunout (Roux),
       // dílky se do té doby počítají vůči pevným pozicím
-      goals: goals0.map((g, i) => ({ ...remap(g, frame, f), ...(i === goals0.length - 1 ? CENTERS : {}) })),
+      goals: goals.map((g, i) => ({ ...g, ...(i === goals.length - 1 ? CENTERS : {}) })),
       // orientace k vyzkoušení v každém kroku (z této) a otočení kostky do nich
       next: nextOf.map((m) => m.get(v) ?? [v]),
       rotation: frames.map((g) => rotationBetween(f, g)),
@@ -222,9 +251,10 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
         const bases = stepBases(x.cfg);
         const held = bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
         const moves = held.map((m) => hold.toModel(P.moveToString(m))[0]);
-        const layer = (b) => ['', b, `${b}'`, `${b}2`];
-        const adj = x.cfg.adjust === 'UD' ? layer('U').flatMap((u) => layer('D').map((d) => [u, d].filter(Boolean).join(' ')))
-          : x.cfg.adjust === 'U' ? layer('U') : [''];
+        const layer = (b, on) => (on ? ['', b, `${b}'`, `${b}2`] : ['']);
+        const layers = x.cfg.adjust === 'auto' || !ADJUST[x.cfg.adjust] ? autoAdjust(bases, i ? goals[i - 1] : {}, map)
+          : x.cfg.adjust === 'UD' ? ['U', 'D'] : x.cfg.adjust === 'U' ? ['U'] : [];
+        const adj = layer('U', layers.includes('U')).flatMap((u) => layer('D', layers.includes('D')).map((d) => [u, d].filter(Boolean).join(' ')));
         const adjust = adj.map((d) => ({ display: d, model: d ? toModel(d) : '' }));
         const helpers = String(x.cfg.helpers ?? '').split(/[,;\n]/).map(clean).filter(Boolean).flatMap((d) => {
           try { return [{ display: d, model: toModel(d) }]; } catch { return []; }
@@ -233,9 +263,10 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
           try {
             const display = clean(a.alg);
             if (!display) return [];
-            // výchozí orientace: zápis podle držení, ve kterém je algoritmus uložený; další orientace
-            // berou zápis vůči držení metody
-            const model = v === 0 ? holdOf(a.task?.hold ?? '').toModelString(display) : toModel(display);
+            // zápis vůči orientaci; jen algoritmus z Labu v jiném držení (ne některé z orientací metody)
+            // se ve výchozí orientaci dělá v tom svém
+            const own = a.task?.hold ?? '';
+            const model = v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
             const recent = (a.times ?? []).slice(-5).map((t) => t.t);
             return [{ model, display, name: a.name, score: scoreOnce(display), time: recent.length >= 3 ? median(recent) : undefined }];
           } catch { return []; }
@@ -259,6 +290,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   });
   // kolik různých míst kroku volnost nabízí (z výchozí orientace) – pro odhad délky hledání
   const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => constraintsKey(variants[j].steps[i].parts))).size);
-  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0, maxLen: Number(x.cfg.maxLen) || 0 }));
+  // learn = algoritmy vytvoří test; cases = krok algoritmů (nalezená řešení se slučují po případech)
+  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, learn: x.cfg.learn || undefined, cases: x.cfg.learn || x.cfg.kind === 'alg' || x.algs.length > 0 || undefined, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0, maxLen: Number(x.cfg.maxLen) || 0 }));
   return { plan: { lambda, ergonomics, variants, stepOpts, rotation, choices }, steps };
 }

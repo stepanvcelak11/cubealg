@@ -10,6 +10,8 @@ import { simulate } from './simulate.js';
 import { initKernel } from '../search/kernel.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { colorsOfState } from '../core/cases.js';
+import { scoreFor } from '../ergonomics/puzzles.js';
+import { candidateIn } from './learn.js';
 
 const P = getPuzzle('333');
 const ALL = Object.fromEntries(P.slots.map((s) => [s.name, 'solved']));
@@ -27,6 +29,12 @@ self.onmessage = async ({ data }) => {
     solver = makeStepSolver(plan);
     return;
   }
+  // nový algoritmus kroku (test ho našel u jiného zamíchání): další případy ho už použijí
+  if (data.type === 'learn') {
+    const score = scoreFor(P, data.display, solver.config).total;
+    plan.variants.forEach((v, j) => v.steps[data.step]?.candidates.push(candidateIn(plan, j, { display: data.display, name: data.name, score })));
+    return;
+  }
   if (data.type !== 'solve') return;
   try {
     const { solves } = await simulate({ starts: [Uint8Array.from(data.start)], variants: plan.variants, solveStep: solver.solveStep, better: betterFor(plan), countRotation: plan.rotation === 'move' });
@@ -35,10 +43,13 @@ self.onmessage = async ({ data }) => {
     // u kroků řešených hledáním i případ (barvy před a po) – z nalezených řešení jde
     // vytvořit sada algoritmů kroku (simulator.js)
     let state = solve.start;
-    const steps = solve.steps.map(({ model, ...x }) => {
+    const steps = solve.steps.map(({ model, goal, ...x }, i) => {
       if (!model) return x;
       const after = P.applyAlg(state, model);
-      const out = x.source === 'search' ? { ...x, case: { a: colors(state), b: colors(after), hold: plan.variants[x.variant ?? 0]?.hold ?? '' } } : x;
+      // u kroků algoritmů případ celý (stav, cíl, orientace) – simulátor řešení slučuje po případech
+      const out = x.source !== 'search' ? x : plan.stepOpts[i]?.cases
+        ? { ...x, model, case: { state: Array.from(state), goal, variant: x.variant ?? 0 } }
+        : { ...x, case: { a: colors(state), b: colors(after), hold: plan.variants[x.variant ?? 0]?.hold ?? '' } };
       state = after;
       return out;
     });

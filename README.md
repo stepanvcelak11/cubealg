@@ -52,7 +52,15 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   „na této pozici některá z barev“, všechny vlastní barvy = hotový dílek). Volnost
   „smí se složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat:
   test si algoritmy vytvoří sám při každém spuštění a uloží je jako sadu kroku s otiskem
-  kroku – když se krok nebo kroky před ním změní, vytvoří se při dalším testu znovu /
+  kroku – když se krok nebo kroky před ním změní, vytvoří se při dalším testu znovu.
+  Řešení se slučují **po případech** (`sim/learn.js`): nové řešení je nový algoritmus,
+  jen když ho žádný známý algoritmus kroku nevyřeší ani s natočením vrstev (AUF/ADF);
+  natočení vrstvy na začátku a konci se odřízne. Nový algoritmus dostanou hned všechna
+  vlákna testu, takže další zamíchání krok skládají jím (jako člověk, který se ho
+  naučil) a hledá se jen u nepotkaných případů – OLL tak má nejvýš 57 algoritmů.
+  Natočení vrstev „automaticky“ (`autoAdjust` v `sim/plan.js`): vrstva se smí natočit,
+  když ji krok točí a před krokem v ní není nic hotové na svém místě (OLL/PLL horní,
+  separace a PBL obě, CMLL jen horní) /
   moje sada / **jen někdy – pevný algoritmus**: krok, který nic nového neskládá a dělá se
   jen při splnění podmínky, např. parita M2 U2 M2 „když je parita“ = lichá permutace
   dílků vrstvy nahoře nebo dole, hrany XOR rohy, takže ji natočení vrstvy nemění;

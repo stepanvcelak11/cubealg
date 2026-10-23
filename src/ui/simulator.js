@@ -25,6 +25,7 @@ import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } f
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
 import { VIEWS } from '../ergonomics/style.js';
+import { makeLearner } from '../sim/learn.js';
 
 const OPTS = 'ergocube.sim.options';
 const HISTORY = 'ergocube.sim.history';
@@ -117,6 +118,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   host.append(body);
   let alive = true;
   const harvest = new Map(); // krok → Map(algoritmus → { n, a, b, hold })
+  // kroky algoritmů: nalezená řešení po případech (sim/learn.js) – jeden algoritmus na případ
+  let learner = null;
   const used = new Map(); // krok → Map(zápis → { n, source, score, length, name }) – které algoritmy test použil
   const USED_MAX = 300;
   let harvestTargets = [];
@@ -304,6 +307,13 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     go.hidden = true; more.hidden = true; stop.hidden = false; track.hidden = false; banner.hidden = true;
     stepList.classList.add('locked');
     if (long) { awake = keepAwake(); askNotify(); }
+    // nový test: případy kroků od začátku (známé jsou jen algoritmy, které kroky už mají)
+    if (!resume || !learner) {
+      learner = makeLearner(plan);
+      plan.stepOpts.forEach((o, i) => { if (o.cases) learner.seed(i, plan.variants[0].steps[i].candidates); });
+    }
+    /** Nový algoritmus kroku: všechna vlákna ho od teď používají (hledá se jen u nových případů). */
+    const teach = (w, i, entry) => w.postMessage({ type: 'learn', step: i, display: entry.display, name: `${meta.stepTitles[i]} ${learner.count(i)}` });
     const scr = scrambles(meta.seed);
     const t0 = performance.now();
     const done0 = solves.length;
@@ -347,6 +357,17 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
                 if (u) u.n++; else if (m.size < USED_MAX) m.set(x.display, { n: 1, source: x.source, score: x.score, length: x.length, name: x.name });
                 used.set(i, m);
               }
+              // krok algoritmů: nové řešení je nový algoritmus, jen když případ ještě žádný známý nevyřeší
+              if (x.case?.state && x.display) {
+                const { entry, fresh } = learner.offer(i, { display: x.display, model: x.model, state: Uint8Array.from(x.case.state), goal: x.case.goal, variant: x.case.variant, score: x.score });
+                if (fresh) {
+                  const m = harvest.get(i) ?? new Map();
+                  m.set(entry.display, entry);
+                  harvest.set(i, m);
+                  if (plan.stepOpts[i]?.learn) for (const p of pool) teach(p, i, entry);
+                }
+                delete x.case;
+              }
               // nalezená řešení (případ + algoritmus) – z nich jde vytvořit sada kroku
               if (x.case && x.display) {
                 const m = harvest.get(i) ?? new Map();
@@ -364,6 +385,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         };
         w.onerror = (e) => { active--; toast(`Simulace: ${e.message || 'chyba ve workeru'}`); feed(w); };
         w.postMessage({ type: 'plan', plan });
+        // navázaný test: algoritmy nalezené dřív (plán je má jen ze sady)
+        plan.stepOpts.forEach((o, i) => { if (o.learn) for (const entry of learner.list(i)) teach(w, i, entry); });
         return w;
       });
       progress();
@@ -393,7 +416,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
 
-  go.onclick = () => { last = null; harvest.clear(); used.clear(); run(null); };
+  go.onclick = () => { last = null; harvest.clear(); used.clear(); learner = null; run(null); };
 
   /** Nalezená řešení kroku i uloží jako algoritmy jeho sady (sadu případně založí). */
   function saveHarvest(i, meta, quiet = false) {
@@ -455,6 +478,11 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     const prev = (storage.get(HISTORY) ?? []).find((h) => h.method === method && h.sig !== meta.sig && h.steps?.length);
     const delta = (a, b, unit = '') => el('span', { className: `sim-delta${a < b - 0.05 ? ' good' : a > b + 0.05 ? ' bad' : ''}`, title: 'Proti minulému testu', textContent: `${a <= b ? '−' : '+'}${fmt(Math.abs(a - b), unit ? 2 : 1)}${unit}` });
     const kindWord = { alg: 'algoritmus', intuitive: 'intuitivní', blocks: 'bloky' };
+    // krok „vygenerovat“: kolik různých případů test potkal (stejný případ otočený o U/D je jeden)
+    const learned = (i) => {
+      const n = config[meta.stepIds[i]]?.solveBy !== 'fixed' && learner && plan?.stepOpts[i]?.learn ? learner.count(i) : 0;
+      return n ? `Nové algoritmy: ${n} – jeden na každý případ, který test potkal (stejný případ jen otočený o vrstvu se počítá jednou)` : '';
+    };
     const rows = meta.stepTitles.map((t, i) => {
       const s = sum.steps[i];
       const id = meta.stepIds[i];
@@ -476,6 +504,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
           el('span', { className: 'sim-res-share', textContent: `${pct(s.timeShare)} času` }), el('small', { textContent: main })),
         detail ? el('small', { className: 'sim-res-detail', textContent: detail }) : null,
         cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
+        learned(i) ? el('small', { className: 'sim-cover', textContent: learned(i) }) : null,
         harvest.get(i)?.size ? el('button', { type: 'button', className: 'secondary small sim-harvest',
           textContent: `Uložit ${harvest.get(i).size} nalezených řešení jako algoritmy kroku`,
           title: 'Řešení, která test u tohoto kroku našel, se uloží do sady kroku (případ + algoritmus). Další test je bude používat; najdeš je i v Trenažéru.',
