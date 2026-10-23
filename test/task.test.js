@@ -182,3 +182,25 @@ test('styl jedné nálepky: tečkovaná nálepka = barva na této stěně', asyn
   assert.ok(goal.test(CUBE3.applyAlg(t.loc, 'U')));
   assert.ok(!goal.test(CUBE3.applyAlg(t.loc, 'F')));
 });
+
+test('částečný Start: dosazené dílky jsou známé jen z vybarvených nálepek a parita se opraví', async () => {
+  const { taskOps } = await import('../src/core/task.js');
+  const { CUBE3 } = await import('../src/puzzles/cube3.js');
+  const ops = taskOps(CUBE3);
+  // kříže v barvě své stěny, rohy v barvě protější stěny, prostřední vrstva celá
+  const A = 'DUDUUUDUDXXXRRRXXXXXXFFFXXXUDUDDDUDUXXXLLLXXXXXXBBBXXX'.split('');
+  const B = 'UUUUUUUUUXXXRRRXXXXXXFFFXXXDDDDDDDDDXXXLLLXXXXXXBBBXXX'.split('');
+  const constraints = Object.fromEntries(CUBE3.slots.map((s) => [s.name, ops.identifyPieces(B).pieces.has(s.name) ? 'solved' : 'ignore']));
+  // i s prohozenými hranami FR a BR (jiná parita celých dílků) musí jít zadání sestavit
+  const swapped = [...A];
+  [swapped[23], swapped[48]] = [swapped[48], swapped[23]];
+  for (const start of [A, swapped]) {
+    const t = ops.buildTask(start, B, constraints);
+    assert.deepEqual(t.errors, []);
+    assert.equal(CUBE3.validate(t.loc), null);
+    // známé jsou jen vybarvené nálepky: u rohů horní/spodní, boky šedé
+    const shown = new Array(54).fill('X');
+    for (let k = 0; k < 54; k++) if (t.known[k]) shown[t.loc[k]] = CUBE3.stickerFace[k];
+    assert.equal(shown.join(''), start.join(''));
+  }
+});

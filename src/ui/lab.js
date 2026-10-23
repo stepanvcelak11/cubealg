@@ -427,7 +427,7 @@ function renderCubes() {
 /** Zadání pro hledání: výchozí stav, cíl a omezení (i „barva na místě“ z částečných dílků). */
 function taskInfo() {
   const t = model.buildTask(ui.A, ui.B, ui.constraints, ui.marks);
-  return { tracked: t.tracked, loc: t.loc, target: t.target, constraints: t.constraints, errors: t.errors };
+  return { tracked: t.tracked, loc: t.loc, target: t.target, constraints: t.constraints, errors: t.errors, known: t.known ?? null };
 }
 
 function renderTaskStatus() {
@@ -1031,14 +1031,37 @@ function startSearch() {
       }[d.reason] ?? d.reason;
       const shortest = d.optimal ?? null;
       const proof = shortest && ui.proof >= shortest ? ` · ✓ kratší než ${shortest} ${unit()} není`
-        : ui.proof > 1 ? ` · ověřeno: pod ${ui.proof} ${unit()} řešení není` : '';
-      $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof}${ui.speedProof ? ' · ✓ pohodlnější není' : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
+        : ui.proof > 1 && Number.isFinite(ui.proof) ? ` · ověřeno: pod ${ui.proof} ${unit()} řešení není` : '';
+      if (d.reason === 'unsolvable' && !d.found) showUnsolvable();
+      else $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof}${ui.speedProof ? ' · ✓ pohodlnější není' : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
       renderResults();
       saveFound(true);
       if (!ui.chosen && ui.results.size) choose(sortedResults()[0].alg, false);
     },
     onError: (e) => { searchUi(false); keepAwake(false); $('status').textContent = `Chyba: ${e.message}`; },
   });
+}
+
+const ALL_FACES = ['R', 'L', 'U', 'D', 'F', 'B'];
+
+/**
+ * Hledání skončilo hned: s povolenými tahy cíl nejde splnit (dílky, které se mají
+ * přesunout, se povolenými tahy na svá místa vůbec nedostanou). Řekne, které tahy
+ * jsou povolené, a nabídne přidat ostatní.
+ */
+function showUnsolvable() {
+  const names = model.kind === 'perm' ? ui.bases.join(' ') : '';
+  const text = `S povolenými tahy${names ? ` (${names})` : ''} se Start na Cíl dostat nedá – žádné řešení neexistuje, ať se hledá jakkoli dlouho.`;
+  const nodes = [el('span', { className: 'bad', textContent: text })];
+  const more = model.kind === 'perm' ? ALL_FACES.filter((b) => P().bases.includes(b) && !ui.bases.includes(b)) : [];
+  if (more.length) {
+    const b = el('button', { type: 'button', className: 'chip unsolvable-fix', textContent: `Povolit i ${more.join(' ')} a hledat znovu` });
+    b.onclick = () => { ui.bases = [...ui.bases, ...more]; save(); renderMoveSet(); clearResults(); startSearch(); };
+    nodes.push(' ', b);
+  } else {
+    nodes.push(' ', el('span', { className: 'hint', textContent: 'Zkontroluj zadání, nebo v kroku Tahy přidej další tahy.' }));
+  }
+  $('status').replaceChildren(...nodes);
 }
 
 // Pohled na výsledky: všestranné / rychlost / efektivita – každý řadí všechna řešení
@@ -1292,7 +1315,7 @@ function playerSteps() {
 }
 
 function renderPlayer() {
-  const { loc, target, errors, constraints } = taskInfo();
+  const { loc, target, errors, constraints, known } = taskInfo();
   const detail = $('detail');
   const saveBtn = $('p-save');
   const steps = playerSteps();
@@ -1303,7 +1326,7 @@ function renderPlayer() {
     return;
   }
   if (steps === null) {
-    renderView(cubeP, model.stateStickers(loc, constraints), loc);
+    renderView(cubeP, model.stateStickers(loc, constraints, known), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: 'Algoritmus nejde přečíst.' }));
     return;
   }
@@ -1314,11 +1337,11 @@ function renderPlayer() {
     current = model.applySteps(loc, real.slice(0, ui.step));
     end = model.applySteps(loc, real);
   } catch (e) {
-    renderView(cubeP, model.stateStickers(loc, constraints), loc);
+    renderView(cubeP, model.stateStickers(loc, constraints, known), loc);
     detail.replaceChildren(el('p', { className: 'ko', textContent: `Algoritmus nejde provést: ${e.message}` }));
     return;
   }
-  renderView(cubeP, model.stateStickers(current, constraints), current);
+  renderView(cubeP, model.stateStickers(current, constraints, known), current);
   if (!steps.length) {
     detail.replaceChildren(el('p', { className: 'hint', textContent: 'Vyber řešení ze seznamu nebo napiš vlastní algoritmus.' }));
     return;
@@ -1346,7 +1369,7 @@ function renderPlayer() {
   const onStep = editing
     ? (i) => { ui.editSel = ui.editSel === i - 1 ? -1 : i - 1; ui.step = ui.editSel + 1; stopPlaying(); renderPlayer(); }
     : (i) => { ui.step = i; stopPlaying(); renderPlayer(); };
-  const known = ui.results.has(algText) || ui.results.has(ui.chosen);
+  const listed = ui.results.has(algText) || ui.results.has(ui.chosen);
   detail.replaceChildren(...[
     movesView(algText, s, { current: editing ? ui.editSel : ui.step - 1, onStep, moveSet }),
     editing ? editBar(parts) : null,
@@ -1361,7 +1384,7 @@ function renderPlayer() {
         innerHTML: `${icon('share', { size: 15 })}<span>Sdílet</span>`,
         onclick: () => sendLink(algsPayload([{ name: 'Algoritmus z Labu', alg: algText, task: { ...taskSnapshot(), puzzle: model.id } }]), 'Algoritmus z ErgoCube Lab'),
       }),
-      exact && !known ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '+ Přidat do výsledků', title: 'Upravený algoritmus se zařadí mezi nalezená řešení (a uloží se s nimi)' }), {
+      exact && !listed ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '+ Přidat do výsledků', title: 'Upravený algoritmus se zařadí mezi nalezená řešení (a uloží se s nimi)' }), {
         onclick: () => { ui.results.set(algText, score(algText)); saveFound(true); choose(algText, false); },
       }) : null,
       ui.editFrom && ui.editFrom !== algText ? Object.assign(el('button', { type: 'button', className: 'secondary small', textContent: '↺ Původní', title: ui.editFrom }), {
@@ -1683,6 +1706,11 @@ export function openTask(task) {
   ui.memory = {};
   ui.autoA = new Set();
   if (model.kind === 'sq1' && task.shape !== undefined) ui.sq1 = { ...ui.sq1, shape: task.shape };
+  // povolené tahy (např. krok metody posílá své tahy)
+  if (model.kind === 'perm' && Array.isArray(task.bases)) {
+    const bases = task.bases.filter((b) => P().bases.includes(b));
+    if (bases.length) { ui.bases = bases; renderMoveSet(); }
+  }
   setHold(holdList(model).some((h) => h.id === task.hold) ? task.hold : '');
   renderMode();
   taskChanged();

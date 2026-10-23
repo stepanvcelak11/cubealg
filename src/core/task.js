@@ -123,7 +123,8 @@ function makeOps(P) {
    * všechny dílky s tou barvou (daného typu, které v cíli nejsou celé) ji musí mít
    * na některém z těch míst – omezení { allow: [povolené polohy referenční nálepky] }.
    * Částečně vybarvené sloty ve výchozí straně se obsadí dílky s těmi barvami.
-   * @returns {{loc: Uint8Array|null, target: Uint8Array|null, constraints: object, errors: string[], tracked: string[]}}
+   * @returns {{loc: Uint8Array|null, target: Uint8Array|null, constraints: object, errors: string[], tracked: string[], known?: Uint8Array}}
+   *   known: nálepky dílků (podle pozice ve složeném stavu), jejichž barva je ve výchozí straně vybarvená
    */
   function buildTask(colorsA, colorsB, constraints, marks = {}) {
     const errors = [];
@@ -199,7 +200,8 @@ function makeOps(P) {
         const t = fits(piece, slot, colors);
         if (t < 0) continue;
         used.add(piece.name);
-        placed.set(piece.name, { slot: slot.id, loc: piece.facelets.map((_, k) => slot.facelets[(t + k) % slot.facelets.length]) });
+        const n = slot.facelets.length;
+        placed.set(piece.name, { slot: slot.id, loc: piece.facelets.map((_, k) => slot.facelets[(t + k) % n]), known: piece.facelets.map((_, k) => colors[(t + k) % n] !== EMPTY), partial: i });
         if (assign(i + 1)) return true;
         used.delete(piece.name);
         placed.delete(piece.name);
@@ -224,10 +226,42 @@ function makeOps(P) {
       }
       return loc;
     };
-    const loc = fill(placed);
-    const invalid = placed.size === slots.length && P.validate?.(loc);
+    let loc = fill(placed);
+    let invalid = placed.size === slots.length && P.validate?.(loc);
+    if (invalid) {
+      // Dílky dosazené za částečně vybarvená místa jsou jen jedna z možností: prohozením
+      // dvou zaměnitelných (každý sedí na místo druhého) se opraví parita, kterou by
+      // jinak způsobila aplikace, ne zadání.
+      const alt = swapPartials(placed, order, fits);
+      const altLoc = alt && fill(alt);
+      if (altLoc && !P.validate(altLoc)) { placed.clear(); for (const [k, v] of alt) placed.set(k, v); loc = altLoc; invalid = null; }
+    }
     if (invalid) return { loc: null, target: null, constraints: out, errors: [`Výchozí: ${invalid}`], tracked };
-    return { loc, target: fill(B.pieces), constraints: out, errors, tracked };
+    // které nálepky jsou známé z vybarvení (podle nálepek dílku ve složeném stavu);
+    // ostatní dosadila aplikace a v náhledu se ukazují šedě
+    const known = new Uint8Array(N);
+    for (const [name, p] of placed) slotByName(name).facelets.forEach((k, i) => { known[k] = p.known ? Number(p.known[i]) : 1; });
+    return { loc, target: fill(B.pieces), constraints: out, errors, tracked, known };
+  }
+
+  /** Prohodí dva dílky dosazené za částečná místa (každý musí sedět na místo druhého), nebo null. */
+  function swapPartials(placed, order, fits) {
+    const subs = [...placed].filter(([, p]) => p.partial !== undefined);
+    for (let a = 0; a < subs.length; a++) for (let b = a + 1; b < subs.length; b++) {
+      const [na, pa] = subs[a], [nb, pb] = subs[b];
+      const sa = order[pa.partial], sb = order[pb.partial];
+      const ta = fits(slotByName(nb), sa.slot, sa.colors), tb = fits(slotByName(na), sb.slot, sb.colors);
+      if (ta < 0 || tb < 0) continue;
+      const put = (name, { slot, colors }, t, i) => {
+        const n = slot.facelets.length;
+        return { slot: slot.id, loc: slotByName(name).facelets.map((_, k) => slot.facelets[(t + k) % n]), known: slotByName(name).facelets.map((_, k) => colors[(t + k) % n] !== EMPTY), partial: i };
+      };
+      const out = new Map(placed);
+      out.set(nb, put(nb, sa, ta, pa.partial));
+      out.set(na, put(na, sb, tb, pb.partial));
+      return out;
+    }
+    return null;
   }
 
   /**

@@ -31,6 +31,7 @@ function permModel(P) {
   const css = Object.fromEntries(P.colors.map((c) => [c.face, c.css]));
   const slotNames = P.slots.map((s) => s.name);
   const homeOf = (name) => P.slotByName(name).facelets;
+  const slotNameOf = (k) => P.slots[P.SLOT_OF[k]].name;
   return {
     P, id: P.id, kind: 'perm', EMPTY,
     pieceNames: slotNames,
@@ -61,12 +62,17 @@ function permModel(P) {
         return { color, css: css[color], style: own ?? (name ? styleOf(constraints[name]) ?? 'faded' : 'solid') };
       });
     },
-    /** Nálepky pro pohled podle stavu (přehrávač, trenažér). */
-    stateStickers(loc, constraints) {
+    /**
+     * Nálepky pro pohled podle stavu (přehrávač, trenažér). known (z buildTask): nálepky
+     * známé z vybarvení – ostatní dosadila aplikace jen kvůli výpočtu, kreslí se šedě.
+     */
+    stateStickers(loc, constraints, known = null) {
       const out = new Array(P.size);
       for (let k = 0; k < P.size; k++) {
-        const name = P.slots[P.SLOT_OF[k]].name;
-        out[loc[k]] = { color: P.stickerFace[k], css: css[P.stickerFace[k]], style: styleOf(constraints[name]) ?? 'none' };
+        if (known && !known[k]) { out[loc[k]] = { color: EMPTY, style: 'none' }; continue; }
+        const c = constraints[slotNameOf(k)];
+        // „barva na místě“ se v přehrávači kreslí plně (tečky by vypadaly jako jiné zadání)
+        out[loc[k]] = { color: P.stickerFace[k], css: css[P.stickerFace[k]], style: (c && typeof c === 'object' ? 'solid' : STYLE_OF[c]) ?? 'none' };
       }
       return out;
     },

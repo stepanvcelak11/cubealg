@@ -127,6 +127,27 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await ctx.close();
 });
 
+test('lab: částečný Start – nevyřešitelné s povolenými tahy, nabídka přidat tahy', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(() => {
+    const A = 'DUDUUUDUDXXXRRRXXXXXXFFFXXXUDUDDDUDUXXXLLLXXXXXXBBBXXX'.split('');
+    const B = 'UUUUUUUUUXXXRRRXXXXXXFFFXXXDDDDDDDDDXXXLLLXXXXXXBBBXXX'.split('');
+    localStorage.setItem('ergocube.v3', JSON.stringify({ constraints: {}, colorsA: A, colorsB: B }));
+  });
+  await p.reload();
+  assert.match(await p.locator('#task-status').innerText(), /✓ 20 dílků/);
+  await p.locator('#go-search').tap();
+  await p.locator('#search').tap();
+  await p.waitForSelector('.unsolvable-fix', { timeout: 30000 });
+  assert.match(await p.locator('#status').innerText(), /S povolenými tahy \(R U F\)/);
+  await p.locator('.unsolvable-fix').tap();
+  await p.waitForFunction(() => /nalezeno [1-9]/.test(document.querySelector('#status').textContent), null, { timeout: 60000 });
+  await p.locator('#stop').tap();
+  assert.deepEqual(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.v3')).bases.sort()), ['B', 'D', 'F', 'L', 'R', 'U']);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
 test('lab: Pyraminx, Skewb, 2×2 a Square-1 – zadání, hledání a ovládání tvaru', async () => {
   const { p, ctx, errors } = await open('lab');
   const scrambles = { 222: "R U R' F", pyram: "R U' L", skewb: "R U' L", sq1: '(1,0)/ (-1,-1)/' };

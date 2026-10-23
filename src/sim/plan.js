@@ -26,6 +26,8 @@ export const STEP_MOVES = {
   MUD: { label: '<M, U, D>', bases: ['M', 'U', 'D'] },
   RUD2: { label: '<R, U, D> + M', bases: ['R', 'U', 'D', 'M'] },
 };
+/** Základy tahů kroku podle jeho nastavení (předvolba nebo vlastní výběr). */
+export const stepBases = (cfg) => (cfg.moves === 'custom' && cfg.custom?.length ? cfg.custom : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).bases);
 export const MOVE_BASES = ['R', 'L', 'U', 'D', 'F', 'B', 'M', 'E', 'S', 'r', 'l', 'u', 'd', 'f', 'b'];
 export const ADJUST = { none: 'Žádné', U: 'Horní vrstva (AUF)', UD: 'Horní i spodní (AUF + ADF)' };
 export const NEUTRAL = { fixed: 'Pevná (podle metody)', dual: 'Dvě barvy (protilehlé)', all: 'Libovolná barva' };
@@ -217,7 +219,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
       next: nextOf.map((m) => m.get(v) ?? [v]),
       rotation: frames.map((g) => rotationBetween(f, g)),
       steps: steps.map((x, i) => {
-        const bases = x.cfg.moves === 'custom' && x.cfg.custom?.length ? x.cfg.custom : (STEP_MOVES[x.cfg.moves] ?? STEP_MOVES.faces).bases;
+        const bases = stepBases(x.cfg);
         const held = bases.flatMap((base) => [1, -1, 2].map((amount) => ({ base, amount })));
         const moves = held.map((m) => hold.toModel(P.moveToString(m))[0]);
         const layer = (b) => ['', b, `${b}'`, `${b}2`];

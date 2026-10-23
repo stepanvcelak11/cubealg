@@ -77,7 +77,7 @@ function drawCase(a, auf = 0) {
     const m = { base: 'U', amount: auf === 3 ? -1 : auf };
     try { loc = model.applySteps(loc, held ? held.toModel([m]) : [m]); } catch { /* bez natočení */ }
   }
-  cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints));
+  cube.render(model.stateStickers(loc, built.constraints ?? a.task.constraints, built.known));
   if (model.overlay) cube.setOverlay(model.overlay(loc));
 }
 

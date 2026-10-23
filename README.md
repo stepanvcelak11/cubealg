@@ -171,7 +171,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     nich nezáleží (samotné prohození dvou dílků kostka neumí – aplikace upozorní na
     paritu). **Částečně vybarvený dílek** (jen některé barvy) znamená
     „tahle barva má být tady“ – zachová se orientace barvy bez ohledu na to, který
-    dílek to je (např. OLL: jen žluté nálepky nahoře).
+    dílek to je (např. OLL: jen žluté nálepky nahoře). Ve Startu za něj aplikace
+    dosadí některý dílek s těmi barvami (jen kvůli výpočtu – přehrávač ukazuje dál
+    jen vybarvené nálepky, zbytek šedě, a nemožné prohození dvou dílků z dosazení
+    sama opraví). Když cíl s povolenými tahy splnit nejde, hledání to řekne hned
+    a nabídne přidat chybějící tahy; krok metody poslaný do Labu přinese i své tahy.
   - **Generátor sady pro krok metody** (tlačítko se seznamem v Zadání): krok popíšeš
     jako zadání – Start = co je hotové před krokem (nevybarvené = cokoli, dílek jen
     s částí barev = „tahle barva tady“), Cíl = co má být po kroku, tahy z „Tahy a

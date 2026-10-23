@@ -11,7 +11,7 @@ import { el } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algSets, algs } from './store.js';
 import { frameEditor, partsBefore, stepParts, remapParts, validFrame, DEFAULT_FRAME, frameMap, COLOR_NAME } from './parts.js';
-import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount, buildPlan } from '../sim/plan.js';
+import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount, buildPlan, stepBases } from '../sim/plan.js';
 import { practiceState } from '../timer/practice.js';
 import { solve as twoPhase } from '../timer/twophase.js';
 import { toFacelets } from '../core/cube.js';
@@ -407,7 +407,7 @@ export function renderBuilder() {
     const tryIt = sec(isFixed ? '2' : '4', 'Vyzkoušet', 'Složí náhodné zamíchání kroky 1 až tento a ukáže řešení i kostku po kroku. „Otevřít v Labu“ přenese kostku před krokem a po něm do Labu – tam jde hledat a generovat algoritmy.',
       el('div', { className: 'row-btns' }, btn('play', 'Vyzkoušet krok na náhodném zamíchání', () => tryStep(guide, i, check), 'secondary small'),
         deps.practice ? btn('timer', 'Nacvičit v timeru', () => deps.practice(st.id), 'secondary small') : null,
-        deps.openLab && !isFixed ? btn('lab', 'Otevřít v Labu', () => { const { task, lost } = stepLabTask(guide.steps, i, frame); deps.openLab(task, lost); }, 'secondary small bld-to-lab') : null), check);
+        deps.openLab && !isFixed ? btn('lab', 'Otevřít v Labu', () => { const { task, lost } = stepLabTask(guide.steps, i, frame); deps.openLab({ ...task, bases: stepBases(cfg) }, lost); }, 'secondary small bld-to-lab') : null), check);
 
     // pokročilé
     const text = el('textarea', { className: 'guide-input', rows: 3, value: st.text ?? '', placeholder: 'Co se v kroku dělá, na co se dívat, tipy… (nepovinné)', ariaLabel: `Popis kroku ${k}` });
