@@ -1033,7 +1033,7 @@ function startSearch() {
       const proof = shortest && ui.proof >= shortest ? ` · ✓ kratší než ${shortest} ${unit()} není`
         : ui.proof > 1 && Number.isFinite(ui.proof) ? ` · ověřeno: pod ${ui.proof} ${unit()} řešení není` : '';
       if (d.reason === 'unsolvable' && !d.found) showUnsolvable();
-      else $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof}${ui.speedProof ? ' · ✓ pohodlnější není' : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
+      else $('status').textContent = `${why} · ${d.found} řešení${shortest ? ` · nejkratší ${shortest} ${unit()}` : ''}${proof}${ui.speedProof ? ' · ✓ rychlejší není' : ''} · ${(d.elapsed / 1000).toFixed(1)} s`;
       renderResults();
       saveFound(true);
       if (!ui.chosen && ui.results.size) choose(sortedResults()[0].alg, false);
@@ -1067,7 +1067,7 @@ function showUnsolvable() {
 // Pohled na výsledky: všestranné / rychlost / efektivita – každý řadí všechna řešení
 // jinak (viz ergonomics/style.js). Pořadí v ostatních pohledech se ukazuje u řádků.
 let view = VIEWS[storage.get('ergocube.lab.view')] ? storage.get('ergocube.lab.view') : 'balanced';
-// Poměr všestranného pohledu (posuvník kratší ↔ pohodlnější).
+// Poměr vyváženého pohledu (posuvník kratší ↔ rychlejší).
 let lambda = Number.isFinite(storage.get('ergocube.lab.lambda')) ? storage.get('ergocube.lab.lambda') : DEFAULT_LAMBDA;
 let ranked = null; // { list, ranks } – zahodí se při každém vykreslení výsledků
 function rankedResults() {
@@ -1090,7 +1090,7 @@ const provenShortest = (length) => ui.proof >= length;
 /** Co hledání právě dělá (úlohy viz search/worker.js: trojice tahů a úplná sada). */
 function searchPhaseText(p) {
   if (p.task === 'subset') return `Zlepšuji: prohledávám tahy ${p.label} do ${p.depth} ${unit()}`;
-  if (p.task === 'comfort') return `Zlepšuji pohodlí: hledám pohodlnější řešení na ${p.depth} ${unit()}`;
+  if (p.task === 'comfort') return `Zlepšuji rychlost: hledám rychlejší řešení na ${p.depth} ${unit()}`;
   if (p.task === 'blocks') return `Zlepšuji pohodlí: skládám z triggerů a bloků (${p.depth} kroků)`;
   if (p.task === 'library') return 'Zkouším tvoje uložené algoritmy s nastavením';
   if (p.task === 'staged') return p.stage
@@ -1120,7 +1120,7 @@ function renderBests() {
       el('code', { textContent: top.alg }),
       el('small', {}, facts,
         proven ? el('span', { className: 'proof', title: 'Úplné hledání se všemi povolenými tahy prošlo všechny kratší délky a nic nenašlo', textContent: ' · ✓ nejkratší možné' }) : null,
-        comfy ? el('span', { className: 'proof', title: 'Prošly se všechny délky, do kterých by se pohodlnější algoritmus s povolenými tahy vešel (i s bonusy za triggery)', textContent: ' · ✓ nejpohodlnější možné' }) : null));
+        comfy ? el('span', { className: 'proof', title: 'Prošly se všechny délky, do kterých by se rychlejší algoritmus s povolenými tahy vešel (i s bonusy za triggery)', textContent: ' · ✓ nejrychlejší možné' }) : null));
     b.onclick = () => choose(top.alg, true);
     return b;
   }));
@@ -1164,7 +1164,7 @@ function renderPareto() {
   const step = Math.max(1, Math.ceil((x1 - x0) / 8));
   for (let v = x0; v <= x1; v += step) root.append(svg('text', { class: 'tick', x: sx(v), y: H - B + 12, 'text-anchor': 'middle' }, String(v)));
   root.append(svg('text', { class: 'tick', x: (L + W - R) / 2, y: H - 2, 'text-anchor': 'middle' }, `${unit()} →`));
-  root.append(svg('text', { class: 'tick', x: 2, y: 2, 'dominant-baseline': 'hanging' }, '↑ pohodlnější'));
+  root.append(svg('text', { class: 'tick', x: 2, y: 2, 'dominant-baseline': 'hanging' }, '↑ rychlejší'));
   // ostatní řešení (stejná místa jen jednou)
   const seen = new Set();
   for (const x of list) {
@@ -1181,7 +1181,7 @@ function renderPareto() {
     g.append(svg('circle', { class: 'front', cx, cy, r: 4.5 }));
     if (x.alg === ui.chosen) g.append(svg('circle', { class: 'chosen', cx, cy, r: 8 }));
     const hit = svg('circle', { class: 'hit', cx, cy, r: 11, tabindex: 0, role: 'button', 'aria-label': x.alg });
-    hit.append(svg('title', {}, `${x.alg}\n${x.m.length} ${unit()} · ${x.m.regrips + x.m.rotations ? `${x.m.regrips + x.m.rotations}× přehmat` : 'bez přehmatů'} · pohodlí ${speedValue(x.m).toFixed(1)}`));
+    hit.append(svg('title', {}, `${x.alg}\n${x.m.length} ${unit()} · ${x.m.regrips + x.m.rotations ? `${x.m.regrips + x.m.rotations}× přehmat` : 'bez přehmatů'} · čas provedení ${speedValue(x.m).toFixed(1)}`));
     hit.onclick = () => choose(x.alg, true);
     hit.onkeydown = (e) => { if (e.key === 'Enter') choose(x.alg, true); };
     g.append(hit);
@@ -1472,19 +1472,27 @@ function styleNote(alg, s) {
     el('small', { className: 'hint', textContent: facts }));
 }
 
+// Rychlost přehrávání (tahů za sekundu): tah se animuje ~¾ doby, zbytek je pauza.
+const SPEED_KEY = 'ergocube.lab.playSpeed';
+export const playSpeed = () => { const v = Number(storage.get(SPEED_KEY)); return v >= 0.5 && v <= 8 ? v : 2.5; };
+const moveMs = (playing) => (playing ? Math.round((1000 / playSpeed()) * 0.75) : Math.min(260, Math.round((1000 / playSpeed()) * 0.75)));
+
 async function step(delta) {
   const steps = playerSteps();
   if (!steps || !steps.length) return false;
   const target = ui.step + delta;
   if (target < 0 || target > steps.length) return false;
+  const ms = moveMs(ui.playing);
   if (currentView().type === 'cube3d') {
     const m = toModelSteps([delta > 0 ? steps[ui.step] : model.invertStep(steps[ui.step - 1])])[0];
-    await cubeP.animate(m);
+    await cubeP.animate(m, ms);
   } else {
-    await cubeP.animate();
+    await cubeP.animate(null, ms);
   }
   ui.step = target;
   renderPlayer();
+  // pauza mezi tahy při přehrávání (ať jde sledovat, co se stalo)
+  if (ui.playing) await new Promise((r) => setTimeout(r, Math.round((1000 / playSpeed()) * 0.25)));
   return true;
 }
 
@@ -1655,6 +1663,11 @@ export function initLab({ onSub, openSet } = {}) {
     try { text = joinAuf(parts.pre, model.algToString(parts.core), parts.post); } catch { text = model.algToString(steps); }
     toggleSave(text);
   };
+  const speed = $('p-speed');
+  const showSpeed = () => { const v = playSpeed(); $('p-speed-out').textContent = `${String(v).replace('.', ',')} ${!Number.isInteger(v) ? 'tahu' : v === 1 ? 'tah' : v < 5 ? 'tahy' : 'tahů'}/s`; };
+  speed.value = String(playSpeed());
+  showSpeed();
+  speed.oninput = () => { storage.set(SPEED_KEY, Number(speed.value)); showSpeed(); };
   $('p-play').onclick = async () => {
     if (ui.playing) { stopPlaying(); return; }
     const steps = playerSteps();

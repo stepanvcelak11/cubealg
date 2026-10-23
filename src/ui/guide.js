@@ -11,10 +11,13 @@ import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
 import { holdFor } from './holds.js';
 import { downloadLearning } from './learnexport.js';
-import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME } from './parts.js';
+import { playSpeed } from './lab.js';
+import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME, COLOR_NAME } from './parts.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
-import { cellsNetSvg, cellLooks, cellsBefore, cellsLines } from './celleditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore } from './celleditor.js';
+import { netSvg } from './netsvg.js';
+import { teachStep, notationOf, exampleSolve } from './teach.js';
 
 let dialog = null;
 let deps = { labTask: () => null, train: () => {}, practice: null, simulate: null, build: null };
@@ -90,11 +93,13 @@ export function examplePlayer(task) {
     playing = true;
     while (playing && at < steps.length) {
       draw();
-      await (view.animate ? view.animate(steps[at]) : Promise.resolve());
+      // rychlost jako v přehrávači Labu (posuvník Rychlost)
+      const period = 1000 / playSpeed();
+      await (view.animate ? view.animate(steps[at], Math.round(period * 0.75)) : Promise.resolve());
       loc = model.applySteps(loc, [steps[at]]);
       at += 1;
       draw();
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, Math.round(period * 0.25)));
     }
     playing = false;
     draw();
@@ -111,6 +116,33 @@ export function examplePlayer(task) {
   return el('div', { className: 'guide-player' },
     el('div', { className: 'guide-player-head' }, el('b', { textContent: 'Ukázka' }), reset, play),
     host, moves);
+}
+
+/** Než začneš: držení, jak číst obrázky, zápis tahů. */
+function startBox(method, guide) {
+  const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
+  const notation = notationOf(method, guide);
+  return el('details', { className: 'guide-start' },
+    el('summary', {}, el('b', { textContent: 'Než začneš' }), el('small', { textContent: ' držení kostky, obrázky a zápis tahů' })),
+    el('p', { textContent: `Drž kostku tak, aby ${COLOR_NAME[frame.down]} střed byl dole a ${COLOR_NAME[frame.front]} vpředu. Středy se vůči sobě nehýbou – dílek patří tam, kde jsou středy jeho barev.` }),
+    el('p', { textContent: 'Obrázky: barva = tahle barva tu musí být, dvě barvy = kterákoli z nich, šedá = zatím nezáleží, růžový rámeček = nové v tomto kroku. V prostředním řádku je zleva levá, přední, pravá a zadní strana, nad přední horní a pod ní spodní.' }),
+    notation.length ? el('p', { textContent: `Zápis tahů: písmeno = čtvrt otáčky po směru hodinových ručiček (díváš se přímo na tu stranu), ' = proti směru, 2 = půl otáčky. ${notation.map(([m, x]) => `${m} – ${x}`).join(' · ')}.` }) : null);
+}
+
+/** Ukázkové složení z posledního testu metody. */
+function exampleBox(method, guide) {
+  const ex = exampleSolve(method, guide);
+  if (!ex) return el('p', { className: 'hint guide-example-none', textContent: 'Ukázkové složení krok po kroku se objeví, až metodu otestuješ (Otestovat).' });
+  const net = (facelets, hold) => Object.assign(el('div', { className: 'guide-ex-net' }), { innerHTML: netSvg([...facelets].map((c) => ({ color: c })), hold, 132) });
+  return el('section', { className: 'guide-step guide-example' },
+    el('h3', {}, 'Ukázkové složení'),
+    el('p', { textContent: 'Jedno skutečné složení z testu metody. Zamíchej (bílá nahoře, zelená vpředu), otoč kostku do držení metody a jdi krok po kroku – po každém kroku má kostka vypadat jako na obrázku.' }),
+    el('p', {}, el('small', { textContent: 'Zamíchání: ' }), el('code', { textContent: ex.scramble })),
+    el('ol', { className: 'guide-ex-steps' }, ...ex.steps.map((x) => el('li', {},
+      el('b', { textContent: x.title }),
+      x.skipped ? el('small', { textContent: x.fixed ? ' – není potřeba, přeskočíš' : ' – už hotové, přeskočíš' })
+        : el('code', { textContent: `${x.rotation ? `(${x.rotation}) ` : ''}${x.alg}` }),
+      x.skipped ? null : net(x.facelets, x.hold)))));
 }
 
 function render() {
@@ -133,15 +165,24 @@ function draw() {
       el('p', { textContent: 'Tady můžeš popsat, jak metoda funguje: úvod a kroky, ke každému kroku obrázek kostky z Labu a sadu algoritmů.' }),
       el('p', { className: 'hint', textContent: 'Klepni na „Upravit“ – metodu sestavíš krok po kroku v sekci Metoda. Hotovou metodu pošleš i s algoritmy přes „Sdílet“ – druhý ji naimportuje ve výběru metody.' })) : null,
     guide.intro.trim() ? richText(guide.intro) : null,
+    guide.steps.length ? startBox(method, guide) : null,
     ...guide.steps.map((st, i) => {
       const set = st.set && algSets.list(method).find((x) => x.id === st.set);
+      const t = teachStep(method, guide, i);
+      const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
+      const prev = cellsBefore(guide.steps, i);
+      const ul = (items) => el('ul', {}, ...items.map((x) => el('li', { textContent: x })));
       return el('section', { className: 'guide-step' },
-        el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`),
-        st.text?.trim() ? richText(st.text) : null,
+        el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`, el('span', { className: 'guide-chip', textContent: t.title })),
+        el('p', { className: 'guide-lead', textContent: t.text }),
         illustration(st.task),
-        !st.task && st.cells && Object.keys(st.cells).length ? el('figure', { className: 'guide-fig guide-parts guide-cells' },
-          Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks(st.cells, cellsBefore(guide.steps, i)), validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME, { size: 220 }) }),
-          el('figcaption', {}, ...cellsLines(st.cells, validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME).map((t) => el('span', { className: 'guide-cell-line', textContent: t })))) : null,
+        !st.task && st.cells && Object.keys(st.cells).length ? el('div', { className: 'guide-nets' },
+          el('figure', { className: 'guide-fig guide-cells' }, Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks({}, prev), frame, { size: 170 }) }), el('figcaption', { textContent: 'před krokem' })),
+          el('span', { className: 'guide-arrow', textContent: '→' }),
+          el('figure', { className: 'guide-fig guide-cells' }, Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks(st.cells, prev), frame, { size: 170 }) }), el('figcaption', { textContent: 'po kroku (nové s rámečkem)' }))) : null,
+        t.changes.length ? el('div', { className: 'guide-teach' }, el('b', { textContent: 'Co se na kostce změní' }), ul(t.changes)) : null,
+        el('div', { className: 'guide-teach' }, el('b', { textContent: 'Jak na to' }), ul(t.how), t.keep ? el('p', { className: 'hint', textContent: t.keep }) : null),
+        st.text?.trim() ? el('div', { className: 'guide-note' }, el('b', { textContent: 'Poznámka' }), richText(st.text)) : null,
         !st.task && !st.cells && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
           partsCube(partsBefore(guide.steps, st.id), stepParts(st), guide.frame, `Po kroku ${i + 1}`),
           el('figcaption', { textContent: `po kroku: ${describeParts(stepParts(st))}` })) : null,
@@ -162,7 +203,8 @@ function draw() {
             innerHTML: `${icon('trainer', { size: 16 })}<span>Trénovat</span>`,
             onclick: () => { dialog.close(); deps.train(set.id); },
           })) : null);
-    })].filter(Boolean));
+    }),
+    guide.steps.length ? exampleBox(method, guide) : null].filter(Boolean));
 }
 
 /** Pošle (nebo stáhne) aktivní metodu i s algoritmy jako soubor. */

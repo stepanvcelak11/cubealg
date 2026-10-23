@@ -399,7 +399,7 @@ export function renderBuilder() {
         field('Povolené tahy', moves, 'Tahy, kterými krok skládáš'),
         field('Nejvýš tahů', num(cfg.maxLen ?? 0, `Nejvýš tahů – krok ${k}`, 0, 40, 1, (v) => patch({ maxLen: v }, false)), '0 = bez omezení. Delší řešení test nepoužije.'),
         field('Vybírat řešení podle', select(Object.fromEntries(Object.entries(VIEWS).map(([id, v]) => [id, `${v.icon} ${v.label}`])), cfg.view, `Vybírat podle – krok ${k}`, (v) => patch({ view: v }, false)),
-          'Rychlost = pohodlné tahy (bez přehmatů, málo B a D), Efektivita = co nejméně tahů')),
+          'Nejrychlejší = nejkratší čas provedení (každý tah stojí čas, nepohodlné tahy a přehmaty víc), Nejkratší = co nejméně tahů, Vyvážené = kompromis')),
       chips2);
 
     // 4. okamžitá kontrola: krok vyzkoušený na náhodném zamíchání

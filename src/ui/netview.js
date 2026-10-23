@@ -67,5 +67,5 @@ export class NetView {
 
   layout() {}
   resetView() {}
-  animate() { return new Promise((r) => setTimeout(r, 120)); }
+  animate(move, ms = 120) { return new Promise((r) => setTimeout(r, ms)); }
 }

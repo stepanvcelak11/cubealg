@@ -1,19 +1,26 @@
 // Tři pohledy na nalezená řešení – každý řadí všechna řešení jinak:
 //
-//   rychlost    – odhad času provedení: celková nepohodlnost (váhy tahů, přehmaty,
-//                 rotace, změny úchopu, návaznost, triggery) – jedno číslo, takže
-//                 se nevyplatí algoritmus natahovat jen kvůli jednomu přehmatu
-//                 (přehmat stojí zhruba jako tah a půl, viz weights.js)
-//   efektivita  – co nejméně tahů; pohodlí rozhoduje jen mezi stejně dlouhými
-//   všestranné  – kombinace obou: (1 − λ) · délka + λ · hodnota rychlosti, λ volí
-//                 posuvník „kratší ↔ pohodlnější“ (absolutní, takže se pořadí
-//                 nemění podle toho, co se zrovna našlo)
+//   nejrychlejší – odhad času provedení: každý tah stojí základní čas (MOVE_TIME) a k
+//                  tomu jeho nepohodlnost (váhy tahů, přehmaty, rotace, změny úchopu,
+//                  návaznost, triggery). Delší algoritmus tak vyhraje jen tehdy, když
+//                  je opravdu o tolik plynulejší – ne jen proto, že má hodně R a U.
+//   nejkratší    – co nejméně tahů; pohodlí rozhoduje jen mezi stejně dlouhými
+//   vyvážené     – kombinace obou: (1 − λ) · délka + λ · čas provedení, λ volí
+//                  posuvník „kratší ↔ pohodlnější“ (absolutní, takže se pořadí
+//                  nemění podle toho, co se zrovna našlo)
 
 export const VIEWS = {
-  balanced: { label: 'Všestranné', icon: '★', text: 'kombinace obou: málo tahů i příjemné skládání (poměr nastavíš posuvníkem)' },
-  speed: { label: 'Rychlost', icon: '⚡', text: 'nejrychlejší provedení: tahy, přehmaty, návaznost a úchopy dohromady' },
-  efficient: { label: 'Efektivita', icon: '◎', text: 'co nejméně tahů – pohodlí rozhoduje jen mezi stejně dlouhými' },
+  balanced: { label: 'Vyvážené', icon: '★', text: 'kompromis: krátké a zároveň rychle provedené (poměr nastavíš posuvníkem)' },
+  speed: { label: 'Nejrychlejší', icon: '⚡', text: 'nejkratší čas provedení: každý tah stojí čas, nepohodlné tahy (F, B, D…), přehmaty a změny úchopu víc, plynulé triggery míň' },
+  efficient: { label: 'Nejkratší', icon: '◎', text: 'co nejméně tahů – pohodlí rozhoduje jen mezi stejně dlouhými' },
 };
+
+/**
+ * Základní čas tahu v jednotkách nepohodlnosti (tah R = 1): i ten nejpohodlnější tah
+ * trvá. Bez něj vycházely jako „nejrychlejší“ dvakrát delší algoritmy z R a U obalené
+ * tahy F (bonusy triggerů je srazily pod krátký algoritmus s půlotáčkami).
+ */
+export const MOVE_TIME = 0.6;
 
 const HOME = new Set(['R', 'U', 'r']);
 
@@ -38,14 +45,11 @@ export function styleMetrics(score, cube = true) {
 }
 
 /**
- * Hodnota pro rychlost (nižší = lepší): celková nepohodlnost (ne na tah, aby se
- * nevyplatilo algoritmus natahovat levnými tahy), při shodě kratší. Dřív se řadilo
- * nejdřív podle počtu přehmatů – vyhrávaly pak o hodně delší algoritmy bez přehmatu
- * (známé rychlé algoritmy jako Pi nebo U-perm skončily až kolem 50. místa).
+ * Hodnota pro rychlost (nižší = lepší): odhad času provedení = nepohodlnost + základní
+ * čas každého tahu; při shodě kratší.
  */
-export const speedKey = (m) => [m.total, m.length];
-/** Jedno číslo rychlosti pro kombinaci ve všestranném pohledu. */
-export const speedValue = (m) => m.total;
+export const speedValue = (m) => m.total + MOVE_TIME * m.length;
+export const speedKey = (m) => [speedValue(m), m.length];
 
 /** Výchozí poměr všestranného pohledu (0 = jen délka, 1 = jen pohodlí). */
 export const DEFAULT_LAMBDA = 0.5;

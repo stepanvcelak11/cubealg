@@ -12,7 +12,9 @@
 import { el } from './dom.js';
 import { SLOTS, SLOT_OF, FACELETS, slotByName } from '../core/geometry.js';
 import { holdOf, holdFromFaces } from '../core/hold.js';
-import { piecesWithColors, describeCell, remapCells, PIECE_SLOTS, cellStickers, stickersSolved } from '../core/cells.js';
+import { piecesWithColors, describeCell, remapCells, PIECE_SLOTS, cellStickers, stickersSolved, cellsBefore } from '../core/cells.js';
+
+export { cellsBefore };
 import { frameMap, COLOR_NAME, PRESETS } from './parts.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
@@ -57,20 +59,6 @@ export const GROUP_PRESETS = [
   { id: 'g-oll', label: 'Natočená horní vrstva (OLL) – kterékoli dílky', cells: () => oriented([...L.UE, ...L.UC]) },
   { id: 'g-eo', label: 'Natočené všechny hrany (EO)', cells: () => oriented([...L.DE, ...L.EE, ...L.UE]) },
 ];
-
-/** Buňky hotové před krokem i (pro zobrazení): předchozí kroky (i starší zadání dílky). */
-export function cellsBefore(steps, i) {
-  const out = {};
-  for (const st of steps.slice(0, i)) {
-    if (!st.cells) for (const [n, s] of Object.entries(st.parts ?? {})) if (s !== 'orientation') out[n] = { own: s === 'permutation' ? 'any' : 'solved' };
-    for (const [n, c] of Object.entries(st.cells ?? {})) {
-      // po nálepkách se barvy z dřívějších kroků doplní (pozdější krok platí pro svou nálepku)
-      const prev = out[n] && c?.colors ? cellStickers(out[n], slotByName(n)) : null;
-      out[n] = prev ? { colors: { ...prev, ...c.colors } } : c;
-    }
-  }
-  return out;
-}
 
 /** Zadání kroku po skupinách stejných buněk slovy („4× hrana: kterákoli…“). */
 export function cellsLines(cells, frame) {

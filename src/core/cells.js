@@ -129,6 +129,20 @@ export function remapCells(cells, map) {
   }));
 }
 
+/** Buňky hotové před krokem i (pro zobrazení): předchozí kroky (i starší zadání dílky). */
+export function cellsBefore(steps, i) {
+  const out = {};
+  for (const st of steps.slice(0, i)) {
+    if (!st.cells) for (const [n, s] of Object.entries(st.parts ?? {})) if (s !== 'orientation') out[n] = { own: s === 'permutation' ? 'any' : 'solved' };
+    for (const [n, c] of Object.entries(st.cells ?? {})) {
+      // po nálepkách se barvy z dřívějších kroků doplní (pozdější krok platí pro svou nálepku)
+      const prev = out[n] && c?.colors ? cellStickers(out[n], slotByName(n)) : null;
+      out[n] = prev ? { colors: { ...prev, ...c.colors } } : c;
+    }
+  }
+  return out;
+}
+
 /** Převod ze staršího zadání (dílky se styly + pravidla pro skupiny, core/rules.js). */
 export function cellsFromLegacy(parts, rules, frameMapFn) {
   const cells = {};

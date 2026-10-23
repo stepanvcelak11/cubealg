@@ -111,7 +111,7 @@ test('lab: vybarvení rohu v cíli, hledání a uložení do trenažéru', async
   await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 20000 });
   // pohledy na výsledky: všestranné / rychlost / efektivita
   await p.waitForSelector('#style-filter:not([hidden])');
-  assert.match(await p.locator('#detail .style-note').innerText(), /Rychlost: \d+\. z \d+/);
+  assert.match(await p.locator('#detail .style-note').innerText(), /Nejrychlejší: \d+\. z \d+/);
   await p.locator('#style-filter .view-efficient').tap();
   assert.match(await p.locator('#view-hint').innerText(), /co nejméně tahů/);
   const lens = await p.locator('#results .result .meta').allInnerTexts();
@@ -1048,6 +1048,10 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   // učebnice metody: HTML s kroky, nastavením a daty k importu
   const html = await p.evaluate(async () => (await import('./src/ui/learnexport.js')).learningHtml());
   assert.match(html, /Hrana vpředu[\s\S]*dole bílá \/ žlutá/);
+  // pro nováčka: než začneš, vysvětlení kroků a ukázkové složení z testu
+  assert.match(html, /Než začneš[\s\S]*Zápis tahů[\s\S]*Přehled metody/);
+  assert.match(html, /Co se na kostce změní[\s\S]*Jak na to/);
+  assert.match(html, /Ukázkové složení[\s\S]*Zamíchání: <code>[RLUDFB]/);
   assert.match(html, /<svg[\s\S]*id="ergocube-method"/);
   const imported = await p.evaluate(async () => {
     const { learningHtml } = await import('./src/ui/learnexport.js');

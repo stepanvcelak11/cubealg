@@ -6,7 +6,7 @@ import { prepare, search, searchCost, costTables, NEAR_LIMIT } from './engine.js
 import { ergoStep, ERGO_START, fullConfig } from '../ergonomics/score.js';
 import { moveWeight } from '../ergonomics/weights.js';
 import { mirrorMove, MOVE_DEFS } from '../core/notation.js';
-import { styleMetrics, speedKey, balancedValue } from '../ergonomics/style.js';
+import { styleMetrics, speedKey, balancedValue, MOVE_TIME } from '../ergonomics/style.js';
 import { buildTable, improve, simplify } from './improve.js';
 import { stagedSolve } from './staged.js';
 import { makeResolver } from './resolve.js';
@@ -272,12 +272,13 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   const runComfort = (slice) => {
     const best = tracker.best('speed');
     const len = best.alg.split(' ').length;
-    const bound = totalOf(best) + 1e-6;
+    // rychlost = nepohodlnost + základní čas tahu (MOVE_TIME) → mez nepohodlnosti pro délku L
+    const speed = totalOf(best) + MOVE_TIME * len + 1e-6;
     // kratší než `cleared` žádné řešení nemají (prohledáno úplnou sadou)
     const low = Math.max(1, proof.cleared);
     // delší než tohle by bylo dražší i z nejlevnějších tahů
     // dlouhé délky mez odřízne hned (zbytek × nejlevnější tah ≈ mez), proto bez stropu „Max. tahů“
-    const reach = Math.floor(bound / lowCosts.minMove);
+    const reach = Math.floor(speed / (lowCosts.minMove + MOVE_TIME));
     const high = Math.min(MAX_COMFORT, reach);
     const todo = [];
     for (let d = 0; d <= Math.max(len - low, high - len); d++) for (const L of d ? [len - d, len + d] : [len]) if (L >= low && L <= high && !comfort.doneLengths.has(L)) todo.push(L);
@@ -291,6 +292,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
     handlers.context = { label: 'pohodlí', task: 'comfort', round: comfort.rounds, length: L };
     // databáze ceny: dolní mez ceny do cíle podle skupin dílků (silnější než zbytek × nejlevnější tah)
     comfort.hcost ??= costTables(full, lowCosts.floors, { cache });
+    const bound = speed - MOVE_TIME * L;
     const res = searchCost(full, costRoots, {
       cost: lowCosts, minMove: lowCosts.minMove, bound, length: L, hcost: comfort.hcost, finish: finishCost, timeLimit: slice, shard,
       skip: comfort.cur?.length === L ? comfort.cur.branch : 0,

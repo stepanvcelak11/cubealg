@@ -73,9 +73,15 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   nastaveným. Nácvik kroku v timeru po krocích s „některým z dílků“ zamíchá tak, že
   náhodnou kostku složí podle předchozích kroků metody.
   **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
-  **Průvodce metodou** (na čtení; „Upravit“ vede do Sestavit): úvod a kroky se slovním popisem,
-  obrázkem kostky „před → po“ převzatým z Labu a odkazem na sadu algoritmů
-  k tréninku, případně **ukázkou algoritmu**, která se dá přehrát tah po tahu.
+  **Průvodce metodou** (na čtení; „Upravit“ vede do Sestavit): úvod a kroky s obrázkem
+  kostky „před → po“, odkazem na sadu algoritmů k tréninku, případně **ukázkou algoritmu**,
+  která se dá přehrát tah po tahu. **Vysvětlení pro nováčky** se vytvoří samo z toho, co
+  je po kroku hotové (sim/explain.js): co v kroku uděláš (kříž, pár, natočení horní
+  vrstvy, oddělení barev, permutace…), co se na kostce změní po vrstvách skutečnými
+  barvami, co nesmíš rozbít a jak na to (intuitivně s tipy / algoritmy: poznat případ,
+  natočit vrstvu, provést / jen někdy a kdy). Nahoře „Než začneš“ (držení, jak číst
+  obrázky, zápis použitých tahů), dole **ukázkové složení** – jedno skutečné složení
+  z posledního testu, krok po kroku s kostkou po každém kroku.
   Metodu i s průvodcem a algoritmy jde **sdílet** jako soubor (druhý ji
   naimportuje přes „Importovat metodu…“) nebo **vytisknout / uložit jako PDF**.
   **Nácvik kroku** v timeru (3×3) pro CFOP i vlastní metody: u každého kroku průvodce
@@ -128,8 +134,10 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   oficiální výsledky, se zdroji). Měření
   v Node: `node bench/method.mjs [zamíchání] [s na krok] [filtr] [json]`.
   **Učebnice metody** (Metoda nebo průvodce → „Učebnice“): celá metoda v jednom HTML
-  souboru – úvod a držení, kroky s obrázkem dílků a nastavením ze simulátoru, výsledek
-  simulace, všechny algoritmy sad s obrázkem případu, tvými časy a políčkem „umím“.
+  souboru pro nováčka – „Než začneš“ (držení, obrázky, zápis tahů, jak se metodu učit),
+  přehled kroků, u každého kroku vysvětlení jako v průvodci s kostkou před a po kroku,
+  ukázkové složení z testu a všechny algoritmy sad s obrázkem případu, tvými časy
+  a políčkem „umím“.
   Jde vytisknout do PDF a obsahuje data metody, takže ji aplikace umí znovu importovat
   (i s nastavením simulátoru).
 - **Simulace soutěže** (tlačítko Soutěž v Timeru): kolo podle pravidel WCA –
@@ -208,12 +216,12 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     zrcadlově. Tahy se špatnou návazností jsou ve výsledcích podbarvené i s důvodem.
   - **Řešení:** N nejpohodlnějších řešení z mnohem většího počtu nalezených,
     přehrávač a ukládání do zvolené sady trenažéru. Tři **pohledy** řadí všechna
-    řešení jinak: ⚡ rychlost (odhad času provedení – tahy, přehmaty, rotace,
-    návaznost a úchopy dohromady; přehmat stojí zhruba jako tah a půl, takže
-    o hodně delší algoritmus jen kvůli jednomu přehmatu nevyhraje – ověřeno na
-    známých rychlých PLL a OLL), ◎ efektivita (co
-    nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ všestranné (poměr délky a
-    pohodlí nastavíš posuvníkem „kratší ↔ pohodlnější“). Graf **délka × pohodlí**
+    řešení jinak: ⚡ nejrychlejší (odhad času provedení – každý tah stojí základní čas
+    a k tomu jeho nepohodlnost: přehmaty, rotace, návaznost, úchopy, triggery; dvakrát
+    delší algoritmus z R a U tak nevyhraje nad krátkým jen proto, že je plynulý),
+    ◎ nejkratší (co nejméně tahů, pohodlí jen mezi stejně dlouhými) a ★ vyvážené
+    (poměr nastavíš posuvníkem „kratší ↔ rychlejší“). Přehrávač má posuvník
+    **rychlosti** (0,5–8 tahů za sekundu). Graf **délka × pohodlí**
     ukazuje všechna řešení a zvýrazní ta, která nejde zlepšit v jednom bez
     zhoršení druhého. U řádků je pořadí v ostatních pohledech, v detailu ve všech.
   - **Úprava algoritmu:** v přehrávači „✎ Upravit“ – klepnutím vybereš tah a otočíš

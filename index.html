@@ -323,6 +323,11 @@
               <button type="button" class="icon-btn" id="p-last" data-icon="last" aria-label="Na konec"></button>
               <button type="button" class="icon-btn" id="p-save" aria-label="Uložit do trenažéru" title="Uložit do trenažéru"></button>
             </div>
+            <label class="play-speed" title="Jak rychle se algoritmus přehrává (tahů za sekundu); jednotlivé tahy jde krokovat i šipkami">
+              <span>Rychlost</span>
+              <input type="range" id="p-speed" min="0.5" max="8" step="0.5" aria-label="Rychlost přehrávání (tahů za sekundu)">
+              <output id="p-speed-out"></output>
+            </label>
             <input id="alg" placeholder="Vlastní algoritmus k ohodnocení" autocomplete="off" spellcheck="false" aria-label="Algoritmus">
             <div id="detail"></div>
           </article>
@@ -347,7 +352,7 @@
             <div id="search-bests" class="search-bests" aria-label="Nejlepší zatím" hidden></div>
             <div id="style-filter" class="segmented style-filter" role="group" aria-label="Pohled na výsledky" hidden></div>
             <p id="view-hint" class="hint view-hint"></p>
-            <label id="lambda-row" class="lambda-row" hidden><span>Kratší</span><input type="range" id="lambda" min="0" max="1" step="0.05" value="0.5" aria-label="Poměr všestranného pohledu: kratší nebo pohodlnější"><span>Pohodlnější</span></label>
+            <label id="lambda-row" class="lambda-row" hidden><span>Kratší</span><input type="range" id="lambda" min="0" max="1" step="0.05" value="0.5" aria-label="Poměr vyváženého pohledu: kratší nebo rychlejší"><span>Rychlejší</span></label>
             <details id="pareto-box" class="pareto-box" hidden>
               <summary>Graf: délka × pohodlí</summary>
               <div id="pareto" class="pareto"></div>

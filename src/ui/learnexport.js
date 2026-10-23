@@ -12,10 +12,12 @@ import { labModel } from './models.js';
 import { stepParts, partsBefore, describeParts, frameMap, validFrame, DEFAULT_FRAME, COLOR_NAME } from './parts.js';
 import { FREEDOM, STEP_MOVES, ADJUST, COLORS } from '../sim/plan.js';
 import { VIEWS } from '../ergonomics/style.js';
-import { stepConfig } from './stepcfg.js';
+import { stepConfig, solveByOf } from './stepcfg.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
-import { cellsNetSvg, cellLooks, cellsBefore, cellsLines, cellsSummary } from './celleditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore } from './celleditor.js';
+import { netSvg } from './netsvg.js';
+import { teachStep, notationOf, exampleSolve } from './teach.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -83,6 +85,9 @@ const freeText = (cfg) => {
   return FREEDOM[cfg.free]?.label.toLowerCase() ?? cfg.free;
 };
 
+const KIND_LABEL = { intuitive: 'intuitivně', generate: 'algoritmy', own: 'algoritmy', fixed: 'jen někdy' };
+const list = (items) => (items.length ? `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
+
 /** HTML učebnice metody. */
 export function learningHtml(method = methods.active()) {
   const name = methods.get(method).name;
@@ -100,38 +105,42 @@ export function learningHtml(method = methods.active()) {
     const recent = ts.slice(-5);
     return `nejlepší ${fmt(Math.min(...ts) / 1000, 2)} s · posledních ${recent.length}: ${fmt(recent.reduce((x, y) => x + y, 0) / recent.length / 1000, 2)} s`;
   };
+  const teach = guide.steps.map((st, i) => teachStep(method, guide, i));
   const used = new Set();
   const steps = guide.steps.map((st, i) => {
+    const t = teach[i];
     const before = partsBefore(guide.steps, st.id);
     const now = stepParts(st);
     const cfg = sim[st.id];
+    const solveBy = solveByOf(cfg, st);
     const res = last?.steps.find((x) => x.id === st.id);
     const set = st.set ? sets.get(st.set) : null;
     if (set) used.add(set.id);
-    const list = set ? setAlgs(set.id) : [];
+    const algList = set ? setAlgs(set.id) : [];
+    const cellsPrev = cellsBefore(guide.steps, i);
+    const hasCells = st.cells && Object.keys(st.cells).length;
+    const pics = hasCells ? `<div class="nets"><figure>${cellsNetSvg(cellLooks({}, cellsPrev), frame, { size: 190 })}<figcaption>před krokem</figcaption></figure><span class="arrow">→</span><figure>${cellsNetSvg(cellLooks(st.cells, cellsPrev), frame, { size: 190 })}<figcaption>po kroku (nové s rámečkem)</figcaption></figure></div>`
+      : Object.keys(now).length ? `<figure>${stepSvg(before, now, hold)}<figcaption>${esc(describeParts(now))}</figcaption></figure>` : '';
     const settings = cfg ? [
       ['Volnost', freeText(cfg)],
       ['Tahy', cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : STEP_MOVES[cfg.moves]?.label],
-      ['Řešení', cfg.mode === 'set' ? 'jen sada' : cfg.mode === 'search' ? 'hledání' : 'sada, jinak hledání'],
       ['Vybírat podle', VIEWS[cfg.view]?.label],
-      list.length ? ['Natočení vrstev', ADJUST[cfg.adjust]] : null,
+      algList.length ? ['Natočení vrstev', ADJUST[cfg.adjust]] : null,
       cfg.helpers ? ['Pomocné algoritmy', cfg.helpers] : null,
-      cfg.on === false ? ['V simulaci', 'spojený s dalším krokem'] : null,
     ].filter((x) => x && x[1]) : [];
-    return `<section class="step">
-  <div class="step-head"><span class="n">${i + 1}</span><h2>${esc(st.title || `Krok ${i + 1}`)}</h2>${res ? `<span class="pill">${fmt(res.moves)} tahů v průměru</span>` : ''}</div>
-  <div class="step-body">
-    ${st.cells && Object.keys(st.cells).length ? `<figure>${cellsNetSvg(cellLooks(st.cells, cellsBefore(guide.steps, i)), frame, { size: 200 })}</figure>`
-    : Object.keys(now).length ? `<figure>${stepSvg(before, now, hold)}<figcaption>${esc(describeParts(now))}</figcaption></figure>` : ''}
-    <div>
-      ${st.text ? String(st.text).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}
-      ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
-      ${st.cells && Object.keys(st.cells).length ? `<ul class="rules">${cellsLines(st.cells, frame).map((t) => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : ''}
-      ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${ruleNetSvg(r, frame, 96)}<span>${esc(describeRule(r, map))}</span></li>`).join('')}</ul>` : ''}
-      ${settings.length ? `<dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
-    </div>
+    return `<section class="step" id="krok-${i + 1}">
+  <div class="step-head"><span class="n">${i + 1}</span><h2>${esc(st.title || `Krok ${i + 1}`)}</h2><span class="chip">${esc(t.title)} · ${esc(KIND_LABEL[solveBy] ?? '')}</span>${res ? `<span class="pill">${fmt(res.moves)} tahů v průměru</span>` : ''}</div>
+  <p class="lead">${esc(t.text)}</p>
+  ${pics}
+  <div class="cols">
+    ${t.changes.length ? `<div><h3>Co se na kostce změní</h3>${list(t.changes)}</div>` : ''}
+    <div><h3>Jak na to</h3>${list(t.how)}${t.keep ? `<p class="keep">${esc(t.keep)}</p>` : ''}</div>
   </div>
-  ${list.length ? algTable(set.name, list, time) : ''}
+  ${st.text ? `<div class="note"><b>Poznámka autora</b>${String(st.text).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}
+  ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
+  ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${ruleNetSvg(r, frame, 96)}<span>${esc(describeRule(r, map))}</span></li>`).join('')}</ul>` : ''}
+  ${settings.length ? `<details class="tech"><summary>Nastavení kroku pro test</summary><dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
+  ${algList.length ? algTable(set.name, algList, time) : ''}
 </section>`;
   });
   // sady, které žádný krok nepoužívá
@@ -139,25 +148,46 @@ export function learningHtml(method = methods.active()) {
     .map((s) => `<section class="step">${algTable(s.name, setAlgs(s.id), time)}</section>`);
   const total = algs.list().filter((a) => sets.has(a.set ?? 'default')).length;
   const data = JSON.stringify(exportMethod(method)).replace(/</g, '\\u003c');
+  const notation = notationOf(method, guide);
+  const example = exampleSolve(method, guide);
+  const algSteps = guide.steps.filter((st) => ['generate', 'own'].includes(solveByOf(sim[st.id], st)));
+  const intuitive = guide.steps.filter((st) => solveByOf(sim[st.id], st) === 'intuitive');
   return `<!doctype html>
 <html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(name)} – učebnice metody</title>
 <style>
 :root { --ink: #14151c; --muted: #5d6170; --line: #e3e4ea; --soft: #f4f4f8; --accent: #4b4bff; }
 * { box-sizing: border-box; }
-body { margin: 0 auto; max-width: 900px; padding: 24px 16px 48px; font: 15px/1.5 system-ui, sans-serif; color: var(--ink); background: #fff; }
+body { margin: 0 auto; max-width: 900px; padding: 24px 16px 48px; font: 15px/1.55 system-ui, sans-serif; color: var(--ink); background: #fff; }
 h1 { font-size: 2rem; margin: 0 0 4px; } h2 { font-size: 1.25rem; margin: 0; }
 .meta { color: var(--muted); margin: 0 0 16px; }
 .intro p { margin: 0 0 8px; }
-.overview { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 0.9rem; }
+.box { background: var(--soft); border-radius: 18px; padding: 14px 16px; margin: 0 0 16px; }
+.box h2 { margin-bottom: 8px; }
+.box h3 { margin: 12px 0 4px; }
+.notation { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 4px 0 0; }
+.notation dt { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 800; }
+.notation dd { margin: 0; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; }
+.legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 4px; }
+.overview { width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 0.9rem; }
 .overview th, .overview td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.overview a { color: inherit; }
 .step { border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; margin: 0 0 16px; break-inside: avoid-page; }
 .step-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .n { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 800; }
+.chip { background: #ececff; color: #2b2bb0; border-radius: 999px; padding: 2px 10px; font-size: 0.8rem; font-weight: 700; }
 .pill { margin-left: auto; background: var(--soft); border-radius: 999px; padding: 2px 10px; font-size: 0.82rem; font-weight: 700; }
-.step-body { display: flex; gap: 16px; align-items: flex-start; margin-top: 10px; flex-wrap: wrap; }
-.step-body > div { flex: 1; min-width: 220px; }
-figure { margin: 0; text-align: center; } figcaption { font-size: 0.78rem; color: var(--muted); max-width: 140px; }
+.lead { font-size: 1.02rem; margin: 10px 0; }
+.nets { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; }
+.arrow { font-size: 1.6rem; color: var(--muted); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; }
+.cols ul { margin: 0; padding-left: 18px; } .cols li { margin: 0 0 4px; }
+.keep { color: var(--muted); font-size: 0.9rem; margin: 6px 0 0; }
+.note { border-left: 4px solid var(--line); padding: 2px 0 2px 12px; margin: 10px 0; }
+.note p { margin: 2px 0 0; }
+.tech { font-size: 0.86rem; color: var(--muted); margin: 8px 0 0; }
+figure { margin: 0; text-align: center; } figcaption { font-size: 0.78rem; color: var(--muted); }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 0.86rem; margin: 8px 0 0; }
 dt { color: var(--muted); } dd { margin: 0; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; }
@@ -171,25 +201,64 @@ h3 { font-size: 1rem; margin: 14px 0 8px; }
 .rules { margin: 6px 0; padding: 0; list-style: none; font-size: 0.9rem; display: grid; gap: 6px; }
 .rules li { display: flex; gap: 10px; align-items: center; }
 .rules svg { flex: none; }
+.example ol { padding-left: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.example li { background: #fff; border-radius: 14px; padding: 8px 10px; }
+.example li code { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
+.example li small { color: var(--muted); }
+.scramble { font-size: 1.05rem; overflow-wrap: anywhere; }
 .import { margin-top: 28px; padding: 12px 14px; border-radius: 14px; background: var(--soft); font-size: 0.86rem; color: var(--muted); }
-@media print { body { padding: 0; } .import { display: none; } .step { border-color: #ccc; } }
+@media print { body { padding: 0; } .import { display: none; } .step, .box { border-color: #ccc; } details.tech { display: none; } }
 </style></head><body>
 <h1>${esc(name)}</h1>
-<p class="meta">Učebnice metody · ${esc(new Date().toLocaleDateString('cs-CZ'))} · ${guide.steps.length} kroků · ${total} algoritmů · držení: ${esc(COLOR_NAME[frame.down])} dole, ${esc(COLOR_NAME[frame.front])} vpředu</p>
+<p class="meta">Učebnice metody · ${esc(new Date().toLocaleDateString('cs-CZ'))} · ${guide.steps.length} kroků · ${total} algoritmů</p>
 ${guide.intro ? `<div class="intro">${String(guide.intro).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}
-${last ? `<p><b>Simulace (${esc(new Date(last.at).toLocaleDateString('cs-CZ'))}, ${last.n} zamíchání):</b> ${fmt(last.moves)} tahů na složení${last.time ? `, odhad ${fmt(last.time, 2)} s` : ''}${last.label ? ` · ${esc(last.label)}` : ''}</p>` : ''}
-<table class="overview"><thead><tr><th>#</th><th>Krok</th><th>Dílky</th><th>Sada</th><th>Volnost</th>${last ? '<th>Tahů</th>' : ''}</tr></thead><tbody>
+${last ? `<p><b>Test metody (${esc(new Date(last.at).toLocaleDateString('cs-CZ'))}, ${last.n} zamíchání):</b> ${fmt(last.moves)} tahů na složení${last.time ? `, odhad ${fmt(last.time, 2)} s` : ''}</p>` : ''}
+<section class="box">
+  <h2>Než začneš</h2>
+  <h3>Jak držet kostku</h3>
+  <p>Celou dobu drž kostku tak, aby <b>${esc(COLOR_NAME[frame.down])}</b> střed byl dole a <b>${esc(COLOR_NAME[frame.front])}</b> vpředu (k tobě). Středy se nikdy nehýbou vůči sobě, takže podle nich vždycky poznáš, kam který dílek patří: dílek patří tam, kde jsou středy jeho barev.</p>
+  <h3>Jak číst obrázky</h3>
+  <p class="legend"><span><i style="background:${HEX.F}"></i>barva = tahle barva tu musí být</span><span><i style="background:linear-gradient(90deg,${HEX.U} 50%,${HEX.D} 50%);border:1px solid #ccc"></i>dvě barvy = může tu být kterákoli z nich</span><span><i style="background:#d6d8de"></i>šedá = na tomhle místě zatím nezáleží</span><span><i style="border:2px solid #e8467c"></i>rámeček = nové v tomto kroku</span></p>
+  <p>Obrázek je kostka „rozložená“ do roviny: v prostředním řádku je zleva levá, přední, pravá a zadní strana, nad přední stranou horní a pod ní spodní.</p>
+  ${notation.length ? `<h3>Zápis tahů</h3><p>Písmeno = otočit stranou o čtvrt otáčky po směru hodinových ručiček (jako bys se na tu stranu díval zpředu). Čárka (R') = proti směru, dvojka (R2) = půl otáčky.</p><dl class="notation">${notation.map(([m, t]) => `<dt>${esc(m)}</dt><dd>${esc(t)}</dd>`).join('')}</dl>` : ''}
+  <h3>Jak se metodu učit</h3>
+  <ol>
+    <li>Přečti si přehled níž a projdi si ukázkové složení na skutečné kostce${example ? '' : ' (objeví se, až metodu otestuješ)'}.</li>
+    ${intuitive.length ? `<li>Nejdřív si osvoj intuitivní kroky (${esc(intuitive.map((st) => st.title).filter(Boolean).slice(0, 4).join(', '))}${intuitive.length > 4 ? '…' : ''}) – v aplikaci je u každého kroku „Nacvičit“, který zamíchá kostku rovnou do situace před krokem.</li>` : ''}
+    ${algSteps.length ? `<li>Algoritmy (${esc(algSteps.map((st) => st.title).filter(Boolean).join(', '))}) se uč postupně, pár denně. Dokud nějaký neumíš, pomoz si delší cestou. Políčka „umím“ u algoritmů si můžeš odškrtávat.</li>` : ''}
+    <li>Pak skládej celé kostky a sleduj, který krok tě zdržuje nejvíc.</li>
+  </ol>
+</section>
+<h2>Přehled metody</h2>
+<table class="overview"><thead><tr><th>#</th><th>Krok</th><th>Co uděláš</th><th>Jak</th>${last ? '<th>Tahů</th>' : ''}</tr></thead><tbody>
 ${guide.steps.map((st, i) => {
     const res = last?.steps.find((x) => x.id === st.id);
+    const solveBy = solveByOf(sim[st.id], st);
     const set = st.set ? sets.get(st.set) : null;
-    return `<tr><td>${i + 1}</td><td>${esc(st.title || `Krok ${i + 1}`)}</td><td>${esc(st.cells && Object.keys(st.cells).length ? cellsSummary(st.cells) : [Object.keys(stepParts(st)).length ? describeParts(stepParts(st)) : '', st.rules?.length ? `${st.rules.length}× pravidlo pro skupinu` : ''].filter(Boolean).join(' + ') || '–')}</td><td>${set ? `${esc(set.name)} (${setAlgs(set.id).length})` : '–'}</td><td>${esc(freeText(sim[st.id]))}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
+    const how = solveBy === 'intuitive' ? 'intuitivně' : solveBy === 'fixed' ? 'jen někdy' : `${set ? setAlgs(set.id).length : 0} algoritmů`;
+    return `<tr><td>${i + 1}</td><td><a href="#krok-${i + 1}">${esc(st.title || `Krok ${i + 1}`)}</a></td><td>${esc(teach[i].title)}</td><td>${esc(how)}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
   }).join('')}
 </tbody></table>
 ${steps.join('\n')}
+${example ? exampleHtml(example) : ''}
 ${rest.join('\n')}
 <p class="import">Tenhle soubor obsahuje celou metodu i s algoritmy. Do ErgoCube Lab ji nahraješ přes výběr metody → „Importovat metodu…“ a vybereš tento soubor.</p>
 <script type="application/json" id="ergocube-method">${data}</script>
 </body></html>`;
+}
+
+/** Ukázkové složení: zamíchání a každý krok s kostkou po něm. */
+function exampleHtml(ex) {
+  const net = (facelets, hold) => netSvg([...facelets].map((c) => ({ color: c })), hold, 150);
+  return `<section class="box example" id="ukazka">
+  <h2>Ukázkové složení</h2>
+  <p>Jedno skutečné složení z testu metody. Zamíchej kostku (bílá nahoře, zelená vpředu) a pak jdi krok po kroku – po každém kroku má kostka vypadat jako na obrázku.</p>
+  <p class="scramble">Zamíchání: <code>${esc(ex.scramble)}</code></p>
+  <figure>${net(ex.start, ex.firstHold)}<figcaption>po zamíchání, otočená do držení metody (${esc(ex.firstLabel)})</figcaption></figure>
+  <ol>${ex.steps.map((x, k) => `<li><b>${k + 1}. ${esc(x.title)}</b>
+    ${x.skipped ? `<small>${x.fixed ? 'není potřeba – přeskočíš' : 'už hotové – přeskočíš'}</small>` : `<code>${x.rotation ? `(${esc(x.rotation)}) ` : ''}${esc(x.alg)}</code><small>${x.length} tahů${x.rotation ? ` · nejdřív otoč kostku (${esc(x.label)})` : ''}</small>`}
+    ${x.skipped ? '' : net(x.facelets, x.hold)}</li>`).join('')}</ol>
+</section>`;
 }
 
 function algTable(setName, list, time) {

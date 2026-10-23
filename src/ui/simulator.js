@@ -263,6 +263,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       name: k < KEEP_DISPLAY ? x.name : undefined, missingSet: x.missingSet || undefined,
       // zápis: u ukázek a u případů, na které sada neměla algoritmus (návrh do sady)
       display: k < KEEP_DISPLAY || x.missingSet ? x.display : undefined,
+      // tahy modelu u prvních pár složení: ukázkové složení v průvodci a učebnici (teach.js)
+      model: k < 8 ? x.model || undefined : undefined,
     })),
   });
 
