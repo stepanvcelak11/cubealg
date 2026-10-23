@@ -42,12 +42,15 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   kroky jako časová osa s náhledem kostky po každém kroku a stavem (intuitivně /
   počet algoritmů / chybí algoritmy), nastavení metody (název, držení, úvod)
   a šablony. *Krok*: horní lišta (zpět, krok i z n, předchozí/další), čipy všech
-  kroků, název a pořadí, pak čtyři karty – **1. Co má být po kroku hotové**: kostka
-  pokračuje z minulého kroku (hotové z dřívějška je vidět, nové má růžový rámeček),
-  dokreslí se jen nové *štětcem* – hotovo / správná vrstva (kterýkoli dílek své
-  vrstvy barvou vrstvy nahoru či dolů – separace) / jen orientace / jen pozice /
-  guma – klepnutím na dílek nebo celou vrstvu (jen hrany, jen rohy); volnost „smí se
-  složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat /
+  kroků, název a pořadí, pak čtyři karty – **1. Jak má kostka vypadat po kroku**:
+  vedle sebe kostka před krokem a po kroku; kostka pokračuje z minulého kroku (hotové
+  z dřívějška je vybarvené, nové má růžový rámeček) a dobarví se jen nové *po
+  nálepkách jako v Labu* – vybereš barvu (víc barev = kterákoli z nich, např. bílá
+  nebo žlutá), „správnou barvu“ (jako střed strany) nebo „nezáleží“ (šedá) a klepeš
+  na nálepky (nebo celý dílek; klepnutí na střed vybarví celou stranu). Uloží se jako
+  buňka `{ colors: { stěna: [barvy] } }` (`core/cells.js`: každá nálepka = podmínka
+  „na této pozici některá z barev“, všechny vlastní barvy = hotový dílek). Volnost
+  „smí se složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat /
   moje sada). **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat).
   **4. Vyzkoušet** (náhodné zamíchání kroky 1…i). Dole předchozí/další krok nebo
   „Přidat další krok“. Na širokém displeji je osa vlevo vedle kroku. Nastavení se

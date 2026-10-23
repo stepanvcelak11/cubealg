@@ -54,3 +54,21 @@ test('buňky: přejmenování podle orientace, převod starého zadání a popis
   assert.equal(legacy.UF.ori, 'correct');
   assert.match(describeCell(colorTo(['DF'], ['U', 'D'], 'D').DF, 'edge'), /kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
 });
+
+test('buňky po nálepkách: kříž bílá nebo žlutá dole = skupina, hotové barvy = vlastní dílek', () => {
+  const cross = Object.fromEntries(DE.map((n) => [n, { colors: { D: ['U', 'D'] } }]));
+  const goal = compileCells(cross);
+  assert.deepEqual(goal, compileCells(colorTo(DE, ['U', 'D'], 'D')));
+  const t = compileGoal(goal).test;
+  assert.ok(t(applyAlg(solved(), 'R2 L2')));
+  assert.ok(!t(applyAlg(solved(), 'F')));
+  // všechny nálepky vlastní barvou = hotový dílek
+  assert.deepEqual(compileCells({ DF: { colors: { D: ['D'], F: ['F'] } } }), compileCells({ DF: { own: 'solved' } }));
+  // dvě nálepky rohu: dole bílá, vpředu zelená (vpravo cokoli)
+  const corner = compileGoal(compileCells({ DFR: { colors: { D: ['U'], F: ['F'] } } })).test;
+  assert.ok(!corner(solved()));
+  // přejmenování (jiné držení) a popis
+  const r = remapCells({ DF: { colors: { D: ['U', 'D'] } } }, { U: 'D', D: 'U', F: 'F', B: 'B', R: 'L', L: 'R' });
+  assert.deepEqual(r, { UF: { colors: { U: ['D', 'U'] } } });
+  assert.equal(describeCell({ colors: { D: ['U', 'D'] } }, 'edge'), 'dole bílá nebo žlutá, jinde jakákoli barva');
+});

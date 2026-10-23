@@ -20,7 +20,7 @@ import { holdFromFaces } from '../core/hold.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
-import { cellEditor, cellsBefore, cellsLines, cellsSummary, cellsNetSvg, cellLooks } from './celleditor.js';
+import { cellEditor, cellsBefore, cellsSummary, cellsNetSvg, cellLooks } from './celleditor.js';
 import { cellsFromLegacy } from '../core/cells.js';
 import { TEMPLATES, templateGuide } from '../sim/templates.js';
 
@@ -322,11 +322,9 @@ export function renderBuilder() {
     const placesNote = !Object.keys(st.cells ?? {}).length ? 'Nejdřív na kostce vyber, co má být po kroku nově hotové.'
       : places > 1 ? `Krok je hotový na kterémkoli z možných míst (${places}). Test u každého zamíchání vybere to nejvýhodnější a další kroky pokračují odtamtud.`
         : free === 'fixed' ? 'Krok je hotový jen tehdy, když jsou hotové přesně vybrané dílky.' : 'Tyhle dílky jsou ve všech povolených polohách na stejném místě – volnost tu nic nemění.';
-    const lines = st.cells && Object.keys(st.cells).length ? cellsLines(st.cells, frame) : [];
-    const goal = sec('1', 'Co má být po kroku hotové?',
-      i ? 'Kostka pokračuje z minulého kroku – dokresli jen to, co tento krok nově složí.' : 'Na kostce vyber, co má být po prvním kroku hotové.',
+    const goal = sec('1', 'Jak má kostka vypadat po kroku?',
+      i ? 'Kostka už je vybarvená podle minulých kroků – dobarvi jen to, co tento krok nově složí.' : 'Vybarvi nálepky, které mají být po kroku hotové. Šedá = na barvě nezáleží.',
       cellEditor(st, cellsBefore(guide.steps, i), frame, redraw),
-      lines.length ? el('p', { className: 'bld-goal-say', textContent: `Po kroku: ${lines.join(' · ')}` }) : null,
       el('div', { className: 'bld-free-row' }, field('Smí se krok složit i jinde?', select(Object.fromEntries(Object.entries(FREE_TEXT).map(([id, [l]]) => [id, l])), free, `Kde smí být – krok ${k}`,
         (v) => patch(v === 'colors' && !cfg.downs?.length ? { free: v, downs: [frame.down, OPPOSITE[frame.down]] } : { free: v })),
       'Např. pár do kteréhokoli slotu = „Na kterémkoli boku“, kříž bílý nebo žlutý = „Dvě protilehlé barvy dole“')),

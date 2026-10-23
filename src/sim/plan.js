@@ -12,7 +12,7 @@ import { MOVESET_PRESETS } from '../core/moveset.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
 import { compileRule, mergeConstraints, constraintsKey } from '../core/rules.js';
-import { compileCells, remapCells } from '../core/cells.js';
+import { compileCells, remapCells, isGroupCell } from '../core/cells.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 
 const P = getPuzzle('333');
@@ -113,7 +113,7 @@ const LABEL = COLORS;
 export function placesCount(frame, before, parts, cfg = {}, rules = [], cells = {}) {
   const f = validFrame(frame) ? frame : DEFAULT_FRAME;
   const fresh = Object.fromEntries(Object.entries(parts).filter(([n, st]) => before[n] !== st));
-  const groups = Object.fromEntries(Object.entries(cells).filter(([, c]) => c?.pieces));
+  const groups = Object.fromEntries(Object.entries(cells).filter(([, c]) => isGroupCell(c)));
   if (!Object.keys(fresh).length && !rules.length && !Object.keys(groups).length) return 1;
   const a = frameMap(f);
   return new Set(freeFrames(f, cfg.free ?? 'fixed', cfg).map((g) => {
@@ -172,7 +172,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     pend = mergeParts(pend, x.parts);
     pendRules.push(...(x.st.rules ?? []));
     // buňky „některý z dílků“ (vlastní dílky jsou už v parts)
-    for (const [n, c] of Object.entries(x.st.cells ?? {})) if (c?.pieces) pendCells[n] = c;
+    for (const [n, c] of Object.entries(x.st.cells ?? {})) if (isGroupCell(c)) pendCells[n] = c;
     if (steps.includes(x)) { fresh.push(pend); rulesOf.push(pendRules); groupsOf.push(pendCells); pend = {}; pendRules = []; pendCells = {}; }
   }
   // stěna v držení metody → stěna v orientaci f (buňky jsou ve skutečných názvech pro držení metody)

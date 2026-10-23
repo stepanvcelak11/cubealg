@@ -11,6 +11,9 @@
 //        'correct'                    správně natočený (rohy barvou U/D nahoru či dolů,
 //                                     hrany podle EO – jako by byl na svém místě)
 //        { side: 'D', colors: [...] } na straně místa `side` musí být některá z barev
+//     { colors: { D: ['U', 'D'] } }   po nálepkách: na nálepce místa na straně D musí být
+//                                     některá z barev (bílá nebo žlutá); strany, které
+//                                     chybí, můžou mít jakoukoli barvu
 //
 // Kompilace dá omezení pro hledání (core/constraints.js): vlastní dílky jako omezení
 // dílku, „některý z dílků“ jako skupinová pravidla #classes (místa se stejnou skupinou
@@ -27,6 +30,33 @@ export function piecesWithColors(type, colors = [], without = []) {
   return PIECE_SLOTS.filter((s) => s.type === type)
     .filter((s) => { const cs = colorsOf(s); return (!colors.length || cs.some((c) => colors.includes(c))) && !cs.some((c) => without.includes(c)); })
     .map((s) => s.name);
+}
+
+/** Jsou nálepky buňky po nálepkách přesně barvy složené kostky (= hotový vlastní dílek)? */
+export function stickersSolved(slot, colors) {
+  return colorsOf(slot).every((f) => colors?.[f]?.length === 1 && colors[f][0] === f);
+}
+
+/**
+ * Buňka jako barvy po nálepkách ({ stěna: [barvy] }), nebo null, když to po nálepkách
+ * zadat nejde (jen pozice, správně natočený podle EO, vybrané dílky…).
+ */
+export function cellStickers(cell, slot) {
+  if (!cell) return {};
+  if (cell.colors) return Object.fromEntries(Object.entries(cell.colors).map(([f, cs]) => [f, [...cs]]));
+  if (cell.own === 'solved') return Object.fromEntries(colorsOf(slot).map((f) => [f, [f]]));
+  const ori = cell.ori;
+  if (cell.pieces && ori && typeof ori === 'object' && colorsOf(slot).includes(ori.side)) {
+    const all = piecesWithColors(slot.type, ori.colors ?? []);
+    if (all.length === cell.pieces.length && all.every((n) => cell.pieces.includes(n))) return { [ori.side]: [...ori.colors] };
+  }
+  return null;
+}
+
+/** Buňka po nálepkách → jednotlivé podmínky „na nálepce f některá z barev“ (jako buňky s natočením). */
+export function stickerConditions(slot, colors) {
+  return Object.entries(colors ?? {}).filter(([f, cs]) => cs?.length && colorsOf(slot).includes(f))
+    .map(([f, cs]) => ({ pieces: piecesWithColors(slot.type, cs), ori: { side: f, colors: [...cs] } }));
 }
 
 /** Pozice místa, kam musí mířit sledovaná nálepka, a které nálepky dílků se sledují. */
@@ -62,12 +92,15 @@ export function compileCells(cells) {
     if (slot.type === 'center') continue;
     if (cell.own === 'solved') { out = mergeConstraints(out, { [slot.name]: 'solved' }); continue; }
     if (cell.own === 'any') { out = mergeConstraints(out, { [slot.name]: 'permutation' }); continue; }
-    const g = groupOf(slot, cell);
-    if (!g.pieces.length || !g.place.length) { out = mergeConstraints(out, { [slot.name]: 'solved' }); continue; } // nesplnitelné → aspoň něco
-    const key = `${g.pieces.map((p) => p.name).join()}|${JSON.stringify(g.stickers)}`;
-    const cur = groups.get(key) ?? { pieces: g.pieces.map((p) => p.name), stickers: g.stickers, places: [] };
-    cur.places.push(g.place);
-    groups.set(key, cur);
+    if (cell.colors && stickersSolved(slot, cell.colors)) { out = mergeConstraints(out, { [slot.name]: 'solved' }); continue; }
+    for (const part of cell.colors ? stickerConditions(slot, cell.colors) : [cell]) {
+      const g = groupOf(slot, part);
+      if (!g.pieces.length || !g.place.length) { out = mergeConstraints(out, { [slot.name]: 'solved' }); continue; } // nesplnitelné → aspoň něco
+      const key = `${g.pieces.map((p) => p.name).join()}|${JSON.stringify(g.stickers)}`;
+      const cur = groups.get(key) ?? { pieces: g.pieces.map((p) => p.name), stickers: g.stickers, places: [] };
+      cur.places.push(g.place);
+      groups.set(key, cur);
+    }
   }
   if (groups.size) out = mergeConstraints(out, { '#classes': [...groups.values()] });
   return out;
@@ -79,7 +112,8 @@ export function cellsToParts(cells) {
 }
 
 /** Má krok buňky „některý z dílků“ (cíl nejde zadat jen pevnými dílky)? */
-export const hasGroupCells = (cells) => Object.values(cells ?? {}).some((c) => c?.pieces);
+export const isGroupCell = (c) => !!(c?.pieces || c?.colors);
+export const hasGroupCells = (cells) => Object.values(cells ?? {}).some(isGroupCell);
 
 /**
  * Přejmenuje buňky při změně orientace (map: stěna → stěna), např. jiné držení metody
@@ -88,6 +122,7 @@ export const hasGroupCells = (cells) => Object.values(cells ?? {}).some((c) => c
 export function remapCells(cells, map) {
   const name = (n) => slotByName([...n].map((f) => map[f]).join('')).name;
   return Object.fromEntries(Object.entries(cells ?? {}).map(([n, c]) => {
+    if (c?.colors) return [name(n), { colors: Object.fromEntries(Object.entries(c.colors).map(([f, cs]) => [map[f], cs.map((x) => map[x])])) }];
     if (!c?.pieces) return [name(n), c];
     const ori = c.ori && typeof c.ori === 'object' ? { side: map[c.ori.side], colors: (c.ori.colors ?? []).map((x) => map[x]) } : c.ori;
     return [name(n), { pieces: c.pieces.map(name), ori }];
@@ -173,6 +208,14 @@ export function describeCell(cell, type, back = { U: 'U', D: 'D', F: 'F', B: 'B'
   if (!cell) return 'na tomto místě nezáleží';
   if (cell.own === 'solved') return 'jeho vlastní dílek, správně natočený';
   if (cell.own === 'any') return 'jeho vlastní dílek, natočený jakkoli';
+  if (cell.colors) {
+    const WHERE = { U: 'nahoře', D: 'dole', F: 'vpředu', B: 'vzadu', R: 'vpravo', L: 'vlevo' };
+    const parts = Object.entries(cell.colors).filter(([, cs]) => cs?.length)
+      .sort(([a], [b]) => 'DUFBRL'.indexOf(back[a]) - 'DUFBRL'.indexOf(back[b]))
+      .map(([f, cs]) => `${WHERE[back[f]] ?? f} ${cs.map((c) => NAME[c]).join(' nebo ')}`);
+    const free = (type === 'edge' ? 2 : 3) - parts.length;
+    return parts.length ? `${parts.join(', ')}${free > 0 ? ', jinde jakákoli barva' : ''}` : 'na tomto místě nezáleží';
+  }
   const who = describePieces(cell.pieces ?? [], type);
   // natočení stejnou barvou, jakou mají vybrané dílky → „tou barvou dolů“ (bez opakování barev)
   const combo = pieceCombo(cell.pieces ?? [], type);

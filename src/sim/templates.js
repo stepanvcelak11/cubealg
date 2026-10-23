@@ -8,13 +8,14 @@ import { frameMap, DEFAULT_FRAME } from '../ui/parts.js';
 
 const CROSS = ['DF', 'DR', 'DB', 'DL'], E = ['FR', 'BR', 'BL', 'FL'], UE = ['UF', 'UR', 'UB', 'UL'];
 const DC = ['DFR', 'DRB', 'DBL', 'DLF'], UC = ['UFR', 'URB', 'UBL', 'ULF'];
+// páry v šabloně každý v jiném slotu (kostka po 4 párech má hotové F2L); volnost
+// „na kterémkoli boku“ je stejně pustí do kteréhokoli volného slotu
+const PAIRS = [['DFR', 'FR'], ['DLF', 'FL'], ['DRB', 'BR'], ['DBL', 'BL']];
 const typeOf = (n) => (n.length === 3 ? 'corner' : 'edge');
 /** Vlastní dílky (hotové / natočené jakkoli). */
 const own = (names, how = 'solved') => Object.fromEntries(names.map((n) => [n, { own: how }]));
-/** Na místech některý dílek s barvou `colors`, tou barvou na stranu `side` (podle místa: dole D, nahoře U). */
-const colorTo = (names, colors, pieceColors = colors) => Object.fromEntries(names.map((n) => [n, {
-  pieces: piecesWithColors(typeOf(n), pieceColors), ori: { side: n.includes('D') ? 'D' : 'U', colors },
-}]));
+/** Po nálepkách: na straně místa dole (D) / nahoře (U) některá z barev `colors`, jinde cokoli. */
+const colorTo = (names, colors) => Object.fromEntries(names.map((n) => [n, { colors: { [n.includes('D') ? 'D' : 'U']: colors } }]));
 /** Na místech kterýkoli správně natočený dílek. */
 const oriented = (names) => Object.fromEntries(names.map((n) => [n, { pieces: piecesWithColors(typeOf(n)), ori: 'correct' }]));
 const custom = (...bases) => ({ moves: 'custom', custom: bases });
@@ -25,7 +26,7 @@ export const TEMPLATES = [
     intro: 'Kříž, čtyři páry (F2L) do kteréhokoli slotu, OLL a PLL.',
     steps: [
       { title: 'Kříž', cells: own(CROSS), sim: { recog: 0 }, text: 'Hrany barvy dole na svá místa.' },
-      ...[1, 2, 3, 4].map((k) => ({ title: `Pár ${k}`, cells: own(['DFR', 'FR']), sim: { free: 'side', recog: 0.4 }, text: 'Roh a hrana do kteréhokoli volného slotu.' })),
+      ...PAIRS.map(([c, e], k) => ({ title: `Pár ${k + 1}`, cells: own([c, e]), sim: { free: 'side', recog: 0.4 }, text: 'Roh a hrana do kteréhokoli volného slotu.' })),
       { title: 'OLL', cells: oriented([...UE, ...UC]), sim: { recog: 0.5, kind: 'alg' } },
       { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' } },
     ],
@@ -68,7 +69,7 @@ export const TEMPLATES = [
     intro: 'Kříž z kterýchkoli hran barvy dole a nahoře (tou barvou dolů), páry s kterýmkoli takovým rohem, natočení horní vrstvy (OLL), oddělení hran a rohů podle barvy, permutace rohů a nakonec parita (M2 U2 M2) a EPBL.',
     steps: [
       { title: 'Kříž', cells: colorTo(CROSS, ['D', 'U']), sim: { recog: 0 }, text: 'Kterékoli 4 hrany s barvou dole nebo nahoře, tou barvou dolů.' },
-      ...[1, 2, 3, 4].map((k) => ({ title: `Pár ${k}`, cells: { ...colorTo(['DFR'], ['D', 'U']), ...own(['FR']) }, sim: { free: 'side', recog: 0.4 },
+      ...PAIRS.map(([c, e], k) => ({ title: `Pár ${k + 1}`, cells: { ...colorTo([c], ['D', 'U']), ...own([e]) }, sim: { free: 'side', recog: 0.4 },
         text: 'Kterýkoli roh s barvou dole nebo nahoře (tou barvou dolů) a k němu hrana střední vrstvy na své místo.' })),
       { title: 'OLL', cells: colorTo([...UE, ...UC, ...CROSS, ...DC], ['D', 'U']), sim: { recog: 0.5, kind: 'alg' }, text: 'Barva dole i nahoře na horní a spodní stranu (může být promíchaná).' },
       { title: 'Separace hran', cells: { ...colorTo(CROSS, ['D']), ...colorTo(UE, ['U']) }, sim: { recog: 0.4, kind: 'alg' }, text: 'Hrany barvy dole dolů, barvy nahoře nahoru – pořád natočené.' },

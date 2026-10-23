@@ -1043,27 +1043,38 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.bld-tpl').selectOption('separation');
   await p.waitForFunction(() => document.querySelectorAll('.bld-tl-item').length === 10);
   assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
-  // kříž: na 4 místech dole kterákoli hrana s bílou nebo žlutou, tou nálepkou dolů
+  // kříž: nálepky dole na 4 hranách bílá nebo žlutá, boky šedé (na barvě nezáleží)
   await p.locator('.bld-tl-item').first().tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
-  // políčko po políčku: vybrat hrany dole a nechat jen bílé hrany
+  const say = () => p.locator('.bld-step.open .cell-overview').textContent();
+  assert.match(await say(), /4× hrana dole bílá nebo žlutá, jinde jakákoli barva/);
+  // barvení nálepek: jen bílá na spodní nálepky 4 hran (kříž jen z bílých hran)
+  const ks = await p.evaluate(async () => {
+    const { FACELETS, SLOT_OF, SLOTS } = await import('./src/core/geometry.js');
+    return ['UF', 'UR', 'UB', 'UL'].map((n) => FACELETS.find((f) => f.face === 'U' && SLOTS[SLOT_OF[f.index]].name === n).index);
+  });
+  await p.locator('.bld-step.open .cell-swatch[data-color="U"]').tap();
+  for (const k of ks) await p.locator(`.bld-step.open .cell-net [data-k="${k}"]`).tap();
+  assert.match(await say(), /4× hrana dole bílá, jinde jakákoli barva/);
+  const cells = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('ergocube.guides')); return Object.values(g).at(-1).steps[0].cells; });
+  assert.ok(Object.values(cells).every((c) => JSON.stringify(c) === '{"colors":{"U":["U"]}}'));
+  // klepnutí znovu stejnou barvou = zpět (šedá)
+  await p.locator(`.bld-step.open .cell-net [data-k="${ks[0]}"]`).tap();
+  assert.match(await say(), /3× hrana dole bílá/);
+  // víc barev na nálepce: bílá nebo žlutá
+  await p.locator('.bld-step.open .cell-swatch[data-color="D"]').tap();
+  for (const k of ks) await p.locator(`.bld-step.open .cell-net [data-k="${k}"]`).tap();
+  assert.match(await say(), /4× hrana dole bílá nebo žlutá, jinde jakákoli barva/);
+  // pokročilé: výběr míst, vlastní dílek a zpět na skupinu „tou barvou dolů“
+  await p.locator('.bld-step.open .cell-adv', { hasText: 'Pokročilé' }).tap();
   await p.locator('.bld-step.open .cell-quick button', { hasText: 'Hrany dole' }).tap();
   assert.match(await p.locator('.bld-step.open .cell-panel-title').innerText(), /Vybráno: 4 místa/);
-  assert.equal(await p.locator('.bld-step.open .rule-opt.on', { hasText: 'Některý z vybraných dílků' }).count(), 1);
-  await p.locator('.bld-step.open .cell-panel .rule-chip', { hasText: 'žlutá (nahoře)' }).tap();
-  assert.match(await p.locator('.bld-step.open .cell-panel .rule-say').innerText(), /4 místa: kterákoli hrana s bílou barvou/);
-  const cells = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('ergocube.guides')); return Object.values(g).at(-1).steps[0].cells; });
-  assert.ok(Object.values(cells).every((c) => c.pieces.length === 4));
-  // klepnutí na políčko kostky přidá místo do výběru; „Jeho vlastní dílek“ a zpět
-  await p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
-  assert.match(await p.locator('.bld-step.open .cell-panel-title').innerText(), /Vybráno: 5 míst/);
-  await p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
   await p.locator('.bld-step.open .rule-opt', { hasText: 'Jeho vlastní dílek' }).tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana jeho vlastní dílek, správně natočený/);
+  assert.match(await say(), /4× hrana jeho vlastní dílek, správně natočený/);
   await p.locator('.bld-step.open .rule-opt', { hasText: 'Některý z vybraných dílků' }).tap();
   await p.locator('.bld-step.open .rule-opt', { hasText: 'na určitou stranu' }).tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
-  await p.locator('.bld-step.open .cell-panel .rule-chip', { hasText: 'žlutá (nahoře)' }).tap(); // kříž jen z bílých hran
+  assert.match(await say(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
+  await p.locator('.bld-step.open .cell-adv', { hasText: 'Zpět' }).tap();
+  assert.equal(await p.locator('.bld-step.open .cell-palette').count(), 1);
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.equal(await p.locator('.sim-step').count(), 10);
@@ -1100,24 +1111,20 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts, 'ergocube.method.sub': 'build' });
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.bld-tl-item').nth(1).tap();
-  // štětec: klepnutí na dílek nastaví stav (hotovo, jen orientace, jen pozice), znovu = zpět
+  // barvení: celý dílek správnou barvou = hotový roh, klepnutí znovu = zpět
   const tap = () => p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
-  const brush = (id) => p.locator(`.bld-step.open .cell-brush[data-brush="${id}"]`).tap();
   const say = () => p.locator('.bld-step.open .cell-overview').textContent();
+  await p.locator('.bld-step.open .cell-kinds button', { hasText: 'celý dílek' }).tap();
   await tap();
   assert.match(await say(), /1× roh jeho vlastní dílek, správně natočený/);
-  await brush('oriented'); await tap();
-  assert.match(await say(), /1× roh kterýkoli roh, správně natočený/);
-  await brush('place'); await tap();
-  assert.match(await say(), /1× roh jeho vlastní dílek, natočený jakkoli/);
   await tap();
   assert.doesNotMatch(await say(), /roh/);
-  // správná vrstva: rohy spodní vrstvy = kterýkoli roh s bílou, bílou dolů (separace)
-  await brush('layer');
-  await p.locator('.bld-step.open .cell-kinds button', { hasText: /^rohy$/ }).tap();
-  await p.locator('.bld-step.open .cell-layers button', { hasText: 'Spodní vrstva' }).tap();
-  assert.match(await say(), /4× roh kterýkoli roh s bílou barvou, tou barvou dolů/);
-  await p.locator('.bld-step.open .cell-layers button', { hasText: 'Spodní vrstva' }).tap();
+  // bílá nebo žlutá na celou spodní stranu (klepnutí na střed), znovu = zpět
+  await p.locator('.bld-step.open .cell-swatch[data-color="U"]').tap();
+  await p.locator('.bld-step.open .cell-swatch[data-color="D"]').tap();
+  await p.locator('.bld-step.open .cell-net [data-center="U"]').tap();
+  assert.match(await say(), /4× roh dole bílá nebo žlutá, jinde jakákoli barva/);
+  await p.locator('.bld-step.open .cell-net [data-center="U"]').tap();
   assert.doesNotMatch(await say(), /roh/);
   // okamžitá kontrola: krok vyzkoušený na náhodném zamíchání
   await p.locator('.bld-step.open button', { hasText: 'Vyzkoušet krok' }).tap();

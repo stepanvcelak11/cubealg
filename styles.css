@@ -1432,3 +1432,22 @@ details.sim-card > summary small { color: var(--muted); font-size: 0.78rem; font
 .bld-sec .rule-chip:not(.on), .bld-sec .rule-opt { background: var(--panel-2); }
 .bld-sec .cell-panel .rule-chip:not(.on), .bld-sec .cell-panel .rule-opt { background: var(--panel); }
 .bld-how .bld-tpl-card { background: var(--panel-2); box-shadow: none; }
+
+/* barvení nálepek (zadání kroku) */
+.cell-palette { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cell-swatch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 58px; padding: 6px 2px; border-radius: 14px; background: var(--panel-2); color: var(--text); font-size: 0.72rem; font-weight: 800; line-height: 1.1; box-shadow: none; text-align: center; min-width: 0; overflow-wrap: anywhere; }
+.cell-swatch i { flex: none; width: 22px; height: 22px; border-radius: 6px; background: var(--c); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25); }
+.cell-swatch i.cell-sw-look { background: none; box-shadow: none; line-height: 0; }
+.cell-swatch i.cell-sw-look svg { width: 22px; height: 22px; border-radius: 6px; }
+.cell-swatch.on { background: var(--accent-soft); box-shadow: inset 0 0 0 2.5px var(--accent); }
+.cell-swatch:hover:not(:disabled) { filter: none; }
+@media (min-width: 640px) { .cell-palette { grid-template-columns: repeat(8, minmax(0, 1fr)); } .cell-swatch { font-size: 0.8rem; padding: 8px 4px; } }
+.cell-nets { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr); gap: 10px; align-items: end; }
+.cell-fig { margin: 0; display: grid; gap: 4px; justify-items: center; min-width: 0; }
+.cell-fig figcaption { font-size: 0.78rem; font-weight: 800; color: var(--muted); text-align: center; }
+.cell-fig-after figcaption { color: var(--accent); }
+.cell-fig .cell-net { padding: 0; width: 100%; }
+.cell-before svg { width: 100%; opacity: 0.9; }
+@media (max-width: 640px) { .cell-nets { grid-template-columns: minmax(0, 1fr); } .cell-fig-before { order: 1; } .cell-fig-before .cell-net svg { width: min(60%, 220px); } }
+.cell-said { display: grid; gap: 4px; padding: 10px 12px; border-radius: 14px; background: var(--panel-2); font-size: 0.84rem; }
+.cell-said .cell-overview { margin: 0; }
