@@ -65,16 +65,17 @@ export function solveByOf(cfg, st) {
 
 /**
  * Natočení vrstev „automaticky“: vrstva (horní / spodní) se smí natočit před algoritmem
- * a po něm, když ji krok smí točit a před krokem v ní ještě není žádný dílek hotový
- * na svém místě (OLL, PLL: horní; separace, PBL: obě; CMLL: jen horní – dole jsou bloky).
+ * a po něm, když ji krok smí točit a před krokem ještě není celá hotová. I s hotovými
+ * rohy (EPBL, EPLL): natočení před a vrácení po (U … U') je tentýž případ viděný z jiné
+ * strany. Celá hotová vrstva (spodek CFOP u OLL a PLL) se netočí.
  * @param {string[]} bases tahy kroku (v držení)
  * @param {object} before hotové dílky před krokem (skutečné názvy)
  * @param {Record<string, string>} map stěny orientace (frameMap)
  * @returns {('U'|'D')[]} vrstvy v držení
  */
 export function autoAdjust(bases, before, map) {
-  return ['U', 'D'].filter((L) => bases.includes(L)
-    && !Object.entries(before).some(([n, c]) => n.length > 1 && n.includes(map[L]) && c === 'solved'));
+  const done = (L) => SLOTS.filter((s) => s.type !== 'center' && s.name.includes(map[L])).every((s) => before[s.name] === 'solved');
+  return ['U', 'D'].filter((L) => bases.includes(L) && !done(L));
 }
 
 const FACES = ['U', 'D', 'F', 'B', 'R', 'L'];

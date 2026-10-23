@@ -58,9 +58,11 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   natočení vrstvy na začátku a konci se odřízne. Nový algoritmus dostanou hned všechna
   vlákna testu, takže další zamíchání krok skládají jím (jako člověk, který se ho
   naučil) a hledá se jen u nepotkaných případů – OLL tak má nejvýš 57 algoritmů.
-  Natočení vrstev „automaticky“ (`autoAdjust` v `sim/plan.js`): vrstva se smí natočit,
-  když ji krok točí a před krokem v ní není nic hotové na svém místě (OLL/PLL horní,
-  separace a PBL obě, CMLL jen horní) /
+  Natočení vrstev „automaticky“ (`autoAdjust` v `sim/plan.js`): vrstva se smí natočit
+  před algoritmem a po něm, když ji krok točí a před krokem není celá hotová – i s
+  hotovými rohy (EPBL: `U … U'` je tentýž případ z jiné strany, takže po paritě vyjde
+  5 × 5 − 1 = 24 případů: nic, Ua, Ub, H, Z nahoře i dole); celá hotová vrstva (spodek
+  CFOP u OLL a PLL) se netočí /
   moje sada / **jen někdy – pevný algoritmus**: krok, který nic nového neskládá a dělá se
   jen při splnění podmínky, např. parita M2 U2 M2 „když je parita“ = lichá permutace
   dílků vrstvy nahoře nebo dole, hrany XOR rohy, takže ji natočení vrstvy nemění;

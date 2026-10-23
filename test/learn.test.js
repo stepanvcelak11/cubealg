@@ -18,16 +18,17 @@ function planOf(id) {
 }
 const layersOf = (step) => [...new Set(step.adjust.pre.flatMap((a) => a.display.split(' ').filter(Boolean).map((t) => t[0])))].sort().join('');
 
-test('natočení vrstev automaticky: jen vrstva, ve které před krokem nic není hotové', () => {
+test('natočení vrstev automaticky: vrstva, která před krokem ještě není celá hotová', () => {
   const at = (r, title) => r.plan.variants[0].steps[r.steps.findIndex((x) => x.st.title === title)];
   const cfop = planOf('cfop'), roux = planOf('roux'), sep = planOf('separation');
   assert.equal(layersOf(at(cfop, 'OLL')), 'U');
   assert.equal(layersOf(at(cfop, 'PLL')), 'U');
-  assert.equal(layersOf(at(roux, 'CMLL')), 'U');
+  assert.equal(layersOf(at(roux, 'CMLL')), 'DU');
   assert.equal(layersOf(at(sep, 'OLL')), 'DU');
   assert.equal(layersOf(at(sep, 'Separace hran')), 'DU');
   assert.equal(layersOf(at(sep, 'Permutace rohů')), 'DU');
-  assert.equal(layersOf(at(sep, 'EPBL')), '', 'rohy jsou už hotové – natočit vrstvu nejde');
+  // rohy hotové, ale U … U' je tentýž případ z jiné strany (U-perm, H, Z nahoře i dole)
+  assert.equal(layersOf(at(sep, 'EPBL')), 'DU');
   // algoritmy si vytvoří test (vygenerovat): krok je rovnou používá
   const i = sep.steps.findIndex((x) => x.st.title === 'OLL');
   assert.equal(sep.plan.stepOpts[i].learn, true);
@@ -64,4 +65,22 @@ test('případy: stejný případ otočený o U je jeden algoritmus, natočení 
   S.seed(i, [{ display: SUNE, score: 1 }]);
   assert.equal(S.offer(i, { display: `U2 ${SUNE}`, model: model(`U2 ${SUNE}`), state: applyAlg(base, model('U2')), goal }).fresh, false);
   assert.equal(S.count(i), 0);
+});
+
+test('případy EPBL: U-perm nahoře z jiné strany (U … U\') je tentýž případ', () => {
+  const { plan, steps } = planOf('separation');
+  const i = steps.findIndex((x) => x.st.title === 'EPBL');
+  const hold = holdOf(plan.variants[0].hold);
+  const model = (d) => hold.toModelString(d);
+  const goal = plan.variants[0].goals[i];
+  const UA = "M2 U M U2 M' U M2";
+  const base = applyAlg(solved(), model(inverse(UA)));
+  const side = applyAlg(solved(), model(`U ${inverse(UA)} U'`));
+  const L = makeLearner(plan);
+  assert.equal(L.offer(i, { display: UA, model: model(UA), state: base, goal }).fresh, true);
+  assert.equal(L.offer(i, { display: `U ${UA} U'`, model: model(`U ${UA} U'`), state: side, goal }).fresh, false);
+  // totéž dole (D … D')
+  const low = applyAlg(solved(), model(`D ${inverse(UA)} D'`));
+  assert.equal(L.offer(i, { display: `D ${UA} D'`, model: model(`D ${UA} D'`), state: low, goal }).fresh, false);
+  assert.equal(L.count(i), 1);
 });
