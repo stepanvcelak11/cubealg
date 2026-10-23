@@ -15,7 +15,7 @@ import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount } from '../sim/plan
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
-import { cellEditor, cellsSummary, cellsBefore } from './celleditor.js';
+import { cellEditor, cellsBefore, cellsLines, cellsSummary } from './celleditor.js';
 import { cellsFromLegacy } from '../core/cells.js';
 import { TEMPLATES, templateGuide } from '../sim/templates.js';
 
@@ -105,7 +105,9 @@ export function renderBuilder() {
     const patch = (p, again = true) => { setStepConfig(method, st, p); if (again) redraw(); else save(); };
     const isOpen = open.has(st.id);
     const summary = [
-      st.cells && Object.keys(st.cells).length ? `po kroku: ${cellsSummary(st.cells)}`
+      // krátce: popis kroku (první věta), jinak souhrn políček
+      st.text?.trim() ? st.text.trim().split(/(?<=[.!?])\s|\n/)[0].slice(0, 110)
+        : st.cells && Object.keys(st.cells).length ? (cellsLines(st.cells, frame).length === 1 ? cellsLines(st.cells, frame)[0] : `po kroku: ${cellsSummary(st.cells)}`)
         : Object.keys(parts).length || rules.length
           ? [Object.keys(parts).length ? `hotovo: ${describeParts(parts)}` : null, rules.length ? `${rules.length} ${rules.length === 1 ? 'pravidlo' : rules.length < 5 ? 'pravidla' : 'pravidel'} pro skupiny` : null].filter(Boolean).join(' + ')
           : 'zatím nic nevybráno',
@@ -169,7 +171,17 @@ export function renderBuilder() {
       field('Tahy', moves, 'Tahy, kterými krok skládáš (hledání i hodnocení). Vkládat z boku = přidej F, B, L…'),
       useSet ? field('Natočení vrstev k algoritmu', select(ADJUST, cfg.adjust, `Natočení vrstev – krok ${k}`, (v) => patch({ adjust: v }, false)), 'AUF/ADF před algoritmem a po něm (počítá se do tahů)') : null,
       useSet ? field('Pomocné algoritmy', helpers, 'Smíš je udělat před algoritmem ze sady (např. oprava parity); víc oddělených čárkou') : null);
-    const setNote = set && !nSet ? el('p', { className: 'hint', textContent: 'Sada je zatím prázdná – algoritmy do ní uložíš v Labu (najdi řešení a „Uložit do sady“) nebo generátorem sady. Do té doby se krok jen hledá.' }) : null;
+    // algoritmy kroku: test najde řešení případů a uloží je do sady kroku
+    const setNote = el('div', { className: 'bld-algs' },
+      el('b', { textContent: nSet ? `Sada „${set.name}“: ${nSet} ${nSet === 1 ? 'algoritmus' : nSet < 5 ? 'algoritmy' : 'algoritmů'}` : 'Algoritmy pro tento krok' }),
+      el('small', { textContent: nSet
+        ? 'Test bude krok skládat těmito algoritmy (chybějící případy dohledá). Další klepnutí přidá algoritmy na případy, které v sadě ještě chybí.'
+        : 'Chceš krok skládat naučenými algoritmy? Klepni níž: test složí náhodná zamíchání, u tohoto kroku najde na každý případ dobrý algoritmus a uloží je jako sadu kroku. Pak test spusť znovu – už je bude používat.' }),
+      Object.assign(el('button', { type: 'button', className: 'primary small bld-make-algs' }), {
+        textContent: nSet ? 'Doplnit algoritmy testem' : 'Vytvořit algoritmy pro tento krok',
+        onclick: () => deps.onTest({ harvest: st.id }),
+      }),
+      nSet && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null);
 
     // 5. nepovinné: test, obrázek, nácvik
     const testOpts = el('details', { className: 'bld-more' }, el('summary', { textContent: 'Podrobnosti pro test (nepovinné)' }),
@@ -227,30 +239,33 @@ export function renderBuilder() {
   };
 
   host.replaceChildren(...[
-    el('div', { className: 'bld-how' },
-      el('b', { textContent: 'Jak na to' }),
-      el('ol', {},
-        el('li', { textContent: 'Nahoře nastav, jak kostku držíš.' }),
-        el('li', { textContent: 'Přidej kroky v pořadí, jak je skládáš. U každého odpověz na otázky 1–4.' }),
-        el('li', { textContent: 'Přepni na „Otestovat“ – test složí náhodná zamíchání podle tvých kroků.' })),
-      (() => {
-        const tpl = el('select', { className: 'small-select bld-tpl', ariaLabel: 'Nová metoda ze šablony' },
-          el('option', { value: '', textContent: 'Nebo začni ze šablony (vytvoří novou metodu)…' }),
-          ...TEMPLATES.map((t) => el('option', { value: t.id, textContent: `${t.name} – ${t.steps.length} kroků` })));
-        tpl.onchange = () => {
-          const t = TEMPLATES.find((x) => x.id === tpl.value);
-          if (!t) return;
-          const taken = new Set(methods.list().map((m) => m.name));
-          let name = t.name;
-          for (let n = 2; taken.has(name); n++) name = `${t.name} (${n})`;
-          const id = methods.add(name);
-          guides.set(id, templateGuide(t, DEFAULT_FRAME, guides.newStep));
-          methods.setActive(id);
-          open.clear();
-          renderBuilder();
-        };
-        return tpl;
-      })()),
+    (() => {
+      // nová metoda ze šablony (karty; select pro rychlý výběr)
+      const create = (t) => {
+        const taken = new Set(methods.list().map((m) => m.name));
+        let name = t.name;
+        for (let n = 2; taken.has(name); n++) name = `${t.name} (${n})`;
+        const id = methods.add(name);
+        guides.set(id, templateGuide(t, DEFAULT_FRAME, guides.newStep));
+        methods.setActive(id);
+        open.clear();
+        renderBuilder();
+      };
+      const tpl = el('select', { className: 'small-select bld-tpl', ariaLabel: 'Nová metoda ze šablony' },
+        el('option', { value: '', textContent: 'Nová metoda ze šablony…' }),
+        ...TEMPLATES.map((t) => el('option', { value: t.id, textContent: `${t.name} – ${t.steps.length} kroků` })));
+      tpl.onchange = () => { const t = TEMPLATES.find((x) => x.id === tpl.value); if (t) create(t); };
+      const cards = el('div', { className: 'bld-tpls' }, ...TEMPLATES.map((t) => el('button', { type: 'button', className: 'bld-tpl-card', onclick: () => create(t) },
+        el('b', { textContent: t.name }), el('small', { textContent: t.intro }), el('span', { className: 'bld-tpl-go', textContent: `Vytvořit (${t.steps.length} kroků) →` }))));
+      return el('details', { className: 'bld-how', open: !guide.steps.length },
+        el('summary', { textContent: 'Jak na to a šablony metod' }),
+        el('ol', {},
+          el('li', { textContent: 'Vyber šablonu nejbližší tvé metodě – vytvoří se nová metoda se všemi kroky už nastavenými (Separační = kříž z bílých a žlutých hran, páry, OLL, separace, rohy, EPBL). Nebo přidávej kroky sám.' }),
+          el('li', { textContent: 'U kroku v bodu 2 klepni na kostku a řekni, co tam po kroku musí být. V šabloně už je to vyplněné – stačí zkontrolovat a případně upravit.' }),
+          el('li', { textContent: 'Kde chceš skládat naučenými algoritmy, klepni u kroku na „Vytvořit algoritmy pro tento krok“ (bod 4).' }),
+          el('li', { textContent: 'Přepni na „Otestovat“ – test složí náhodná zamíchání podle tvých kroků a spočítá tahy a čas.' })),
+        cards, tpl);
+    })(),
     base,
     el('h3', { className: 'bld-h', textContent: `Kroky (${guide.steps.length})` }),
     guide.steps.length ? null : el('p', { className: 'hint', textContent: 'Zatím žádný krok. Přidej první – třeba „Kříž“ nebo „Levý blok“ z předvoleb.' }),

@@ -133,6 +133,15 @@ const INSTR = { U: 'bílou', D: 'žlutou', F: 'zelenou', B: 'modrou', R: 'červe
  * @param {string[]} pieces
  * @param {string} type
  */
+/** Barvy, podle kterých je skupina vybraná (všechny dílky s některou z nich), nebo null. */
+function pieceCombo(pieces, type) {
+  for (const combo of colorCombos()) {
+    const set = piecesWithColors(type, combo);
+    if (set.length === pieces.length && set.every((n) => pieces.includes(n)) && set.length < piecesWithColors(type).length) return combo;
+  }
+  return null;
+}
+
 export function describePieces(pieces, type) {
   const edge = type === 'edge';
   const all = piecesWithColors(type);
@@ -165,6 +174,12 @@ export function describeCell(cell, type, back = { U: 'U', D: 'D', F: 'F', B: 'B'
   if (cell.own === 'solved') return 'jeho vlastní dílek, správně natočený';
   if (cell.own === 'any') return 'jeho vlastní dílek, natočený jakkoli';
   const who = describePieces(cell.pieces ?? [], type);
+  // natočení stejnou barvou, jakou mají vybrané dílky → „tou barvou dolů“ (bez opakování barev)
+  const combo = pieceCombo(cell.pieces ?? [], type);
+  if (combo && cell.ori && typeof cell.ori === 'object' && combo.length === cell.ori.colors?.length && combo.every((c) => cell.ori.colors.includes(c))) {
+    const sideWord = { U: 'nahoru', D: 'dolů', F: 'dopředu', B: 'dozadu', R: 'doprava', L: 'doleva' }[back[cell.ori.side]] ?? '';
+    return `${who}, tou barvou ${sideWord}`;
+  }
   const ori = cell.ori;
   const side = { U: 'nahoru', D: 'dolů', F: 'dopředu', B: 'dozadu', R: 'doprava', L: 'doleva' };
   const how = ori === 'correct' ? ', správně natočený'

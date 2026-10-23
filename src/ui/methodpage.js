@@ -6,7 +6,7 @@ import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides } from './store.js';
 import { initBuilder, renderBuilder, openBuilderStep } from './builder.js';
-import { initSimulator, showSimulator } from './simulator.js';
+import { initSimulator, showSimulator, harvestStep } from './simulator.js';
 import { downloadLearning } from './learnexport.js';
 import { showGuide, shareMethod } from './methods.js';
 
@@ -37,7 +37,7 @@ export function initMethodPage(deps) {
         action('download', 'Učebnice', 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, výsledek testu); jde vytisknout i znovu importovat', () => downloadLearning()),
         action('share', 'Sdílet', 'Poslat metodu i s algoritmy jako soubor', () => shareMethod()))),
     tabs, build, test);
-  initBuilder(build, { onTest: () => showMethodPage('test'), practice: deps.practice, train: deps.train, labTask: deps.labTask });
+  initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask });
   initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), isVisible: () => visible() && sub === 'test' });
   // jiná metoda nebo úpravy odjinud: sestavení překreslit (při psaní se nepřekresluje)
   const refresh = () => { title.textContent = methods.get(methods.active()).name; if (visible() && sub === 'build' && !build.contains(document.activeElement)) renderBuilder(); };

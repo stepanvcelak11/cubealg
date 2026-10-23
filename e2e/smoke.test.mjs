@@ -1043,7 +1043,7 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
   // kříž: na 4 místech dole kterákoli hrana s bílou nebo žlutou, tou nálepkou dolů
   await p.locator('.bld-step-toggle').first().tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, bílou nebo žlutou nálepkou dolů/);
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
   // políčko po políčku: vybrat hrany dole a nechat jen bílé hrany
   await p.locator('.bld-step.open .cell-quick button', { hasText: 'Hrany dole' }).tap();
   assert.match(await p.locator('.bld-step.open .cell-panel-title').innerText(), /Vybráno: 4 místa/);
@@ -1059,8 +1059,8 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.bld-step.open .rule-opt', { hasText: 'Jeho vlastní dílek' }).tap();
   assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana jeho vlastní dílek, správně natočený/);
   await p.locator('.bld-step.open .rule-opt', { hasText: 'Některý z vybraných dílků' }).tap();
-  await p.locator('.bld-step.open .rule-opt', { hasText: 'Určitá barva na určitou stranu' }).tap();
-  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, bílou nebo žlutou nálepkou dolů/);
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'na určitou stranu' }).tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
   await p.locator('.bld-step.open .cell-panel .rule-chip', { hasText: 'žlutá (nahoře)' }).tap(); // kříž jen z bílých hran
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
@@ -1085,6 +1085,34 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
     return compileGoal(compileCells(guides.get().steps[0].cells)).test(loc);
   });
   assert.equal(crossOk, true);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí test a řešení uloží jako sadu kroku', async () => {
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', cells: { DF: { own: 'solved' } } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', cells: { DR: { own: 'solved' } } },
+  ] } };
+  const opts = { length: 'c10', steps: { default: { k1: { time: 0.5 }, k2: { time: 0.5 } } } };
+  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts, 'ergocube.method.sub': 'build' });
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.bld-step-toggle').nth(1).tap();
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Algoritmy pro tento krok/);
+  await p.locator('.bld-step.open .bld-make-algs').tap();
+  // test se sám spustí a na konci uloží řešení kroku 2 do nové sady
+  await p.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('ergocube.guides'))).at(-1).steps[1].set, null, { timeout: 120000 });
+  const saved = await p.evaluate(async () => {
+    const { guides: g, algs } = await import('./src/ui/store.js');
+    const st = g.get().steps[1];
+    return { n: algs.inSet(st.set).length, mode: st.sim?.mode, alg: algs.inSet(st.set)[0] };
+  });
+  assert.ok(saved.n >= 1);
+  assert.equal(saved.mode, 'auto');
+  assert.equal(saved.alg.task.colorsA.length, 54);
+  // v Sestavit je vidět sada kroku
+  await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap(); // krok 2 zůstal otevřený
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Sada „Hrana vpravo“: \d+ algoritm/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

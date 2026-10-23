@@ -202,6 +202,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     return {
       label: `${LABEL[f.down]} dole, ${LABEL[f.front]} vpředu`,
       frame: f,
+      hold: holdFromFaces(map.U, map.F), // držení orientace (zápis algoritmů)
       // středy až v posledním kroku: tahy středem (M, r…) je smí cestou posunout (Roux),
       // dílky se do té doby počítají vůči pevným pozicím
       goals: goals0.map((g, i) => ({ ...remap(g, frame, f), ...(i === goals0.length - 1 ? CENTERS : {}) })),

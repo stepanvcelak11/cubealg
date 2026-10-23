@@ -52,5 +52,5 @@ test('buňky: přejmenování podle orientace, převod starého zadání a popis
   assert.deepEqual(legacy.DF, { own: 'solved' });
   assert.deepEqual(legacy.DR, { own: 'any' });
   assert.equal(legacy.UF.ori, 'correct');
-  assert.match(describeCell(colorTo(['DF'], ['U', 'D'], 'D').DF, 'edge'), /kterákoli hrana s bílou nebo žlutou barvou, bílou nebo žlutou nálepkou dolů/);
+  assert.match(describeCell(colorTo(['DF'], ['U', 'D'], 'D').DF, 'edge'), /kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
 });

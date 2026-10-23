@@ -11,7 +11,7 @@
 
 import { el, storage } from './dom.js';
 import { icon } from './icons.js';
-import { methods, guides, algs } from './store.js';
+import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
 import { summarize, seededRandom, humanMoves, humanTps } from '../sim/simulate.js';
@@ -21,7 +21,8 @@ import { solve as twoPhase } from '../timer/twophase.js';
 import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 import { toast } from './share.js';
 import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
-import { stepConfig } from './stepcfg.js';
+import { stepConfig, setStepConfig } from './stepcfg.js';
+import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
 
 const OPTS = 'ergocube.sim.options';
@@ -66,6 +67,11 @@ function scrambleOf(start) {
 
 let deps = { lab: () => ({ ergo: {}, lambda: 0.5 }), onEdit: null };
 let current = null; // { running(), destroy() }
+let pendingHarvest = null; // id kroku: po otevření testu ho spustit a nalezená řešení uložit jako sadu
+
+/** Otevře test tak, že ho spustí a řešení kroku `stepId` uloží jako jeho sadu algoritmů. */
+export function harvestStep(stepId) { pendingHarvest = stepId; }
+const HARVEST_MAX = 800; // nejvýš tolik různých řešení na krok
 
 /**
  * @param {{lab: () => {ergo: object, lambda: number}, onEdit?: () => void}} d
@@ -106,6 +112,8 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   const body = el('div', { className: 'sim-body' });
   host.append(body);
   let alive = true;
+  const harvest = new Map(); // krok → Map(algoritmus → { n, a, b, hold })
+  let harvestTarget = null;
   let running = false;
   let pool = [];
   let awake = null;
@@ -285,7 +293,17 @@ function mountSimulator(host, lab, { onEdit } = {}) {
           active--;
           if (data.type === 'solved' && running) {
             // případ, na který sada neměla algoritmus (řešilo ho hledání)
-            data.solve.steps.forEach((x, i) => { if (x.source === 'search' && meta.hasSet[i]) x.missingSet = true; });
+            data.solve.steps.forEach((x, i) => {
+              if (x.source === 'search' && meta.hasSet[i]) x.missingSet = true;
+              // nalezená řešení (případ + algoritmus) – z nich jde vytvořit sada kroku
+              if (x.case && x.display) {
+                const m = harvest.get(i) ?? new Map();
+                const h = m.get(x.display);
+                if (h) h.n++; else if (m.size < HARVEST_MAX) m.set(x.display, { n: 1, ...x.case });
+                harvest.set(i, m);
+                delete x.case;
+              }
+            });
             solves.push(compact(data.solve, data.id));
             if (performance.now() - lastRender > 1500) { lastRender = performance.now(); renderResults(solves, meta); }
             if (long && performance.now() - lastSave > 15000) { lastSave = performance.now(); save(); }
@@ -315,10 +333,40 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const sum = renderResults(solves, meta);
     status.textContent = `${finished ? 'Hotovo' : 'Zastaveno'}: ${solves.length} zamíchání${sum?.failed ? ` (${sum.failed} se nepodařilo složit – zkus delší hledání, víc tahů nebo „Moje sada, jinak hledání“)` : ''} · ${fmtTime(performance.now() - t0)}`;
     if (sum?.count) { addHistory(sum, meta); renderHistory(); }
+    if (harvestTarget) {
+      const i = meta.stepIds.indexOf(harvestTarget);
+      harvestTarget = null;
+      if (i >= 0) saveHarvest(i, meta);
+    }
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
 
-  go.onclick = () => { last = null; run(null); };
+  go.onclick = () => { last = null; harvest.clear(); run(null); };
+
+  /** Nalezená řešení kroku i uloží jako algoritmy jeho sady (sadu případně založí). */
+  function saveHarvest(i, meta) {
+    const found = harvest.get(i);
+    if (!found?.size) { toast('Krok nemá žádná nalezená řešení (sada ho už celý pokryla, nebo se přeskočil)'); return; }
+    const guide = guides.get(method);
+    const st = guide.steps.find((x) => x.id === meta.stepIds[i]);
+    if (!st) return;
+    const title = st.title || `Krok ${i + 1}`;
+    let setId = st.set && algSets.list(method).some((x) => x.id === st.set) ? st.set : null;
+    if (!setId) { setId = algSets.add(title); st.set = setId; }
+    const have = new Set(algs.inSet(setId).map((a) => a.alg));
+    const all = Object.fromEntries(SLOTS.map((x) => [x.name, 'solved']));
+    let n = algs.inSet(setId).length, added = 0;
+    for (const [alg, h] of [...found].sort((a, b) => b[1].n - a[1].n)) {
+      if (have.has(alg)) continue;
+      algs.add({ alg, name: `${title} ${++n}`, set: setId, task: { puzzle: '333', constraints: all, colorsA: [...h.a], colorsB: [...h.b], hold: h.hold } });
+      added++;
+    }
+    // krok teď skládá sadou (chybějící případy dál hledáním)
+    setStepConfig(method, st, { mode: 'auto' });
+    found.clear();
+    guides.set(method, guide);
+    toast(`${title}: ${added} ${added === 1 ? 'nový algoritmus' : added < 5 ? 'nové algoritmy' : 'nových algoritmů'} v sadě – spusť test znovu, krok je bude používat`);
+  }
   more.onclick = () => { if (last && last.meta.sig === sigNow) run(last); };
   stop.onclick = () => { stopAll(); stopResolve(); };
 
@@ -343,6 +391,10 @@ function mountSimulator(host, lab, { onEdit } = {}) {
         el('div', { className: 'sim-res-bar', role: 'img', ariaLabel: `${fmt(s.moves)} tahů v průměru` }, el('i', { style: `width: ${(s.moves / maxMoves) * 100}%` })),
         el('div', { className: 'sim-res-nums' }, el('b', { textContent: `${fmt(s.moves)} tahů` }), pstep ? delta(s.moves, pstep.moves) : null, el('small', { textContent: info })),
         cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
+        harvest.get(i)?.size ? el('button', { type: 'button', className: 'secondary small sim-harvest',
+          textContent: `Uložit ${harvest.get(i).size} nalezených řešení jako algoritmy kroku`,
+          title: 'Řešení, která test u tohoto kroku našel, se uloží do sady kroku (případ + algoritmus). Další test je bude používat; najdeš je i v Trenažéru.',
+          onclick: () => saveHarvest(i, meta) }) : null,
         s.missing ? el('small', { className: 'ko', textContent: `V sadě chyběl algoritmus u ${s.missing} zamíchání (jen sada) – ta se nedosložila` }) : null);
     });
     const examples = pickExamples(solves);
@@ -545,6 +597,12 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       el('div', { className: 'row-btns' }, resume));
     banner.hidden = false;
     more.hidden = !same;
+  }
+  // otevřeno s „Vytvořit algoritmy pro krok“: hned spustit a na konci uložit
+  if (pendingHarvest) {
+    harvestTarget = pendingHarvest;
+    pendingHarvest = null;
+    queueMicrotask(() => go.click());
   }
   return { running: () => running, destroy };
 }

@@ -188,11 +188,17 @@ export function cellEditor(step, before, frame, onChange) {
     }
     if (what === 'pieces') {
       // dílky: podle barev (všechny dílky s některou z barev), nebo ručně
-      const colorsOn = VIEW.filter((v) => chosen.every((n) => {
+      // barvy výběru: všechny dílky s tou barvou jsou vybrané (u „všech dílků“ žádná konkrétní)
+      const everything = chosen.every((n) => cells[n].pieces.length >= piecesWithColors(slotByName(n).type).length);
+      const colorsOn = everything ? [] : VIEW.filter((v) => chosen.every((n) => {
         const has = piecesWithColors(slotByName(n).type, [map[v]]);
         return has.every((p) => cells[n].pieces.includes(p));
       }));
-      const byColors = (vs) => setAll((n, c) => ({ ...c, pieces: piecesWithColors(slotByName(n).type, vs.map((v) => map[v])) }));
+      // natočení „tou barvou na stranu“ jde s výběrem dílků (barva se nezadává dvakrát)
+      const byColors = (vs) => setAll((n, c) => ({
+        ...c, pieces: piecesWithColors(slotByName(n).type, vs.map((v) => map[v])),
+        ...(c.ori && typeof c.ori === 'object' && vs.length ? { ori: { ...c.ori, colors: vs.map((v) => map[v]) } } : {}),
+      }));
       parts.push(el('span', { className: 'rule-label', textContent: 'Které dílky?' }),
         el('div', { className: 'rule-row' }, el('span', { className: 'hint', textContent: 'všechny s barvou:' }),
           el('div', { className: 'rule-chips' }, ...VIEW.map((v) => el('button', { type: 'button', className: `rule-chip${colorsOn.includes(v) ? ' on' : ''}`,
@@ -221,21 +227,26 @@ export function cellEditor(step, before, frame, onChange) {
       parts.push(el('span', { className: 'rule-label', textContent: 'Jak natočený?' }), el('div', { className: 'rule-opts' },
         radio('ori', 'any', oriKind, 'Jakkoli', null, () => setAll((n, c) => ({ ...c, ori: 'any' }))),
         radio('ori', 'correct', oriKind, 'Správně natočený', 'Rohy barvou nahoře/dole nahoru či dolů, hrany jako ve složené kostce (EO).', () => setAll((n, c) => ({ ...c, ori: 'correct' }))),
-        radio('ori', 'color', oriKind, 'Určitá barva na určitou stranu', 'Např. bílá nebo žlutá dolů.',
-          () => setAll((n, c) => ({ ...c, ori: { side: sideFor(n, udEach ? 'UD' : common[0] ?? 'D'), colors: colorOpts(n, c).length ? colorOpts(n, c) : [map.D] } })))));
+        radio('ori', 'color', oriKind, colorsOn.length ? `${colorsOn.map((v) => color(map[v])).join(' nebo ')} nálepkou na určitou stranu` : 'Určitá barva na určitou stranu',
+          colorsOn.length ? 'Barva z výběru dílků výš míří na stranu, kterou vybereš (např. dolů).' : 'Např. bílá nebo žlutá dolů.',
+          () => setAll((n, c) => ({ ...c, ori: { side: sideFor(n, udEach ? 'UD' : common[0] ?? 'D'), colors: colorsOn.length ? colorsOn.map((v) => map[v]) : colorOpts(n, c).length ? colorOpts(n, c) : [map.D] } })))));
       if (oriKind === 'color') {
         const curSide = chosen.every((n) => cells[n].ori.side === sideFor(n, 'UD')) && udEach ? 'UD' : back[ori.side];
         const curColors = ori.colors.map((r) => back[r]);
+        const sameAsPieces = colorsOn.length && curColors.length === colorsOn.length && curColors.every((v) => colorsOn.includes(v));
         parts.push(el('div', { className: 'rule-sub' },
-          el('div', { className: 'rule-row' }, el('span', { className: 'hint', textContent: 'barva:' }), el('div', { className: 'rule-chips' }, ...VIEW.map((v) => el('button', {
-            type: 'button', className: `rule-chip${curColors.includes(v) ? ' on' : ''}`,
-            onclick: () => setAll((n, c) => ({ ...c, ori: { ...c.ori, colors: (curColors.includes(v) ? curColors.filter((x) => x !== v) : [...curColors, v]).map((x) => map[x]) } })) },
-          el('i', { style: `--c: var(--c-${map[v]})` }), color(map[v]))))),
           el('div', { className: 'rule-row' }, el('span', { className: 'hint', textContent: 'míří:' }), el('div', { className: 'rule-chips' },
             ...(udEach ? [el('button', { type: 'button', className: `rule-chip${curSide === 'UD' ? ' on' : ''}`, textContent: 'nahoru či dolů (podle vrstvy)',
               onclick: () => setAll((n, c) => ({ ...c, ori: { ...c.ori, side: sideFor(n, 'UD') } })) })] : []),
             ...common.map((v) => el('button', { type: 'button', className: `rule-chip${curSide === v ? ' on' : ''}`, textContent: SIDE[v],
-              onclick: () => setAll((n, c) => ({ ...c, ori: { ...c.ori, side: map[v] } })) }))))));
+              onclick: () => setAll((n, c) => ({ ...c, ori: { ...c.ori, side: map[v] } })) })))),
+          // jiná barva než u výběru dílků – jen výjimečně (např. roh s bílou, ale dolů má mířit zelená)
+          el('details', { className: 'cell-pieces', open: !sameAsPieces },
+            el('summary', { textContent: sameAsPieces ? 'Jiná barva, než jakou mají vybrané dílky (výjimečně)' : 'Barva nálepky' }),
+            el('div', { className: 'rule-chips' }, ...VIEW.map((v) => el('button', {
+              type: 'button', className: `rule-chip${curColors.includes(v) ? ' on' : ''}`,
+              onclick: () => setAll((n, c) => ({ ...c, ori: { ...c.ori, colors: (curColors.includes(v) ? curColors.filter((x) => x !== v) : [...curColors, v]).map((x) => map[x]) } })) },
+            el('i', { style: `--c: var(--c-${map[v]})` }), color(map[v])))))));
       }
     }
     const placeWord = chosen.length === 1 ? 'místo' : chosen.length < 5 ? 'místa' : 'míst';
