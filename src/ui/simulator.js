@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
-import { summarize, seededRandom, humanMoves, humanTps } from '../sim/simulate.js';
+import { summarize, seededRandom, stepEstimate, LEVELS, levelTps } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
@@ -24,6 +24,7 @@ import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } from './stepcfg.js';
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
+import { VIEWS } from '../ergonomics/style.js';
 
 const OPTS = 'ergocube.sim.options';
 const HISTORY = 'ergocube.sim.history';
@@ -116,6 +117,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   host.append(body);
   let alive = true;
   const harvest = new Map(); // krok → Map(algoritmus → { n, a, b, hold })
+  const used = new Map(); // krok → Map(zápis → { n, source, score, length, name }) – které algoritmy test použil
+  const USED_MAX = 300;
   let harvestTargets = [];
   let running = false;
   let pool = [];
@@ -174,16 +177,14 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const rotation = select(ROTATION, ROTATION[saved.rotation] ? saved.rotation : 'free', 'Otočení kostky', () => changed());
   const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
   const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
-  const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); });
-  // realismus odhadu: 0 % = jak to složí počítač, 100 % = model člověka (víc tahů a pomaleji u intuitivních kroků)
-  const realism = Object.assign(el('input', { type: 'range', min: '0', max: '100', step: '10', value: String(saved.realism ?? 100), ariaLabel: 'Realismus odhadu' }), {
-    oninput: () => { realismOut.textContent = realismText(); },
-    onchange: () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); },
-  });
-  const realismText = () => { const v = Number(realism.value); return v === 0 ? 'počítač (optimum)' : v === 100 ? 'člověk' : `${v} % člověk`; };
-  const realismOut = el('small', { className: 'sim-realism-out', textContent: '' });
-  const R = () => Number(realism.value) / 100;
-  realismOut.textContent = realismText();
+  const rerender = () => { remember(); tpsField.hidden = !!LEVELS[level.value].tps; if (last) renderResults(last.solves, last.meta); renderCompare(); };
+  const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, rerender);
+  // úroveň skladače: světová špička (potenciál metody), rychlý skladač, vlastní tempo, počítač
+  const level = select(Object.fromEntries(Object.entries(LEVELS).map(([id, x]) => [id, x.label])), LEVELS[saved.level] ? saved.level : 'pro', 'Úroveň skladače', rerender);
+  const lvl = () => level.value;
+  const levelText = () => (LEVELS[lvl()].tps ? LEVELS[lvl()].label : `${LEVELS[lvl()].label}: ${fmt(Number(tps.value))} tahů/s`);
+  const tpsField = field('Tahy za sekundu', tps, 'Tvoje tempo – algoritmy jdou rychleji, intuitivní kroky a bloky pomaleji');
+  tpsField.hidden = !!LEVELS[lvl()].tps;
   const go = el('button', { type: 'button', className: 'primary sim-go', textContent: 'Spustit test' });
   const more = el('button', { type: 'button', className: 'secondary', textContent: 'Přidat zamíchání', hidden: true, title: 'Pokračuje dalšími zamícháními (stejné semínko) a výsledky doplní' });
   const stop = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
@@ -203,8 +204,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       head('1', 'Spustit test', 'Náhodná zamíchání se složí krok po kroku podle tvé metody – algoritmem ze sady, jinak hledáním. Algoritmy kroků „vygenerovat“ si test vytvoří sám. Srovnání s CFOP, Roux a ZZ je v části „Porovnat“.'),
       el('div', { className: 'grid-fields' },
         field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
-        field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)'),
-        el('label', { className: 'field sim-realism', title: 'Počítač najde u intuitivních kroků skoro nejlepší řešení; člověk dělá víc tahů a pomaleji. Posuň k „člověk“ pro reálnější odhad.' }, 'Realismus odhadu', realism, realismOut)),
+        field('Odhad času pro', level, 'Světová špička = co z metody jde vytáhnout (tempo a rozpoznání nejlepších skladačů)'),
+        tpsField),
       el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko)' }),
         el('div', { className: 'grid-fields' },
           field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
@@ -223,7 +224,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   let last = null; // { solves, meta, next }
   function remember() {
     const all = storage.get(OPTS) ?? {};
-    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), realism: Number(realism.value) });
+    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), level: level.value });
   }
   function changed() {
     remember();
@@ -305,7 +306,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     const t0 = performance.now();
     const done0 = solves.length;
     let lastRender = 0, lastSave = 0;
-    const save = (finished = false) => storage.set(RUN, { meta, solves, next: Math.min(next, solves.length), finished });
+    const save = (finished = false) => storage.set(RUN, { meta, solves, next: Math.min(next, solves.length), finished, used: [...used].map(([i, m]) => [i, [...m]]) });
     const progress = () => {
       const n = solves.length - done0;
       const elapsed = performance.now() - t0;
@@ -337,6 +338,13 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
             // případ, na který sada neměla algoritmus (řešilo ho hledání)
             data.solve.steps.forEach((x, i) => {
               if (x.source === 'search' && meta.hasSet[i]) x.missingSet = true;
+              // použité algoritmy (i ze sady) – kolikrát a proč
+              if (x.display && x.source !== 'skip' && x.source !== 'none') {
+                const m = used.get(i) ?? new Map();
+                const u = m.get(x.display);
+                if (u) u.n++; else if (m.size < USED_MAX) m.set(x.display, { n: 1, source: x.source, score: x.score, length: x.length, name: x.name });
+                used.set(i, m);
+              }
               // nalezená řešení (případ + algoritmus) – z nich jde vytvořit sada kroku
               if (x.case && x.display) {
                 const m = harvest.get(i) ?? new Map();
@@ -383,7 +391,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
 
-  go.onclick = () => { last = null; harvest.clear(); run(null); };
+  go.onclick = () => { last = null; harvest.clear(); used.clear(); run(null); };
 
   /** Nalezená řešení kroku i uloží jako algoritmy jeho sady (sadu případně založí). */
   function saveHarvest(i, meta, quiet = false) {
@@ -420,46 +428,72 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   stop.onclick = () => { stopAll(); stopResolve(); };
 
   // --- výsledky -------------------------------------------------------------------------------
+  /** Co znamená co (výsledek i porovnání). */
+  function explain() {
+    const L = LEVELS[lvl()];
+    const item = (term, text) => el('div', { className: 'sim-explain-item' }, el('dt', { textContent: term }), el('dd', { textContent: text }));
+    return el('details', { className: 'sim-explain' }, el('summary', { textContent: 'Co znamenají čísla' }),
+      el('dl', {},
+        item('Odhad času', `Rozpoznání + provedení každého kroku, sečtené. Provedení = tahy skladače ÷ tempo. ${L.tps
+          ? `Pro „${L.label}“: algoritmy ${fmt(L.tps.alg)} tahů/s, intuitivní kroky ${fmt(L.tps.intuitive)}, bloky ${fmt(L.tps.blocks)}; rozpoznání ${pct(L.recog)} z nastaveného u kroku (špička rozpozná často už během předchozího kroku). Vestavěné metody tak vyjdou CFOP asi 6,2 s a Roux 6,3 s – jako průměry nejlepších skladačů.`
+          : L.human ? `Tvoje tempo ${fmt(Number(tps.value))} tahů/s platí pro algoritmy; intuitivní kroky jdou na 90 %, bloky na 55 % (plánování).` : 'Všechny kroky stejným tempem, tahy přesně podle simulace.'}`),
+        item('Tahů na složení', 'Kolik tahů udělá skutečný skladač. Vychází ze simulace: intuitivní kroky × 0,9 (profík vidí dopředu, dělá x-cross a víc slotů naráz – simulace skládá krok po kroku), bloky × 1,2 (počítač je najde optimálně, člověk ne), algoritmy beze změny. Nastavené tak, aby CFOP vyšel kolem 57 a Roux kolem 48 tahů – jako v rekonstrukcích světové špičky.'),
+        item('Simulace', 'Kolik tahů našel počítač, když každý krok složí zvlášť skoro nejlépe (počítá se i natočení vrstev). ± = o kolik se průměr může lišit náhodou; víc zamíchání = přesnější. Medián = polovina složení má méně; „9 z 10 ≤“ = jak dlouhé jsou horší případy.'),
+        item('Tempo a rozpoznání', 'Tahy za sekundu podle druhu kroku (nastavíš u kroku v Sestavit → Pokročilé: naučený algoritmus / intuitivní / bloky) a pauza na rozpoznání před krokem (tamtéž).'),
+        item('Ergonomie', 'Jak nepohodlné jsou tahy podle hodnocení z Labu (přehmaty, tahy B a D, otáčení kostky…) – součet za krok, čím méně, tím pohodlnější. Do času se nepočítá, slouží k porovnání; vestavěné metody: CFOP 76, Roux 53, ZZ 66.'),
+        item('Nejvíc času', 'Krok, který nejvíc zdržuje – tam se nejvíc vyplatí zlepšovat (víc algoritmů, jiné tahy, spojit s jiným krokem).')));
+  }
+
   function renderResults(solves, meta) {
-    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), realism: R() };
+    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), level: lvl() };
     const sum = summarize(solves, meta.stepTitles.length, timing);
     if (!sum.count) { results.replaceChildren(); return sum; }
-    const maxMoves = Math.max(...sum.steps.map((s) => s.moves), 1);
+    const maxTime = Math.max(...sum.steps.map((s) => s.time), 0.01);
     // minulý běh této metody s jiným nastavením: rozdíl po krocích
     const prev = (storage.get(HISTORY) ?? []).find((h) => h.method === method && h.sig !== meta.sig && h.steps?.length);
-    const delta = (a, b) => el('span', { className: `sim-delta${a < b - 0.05 ? ' good' : a > b + 0.05 ? ' bad' : ''}`, title: 'Proti minulé simulaci', textContent: `${a <= b ? '−' : '+'}${fmt(Math.abs(a - b))}` });
+    const delta = (a, b, unit = '') => el('span', { className: `sim-delta${a < b - 0.05 ? ' good' : a > b + 0.05 ? ' bad' : ''}`, title: 'Proti minulému testu', textContent: `${a <= b ? '−' : '+'}${fmt(Math.abs(a - b), unit ? 2 : 1)}${unit}` });
+    const kindWord = { alg: 'algoritmus', intuitive: 'intuitivní', blocks: 'bloky' };
     const rows = meta.stepTitles.map((t, i) => {
       const s = sum.steps[i];
-      const tags = [i === sum.worst ? 'nejvíc tahů' : null, i === sum.slowest && sum.slowest !== sum.worst ? 'nejvíc času' : null].filter(Boolean);
-      const info = config[meta.stepIds[i]]?.solveBy === 'fixed'
-        ? `potřeba v ${pct(1 - s.skipped)} složení · ${fmt(s.time, 2)} s · ${pct(s.share)} tahů`
-        : [`medián ${s.median}`, `90 % ≤ ${s.p90}`, `náročnost ${fmt(s.score)}`, `${fmt(s.time, 2)} s`, `${pct(s.share)} tahů`, s.skipped ? `${pct(s.skipped)} přeskočeno` : null].filter(Boolean).join(' · ');
+      const id = meta.stepIds[i];
+      const fixed = config[id]?.solveBy === 'fixed';
+      const tags = [i === sum.slowest ? 'nejvíc času' : null, i === sum.worst && sum.worst !== sum.slowest ? 'nejvíc tahů' : null].filter(Boolean);
+      // hlavní řádek: čas kroku a z čeho je (tahy člověka, tempo, rozpoznání)
+      const main = [`${fmt(s.human)} tahů`, `${fmt(s.tps)} tahů/s (${kindWord[config[id]?.kind ?? 'intuitive'] ?? 'intuitivní'})`,
+        s.recogTime > 0.005 ? `rozpoznání ${fmt(s.recogTime, 2)} s` : null,
+        fixed ? `potřeba v ${pct(1 - s.skipped)} složení` : s.skipped ? `${pct(s.skipped)} přeskočeno` : null].filter(Boolean).join(' · ');
+      const detail = fixed ? null : `simulace ${fmt(s.moves)} tahů (medián ${s.median}, 9 z 10 ≤ ${s.p90}) · ergonomie ${fmt(s.score)}`;
       const cover = meta.hasSet[i] && s.needed
         ? [`sadou ${pct(s.fromSet / s.needed)} případů`, s.searched ? `${s.searched}× chyběl algoritmus` : null, s.helper ? `${s.helper}× s pomocným algoritmem` : null].filter(Boolean).join(' · ') : null;
-      const pstep = prev?.steps.find((x) => x.id === meta.stepIds[i]);
+      const pstep = prev?.steps.find((x) => x.id === id);
+      const ptime = pstep && Number.isFinite(pstep.moves) ? stepEstimate({ length: pstep.moves, source: 'search' }, { tps: timing.tps, recog: pstep.recog ?? 0, kind: pstep.kind, level: lvl() }).time : null;
       return el('div', { className: `sim-res-row${tags.length ? ' worst' : ''}` },
         el('div', { className: 'sim-res-label' }, el('b', { textContent: t }), ...tags.map((x) => el('span', { className: 'sim-tag', textContent: x }))),
-        el('div', { className: 'sim-res-bar', role: 'img', ariaLabel: `${fmt(s.moves)} tahů v průměru` }, el('i', { style: `width: ${(s.moves / maxMoves) * 100}%` })),
-        el('div', { className: 'sim-res-nums' }, el('b', { textContent: `${fmt(s.moves)} tahů` }), pstep ? delta(s.moves, pstep.moves) : null, el('small', { textContent: info })),
+        el('div', { className: 'sim-res-bar', role: 'img', ariaLabel: `${fmt(s.time, 2)} s v průměru` }, el('i', { style: `width: ${(s.time / maxTime) * 100}%` })),
+        el('div', { className: 'sim-res-nums' }, el('b', { textContent: `${fmt(s.time, 2)} s` }), ptime !== null ? delta(s.time, ptime, ' s') : null,
+          el('span', { className: 'sim-res-share', textContent: `${pct(s.timeShare)} času` }), el('small', { textContent: main })),
+        detail ? el('small', { className: 'sim-res-detail', textContent: detail }) : null,
         cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
         harvest.get(i)?.size ? el('button', { type: 'button', className: 'secondary small sim-harvest',
           textContent: `Uložit ${harvest.get(i).size} nalezených řešení jako algoritmy kroku`,
           title: 'Řešení, která test u tohoto kroku našel, se uloží do sady kroku (případ + algoritmus). Další test je bude používat; najdeš je i v Trenažéru.',
           onclick: () => saveHarvest(i, meta) }) : null,
-        s.missing ? el('small', { className: 'ko', textContent: `V sadě chyběl algoritmus u ${s.missing} zamíchání (jen sada) – ta se nedosložila` }) : null);
+        s.missing ? el('small', { className: 'ko', textContent: `V sadě chyběl algoritmus u ${s.missing} zamíchání (jen sada) – ta se nedosložila` }) : null,
+        usedAlgs(i, id));
     });
     const examples = pickExamples(solves);
     results.replaceChildren(...[ // replaceChildren nevynechá null jako el()
-      head('2', 'Výsledek', `${sum.count} zamíchání · u každého kroku průměr tahů a odhad času`),
+      head('2', 'Výsledek', `${sum.count} zamíchání${sum.failed ? ` (${sum.failed} se nepodařilo složit – nejspíš krátký čas hledání)` : ''} · odhad pro: ${levelText()}`),
       el('div', { className: 'sim-hero' },
-        el('div', {}, el('span', { className: 'tile-label', textContent: 'Průměr na složení' }), el('b', { textContent: `${fmt(sum.moves)} tahů` }),
-          el('small', { textContent: `± ${fmt(sum.ci)} (95 %) · medián ${sum.median} · od ${sum.min} do ${sum.max} · ${sum.count} zamíchání` })),
-        el('div', {}, el('span', { className: 'tile-label', textContent: 'Odhad času' }), el('b', { textContent: `${fmt(sum.time, 2)} s` }),
-          el('small', { textContent: `rozpoznání + provedení při ${fmt(Number(tps.value))} tazích/s · náročnost ${fmt(sum.score)}` })),
-        prev ? el('small', { className: 'sim-hero-prev', textContent: `Minulá simulace (${when(prev.at)}, ${prev.label ?? ''}): ${fmt(prev.moves)} tahů${prev.time ? ` · ${fmt(prev.time, 2)} s` : ''}` }) : null),
+        el('div', {}, el('span', { className: 'tile-label', textContent: 'Odhad času složení' }), el('b', { textContent: `${fmt(sum.time, 2)} s` }),
+          el('small', { textContent: `${levelText()} · rozpoznání ${fmt(sum.steps.reduce((a, x) => a + x.recogTime, 0), 2)} s + provedení ${fmt(sum.steps.reduce((a, x) => a + x.execTime, 0), 2)} s` })),
+        el('div', {}, el('span', { className: 'tile-label', textContent: 'Tahů na složení' }), el('b', { textContent: fmt(sum.human) }),
+          el('small', { textContent: `odhad skutečného skladače · simulace ${fmt(sum.moves)} (± ${fmt(sum.ci)}, od ${sum.min} do ${sum.max})` })),
+        prev ? el('small', { className: 'sim-hero-prev', textContent: `Minulý test (${when(prev.at)}, ${prev.label ?? ''}): ${fmt(prev.moves)} tahů simulace` }) : null),
       Object.keys(sum.variants).length > 1 || meta.variants.length > 1
         ? el('p', { className: 'hint', textContent: `Orientace: ${Object.entries(sum.variants).map(([v, n]) => `${meta.variants[v]} ${pct(n / sum.count)}`).join(' · ')}` }) : null,
       el('div', { className: 'sim-res' }, ...rows),
+      sum.hist.length > 1 ? el('b', { className: 'sim-cmp-sub', textContent: 'Kolik tahů měla jednotlivá složení (simulace)' }) : null,
       sum.hist.length > 1 ? el('div', { className: 'sim-hist', role: 'img', ariaLabel: 'Rozložení počtu tahů na složení' },
         ...sum.hist.map((h) => el('div', { className: 'sim-hist-col', title: `${h.from}–${h.to} tahů: ${h.n}×` },
           el('i', { style: `height: ${(h.n / Math.max(...sum.hist.map((x) => x.n))) * 100}%` }), el('small', { textContent: String(h.from) })))) : null,
@@ -476,8 +510,34 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
               x.source === 'skip' ? el('em', { textContent: 'přeskočeno' }) : el('code', { textContent: x.display ?? '' }),
               i === 0 && meta.variants.length > 1 && meta.variants[x.variant] ? el('small', { textContent: ` · ${meta.variants[x.variant]}` }) : null,
               el('small', { textContent: x.source === 'skip' ? '' : ` · ${x.length} tahů${x.source === 'set' ? ` · ${x.name ?? 'ze sady'}${x.helper ? ` (+ ${x.helper})` : ''}` : ''}` })))));
-        })) : null].filter(Boolean));
+        })) : null, explain()].filter(Boolean));
     return sum;
+  }
+
+  /** Algoritmy, které test u kroku použil: kolikrát, délka, ergonomie, odkud a proč. */
+  function usedAlgs(i, id) {
+    const m = used.get(i);
+    if (!m?.size) return null;
+    const cfg = config[id] ?? {};
+    const total = [...m.values()].reduce((a, u) => a + u.n, 0);
+    const view = cfg.view ?? 'speed';
+    const why = cfg.solveBy === 'fixed' ? 'Pevný algoritmus kroku – udělá se jen tehdy, když je potřeba (parita).'
+      : `U každého zamíchání hledání našlo řešení kroku a vybralo ${view === 'efficient' ? 'nejkratší (při shodě to pohodlnější)'
+        : view === 'balanced' ? 'nejlepší poměr tahů a pohodlí' : 'nejpohodlnější – nejmenší ergonomická náročnost: bez přehmatů, málo tahů B a D, dobré triggery (při shodě kratší)'}`
+        + ` z řešení, která jsou nejvýš o pár tahů delší než nejkratší (Vybírat řešení podle: ${VIEWS[view]?.label ?? view} – mění se v Sestavit → Omezení).`
+        + `${cfg.mode !== 'search' ? ' Algoritmy ze sady kroku mají přednost, když případ vyřeší (i s natočením vrstvy před a po).' : ''}`;
+    const src = { set: 'ze sady', search: 'nalezený', fixed: 'pevný' };
+    const list = [...m].sort((a, b) => b[1].n - a[1].n).slice(0, 40);
+    return el('details', { className: 'sim-used' },
+      el('summary', { textContent: `Použité algoritmy (${m.size}${m.size >= USED_MAX ? '+' : ''} různých)` }),
+      el('p', { className: 'hint', textContent: why }),
+      el('table', { className: 'sim-used-table' },
+        el('thead', {}, el('tr', {}, el('th', { textContent: 'Algoritmus' }), el('th', { textContent: 'Použit' }), el('th', { textContent: 'Tahů' }), el('th', { textContent: 'Ergonomie' }), el('th', { textContent: 'Odkud' }))),
+        el('tbody', {}, ...list.map(([alg, u]) => el('tr', {},
+          el('td', {}, el('code', { textContent: alg }), u.name ? el('small', { textContent: ` ${u.name}` }) : null),
+          el('td', { textContent: `${u.n}× (${pct(u.n / total)})` }), el('td', { textContent: String(u.length ?? '') }),
+          el('td', { textContent: Number.isFinite(u.score) ? fmt(u.score) : '–' }), el('td', { textContent: src[u.source] ?? u.source }))))),
+      m.size > list.length ? el('small', { className: 'hint', textContent: `…a dalších ${m.size - list.length} (méně častých)` }) : null);
   }
 
   /** Ukázky: nejbližší průměru, nejkratší a nejdelší (z těch, u kterých se pamatuje zápis). */
@@ -531,18 +591,18 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   function sources() {
     const refs = REFERENCES.map((r) => ({ id: `ref:${r.id}`, label: `${r.name} (vestavěná)`, ...r, ref: true }));
     const runs = (storage.get(HISTORY) ?? []).filter((h) => h.steps?.length).map((h) => ({
-      id: `run:${h.sig}`, label: `${h.name} · ${when(h.at)}`, name: h.name, n: h.n, moves: h.moves, ci: h.ci, median: h.median, steps: h.steps, mine: h.method === method, note: h.label,
+      id: `run:${h.sig}`, label: `${h.name} · ${when(h.at)}`, name: h.name, n: h.n, moves: h.moves, ci: h.ci, median: h.median, score: h.score, steps: h.steps, mine: h.method === method, note: h.label,
     }));
     return [...refs, ...runs];
   }
   /** Odhad času stejným vzorcem pro obě strany: rozpoznání + tahy / TPS. */
-  // stejný model člověka jako u výsledků (sim/simulate.js): intuitivní kroky víc tahů a pomaleji
-  const humanOf = (src) => src.steps.reduce((a, st) => a + humanMoves(st.moves, st.kind ?? 'intuitive', R()), 0);
-  const estTime = (src) => src.steps.reduce((a, st) => {
-    const t = Number(tps.value) || 4;
-    const kind = st.kind ?? 'intuitive';
-    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind, R()) / humanTps(t, kind, R());
-  }, 0);
+  // stejný model skladače jako u výsledků (sim/simulate.js) pro obě strany porovnání
+  const estOf = (src) => {
+    const steps = src.steps.map((st) => ({ title: st.title, ...stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { tps: Number(tps.value) || 4, recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level: lvl() }) }));
+    return { steps, time: steps.reduce((a, x) => a + x.time, 0), human: steps.reduce((a, x) => a + x.moves, 0), recog: steps.reduce((a, x) => a + x.recog, 0) };
+  };
+  const estTime = (src) => estOf(src).time;
+  const humanOf = (src) => estOf(src).human;
   function renderCompare() {
     const list = sources();
     const runs = list.filter((x) => !x.ref);
@@ -553,50 +613,55 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     const pick = (value, onChange, label) => {
       const sel = el('select', { className: 'small-select', ariaLabel: label },
         el('optgroup', { label: 'Vestavěné metody' }, ...list.filter((x) => x.ref).map((x) => el('option', { value: x.id, textContent: x.label }))),
-        runs.length ? el('optgroup', { label: 'Tvoje simulace' }, ...runs.map((x) => el('option', { value: x.id, textContent: x.label }))) : null);
+        runs.length ? el('optgroup', { label: 'Tvoje testy' }, ...runs.map((x) => el('option', { value: x.id, textContent: x.label }))) : null);
       sel.value = value;
       sel.onchange = () => { onChange(sel.value); renderCompare(); };
       return sel;
     };
     const L = byId(cmpLeft), R = byId(cmpRight);
-    const max = Math.max(...L.steps.map((x) => x.moves), ...R.steps.map((x) => x.moves), 1);
+    const eL = estOf(L), eR = estOf(R);
+    const est = (x) => (x === L ? eL : eR);
+    const max = Math.max(...eL.steps.map((x) => x.time), ...eR.steps.map((x) => x.time), 0.01);
+    const slowest = (x) => est(x).steps.reduce((w, st) => (st.time > w.time ? st : w), { time: -1 });
     const metrics = [
-      ['Tahů (simulace)', (x) => x.moves, (v) => fmt(v), true],
-      ['Tahů člověka (odhad)', (x) => humanOf(x), (v) => fmt(v), true],
-      ['Odhad času', (x) => estTime(x), (v) => `${fmt(v, 2)} s`, true],
-      ['Medián tahů', (x) => x.median, (v) => (Number.isFinite(v) ? String(v) : '–'), true],
+      ['Odhad času složení', (x) => est(x).time, (v) => `${fmt(v, 2)} s`, true],
+      ['Tahů skladače (odhad)', (x) => est(x).human, (v) => fmt(v), true],
+      ['Tahů simulace', (x) => x.moves, (v) => fmt(v), true],
+      ['z toho rozpoznání', (x) => est(x).recog, (v) => `${fmt(v, 2)} s`, true],
+      ['Ergonomie (méně = pohodlnější)', (x) => x.score, (v) => (Number.isFinite(v) ? fmt(v) : '–'), true],
       ['Kroků', (x) => x.steps.length, (v) => String(v), false],
-      ['Nejdelší krok', (x) => Math.max(...x.steps.map((st) => st.moves)), (v) => `${fmt(v)} tahů`, true],
-      ['Zamíchání', (x) => x.n, (v) => String(v), false],
+      ['Nejpomalejší krok', (x) => slowest(x).time, (v) => `${fmt(v, 2)} s`, true],
+      ['Zamíchání v testu', (x) => x.n, (v) => String(v), false],
     ];
     const cell = (v, other, lower, show) => el('td', { className: lower && Number.isFinite(v) && Number.isFinite(other) && v < other - 0.05 ? 'win' : '', textContent: show(v) });
-    const diff = R.moves - L.moves;
     const column = (src) => el('div', { className: 'sim-cmp-col' },
       el('b', { textContent: `${src.name} · ${src.steps.length} kroků` }),
-      el('div', { className: 'sim-cmp-steps' }, ...src.steps.map((st) => el('div', { className: 'sim-cmp-step' },
-        el('div', { className: 'sim-cmp-step-head' }, el('span', { textContent: st.title }), el('b', { textContent: fmt(st.moves) })),
-        el('div', { className: 'sim-res-bar' }, el('i', { style: `width: ${(st.moves / max) * 100}%` }))))));
+      el('div', { className: 'sim-cmp-steps' }, ...est(src).steps.map((st) => el('div', { className: 'sim-cmp-step' },
+        el('div', { className: 'sim-cmp-step-head' }, el('span', { textContent: st.title }), el('b', { textContent: `${fmt(st.time, 2)} s` })),
+        el('div', { className: 'sim-res-bar' }, el('i', { style: `width: ${(st.time / max) * 100}%` })),
+        el('small', { textContent: `${fmt(st.moves)} tahů · ${fmt(st.tps)} tahů/s${st.recog > 0.005 ? ` · rozpoznání ${fmt(st.recog, 2)} s` : ''}` })))));
     compare.replaceChildren(
       el('header', { className: 'sim-card-head sim-cmp-head' }, el('b', { textContent: 'Srovnání s jinými metodami' }),
-        el('small', { textContent: `Vlevo metoda ke srovnání, vpravo tvoje. Odhad času pro obě stejně: ${fmt(Number(tps.value))} tahů/s, realismus ${realismText()} (nastavíš v Otestovat).` })),
+        el('small', { textContent: `Vlevo metoda ke srovnání, vpravo tvoje. Obě se počítají stejně – odhad pro: ${levelText()} (změníš v Otestovat).` })),
       el('div', { className: 'sim-cmp' },
         el('div', { className: 'sim-cmp-pick' }, pick(cmpLeft, (v) => { cmpLeft = v; const all = storage.get(OPTS) ?? {}; storage.set(OPTS, { ...all, cmpLeft: v }); }, 'Metoda ke srovnání')),
         el('div', { className: 'sim-cmp-pick mine' }, pick(cmpRight, (v) => { cmpRight = v; }, 'Tvoje metoda'))),
       (() => {
-        // hlavně odhad času (počítá s člověkem), tahy simulace až vedle
-        const tL = estTime(L), tR = estTime(R), dt = tR - tL;
+        const dt = eR.time - eL.time, dm = eR.human - eL.human;
         const sign = (x) => (x <= 0 ? '−' : '+');
         return el('div', { className: 'sim-cmp-total' },
-          el('b', { className: dt < -0.05 ? 'ok' : dt > 0.05 ? 'ko' : '', textContent: `${sign(dt)}${fmt(Math.abs(dt), 2)} s (${sign(dt)}${Math.round(Math.abs(dt / tL) * 100)} %)` }),
-          el('small', { textContent: `odhad času vpravo proti vlevo · tahy člověka ${sign(humanOf(R) - humanOf(L))}${fmt(Math.abs(humanOf(R) - humanOf(L)))} · simulace ${sign(diff)}${fmt(Math.abs(diff))}` }));
+          el('b', { className: dt < -0.05 ? 'ok' : dt > 0.05 ? 'ko' : '', textContent: `${sign(dt)}${fmt(Math.abs(dt), 2)} s (${sign(dt)}${Math.round(Math.abs(dt / eL.time) * 100)} %)` }),
+          el('small', { textContent: `${R.name} proti ${L.name}: odhad času ${dt <= 0 ? 'rychlejší' : 'pomalejší'} · tahů skladače ${sign(dm)}${fmt(Math.abs(dm))}` }));
       })(),
       el('table', { className: 'compare sim-cmp-table' },
         el('thead', {}, el('tr', {}, el('th', {}), el('th', { textContent: L.name }), el('th', { textContent: R.name }))),
         el('tbody', {}, ...metrics.map(([label, f, show, lower]) => el('tr', {}, el('td', { textContent: label }),
           cell(f(L), f(R), lower, show), cell(f(R), f(L), lower, show))))),
+      explain(),
       realData(L, R),
+      el('b', { className: 'sim-cmp-sub', textContent: 'Čas po krocích' }),
       el('div', { className: 'sim-cmp' }, column(L), column(R)),
-      el('p', { className: 'hint', textContent: `${runs.length ? '' : 'Spusť simulaci své metody – objeví se vpravo. '}${L.ref ? `${L.name}: ${L.description} ` : ''}${R.ref ? `${R.name}: ${R.description} ` : ''}${REFERENCE_NOTE}` }));
+      el('p', { className: 'hint', textContent: `${runs.length ? '' : 'Spusť test své metody – objeví se vpravo. '}${L.ref ? `${L.name}: ${L.description} ` : ''}${R.ref ? `${R.name}: ${R.description} ` : ''}${REFERENCE_NOTE}` }));
   }
 
   /** Skuteční skladači (u vestavěných metod): tahy z rekonstrukcí a nejlepší oficiální průměr. */
@@ -641,13 +706,14 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const r = storage.get(RUN);
   if (r?.meta?.method === method && r.solves?.length) {
     const same = r.meta.sig === sigNow;
+    for (const [i, list] of r.used ?? []) used.set(i, new Map(list));
     last = { solves: r.solves, meta: r.meta, next: contiguous(r.solves) };
     renderResults(r.solves, r.meta);
     const resume = el('button', { type: 'button', className: 'primary small', textContent: r.finished ? 'Přidat zamíchání' : 'Pokračovat', hidden: !same });
     resume.onclick = () => run(last);
     banner.replaceChildren(
       el('div', {}, el('b', { textContent: r.finished ? 'Poslední simulace' : 'Rozpracovaná simulace' }),
-        el('small', { textContent: `${when(r.meta.started)} · ${r.solves.length} zamíchání${same ? ' · navážeš dalšími' : ' · nastavení se od té doby změnilo'}` })),
+        el('small', { textContent: `${when(r.meta.started)} · ${r.solves.length} zamíchání${same ? ' · navážeš dalšími' : ' · od té doby se změnily kroky nebo jejich algoritmy (i vygenerované) – „Spustit test“ začne znovu'}` })),
       el('div', { className: 'row-btns' }, resume));
     banner.hidden = false;
     more.hidden = !same;

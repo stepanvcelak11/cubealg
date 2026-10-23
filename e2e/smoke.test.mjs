@@ -1001,7 +1001,10 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   assert.match(await p.locator('.sim-cmp-table').textContent(), /CFOP/);
   await p.locator('.sim-page button', { hasText: 'Spustit test' }).tap();
   await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
-  assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů[\s\S]*Odhad času/i);
+  assert.match(await p.locator('.sim-hero').innerText(), /Odhad času složení[\s\S]*\d+,\d+ s[\s\S]*Tahů na složení[\s\S]*\d+,\d/i);
+  // co znamenají čísla + použité algoritmy u kroku
+  assert.match(await p.locator('.sim-results .sim-explain').textContent(), /Tahů na složení[\s\S]*Ergonomie/);
+  assert.match(await p.locator('.sim-used').first().textContent(), /Použité algoritmy[\s\S]*nalezený/);
   assert.equal(await p.locator('.sim-res-row').count(), 2);
   assert.ok(await p.locator('.sim-res-row.worst').count() >= 1);
   const hist = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));
@@ -1010,7 +1013,7 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   // Porovnat: vpravo tvoje simulace, vlevo vestavěná metoda
   await p.locator('.sim-to-cmp').tap();
   assert.match(await p.locator('.sim-cmp-pick.mine select option:checked').innerText(), /Základní/);
-  assert.match(await p.locator('.sim-cmp-total').innerText(), /[−+]\d+,\d+ s \([−+]\d+ %\)[\s\S]*tahy člověka/);
+  assert.match(await p.locator('.sim-cmp-total').innerText(), /[−+]\d+,\d+ s \([−+]\d+ %\)[\s\S]*tahů skladače/);
   assert.equal(await p.locator('.sim-cmp-col').count(), 2);
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   await p.locator('.sim-example summary', { hasText: 'Ukázková složení' }).tap();
@@ -1105,6 +1108,14 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
     return compileGoal(compileCells(guides.get().steps[0].cells)).test(loc);
   });
   assert.equal(crossOk, true);
+  // krok do Labu: Start = kostka před krokem, Cíl = po kroku (separace hran: žlutá nahoře, bílá dole)
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
+  await p.locator('.bld-ed-chips .bld-chip', { hasText: 'Separace hran' }).tap();
+  await p.locator('.bld-step.open .bld-to-lab').tap();
+  await p.waitForSelector('[data-page="lab"]:not([hidden])');
+  const goal = await p.evaluate(async () => (await import('./src/ui/lab.js')).labTask().colorsB.join(''));
+  assert.equal([...goal].filter((c) => c === 'D').length, 5); // 4 nálepky hran nahoře + střed
   assert.deepEqual(errors, []);
   await ctx.close();
 });

@@ -87,7 +87,16 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   **Test metody** (Metoda → Otestovat, i z průvodce; běží dál, i když přepneš jinam)
   má nastavení testu (délka, tahy za sekundu, realismus; semínko a otočení kostky pod
   „Další nastavení“), sbalené „Co se testuje“ a výsledek; třetí část **Porovnat** má
-  srovnání s jinými metodami a historii testů:
+  srovnání s jinými metodami a historii testů. Odhad času je pro zvolenou **úroveň
+  skladače** (`LEVELS` v `sim/simulate.js`): světová špička = potenciál metody (algoritmy
+  13 tahů/s, intuitivní kroky 11, bloky 6,5, rozpoznání poloviční), rychlý skladač,
+  vlastní tempo, počítač. Tahy skladače = tahy simulace × (intuitivní 0,9, bloky 1,2,
+  algoritmy 1) – kalibrováno na rekonstrukce špičky (CFOP ~57, Roux ~48; obě kolem 6 s).
+  Výsledek po krocích v čase (tahy, tempo, rozpoznání, podíl času), „Co znamenají čísla“
+  a u každého kroku „Použité algoritmy“ (kolikrát, tahy, ergonomie, odkud a podle čeho
+  se vybraly). U kroku v Sestavit „Otevřít v Labu“ přenese kostku před krokem (Start)
+  a po něm (Cíl) do Labu (`stepLabTask` v `celleditor.js`; nálepky s víc barvami Lab
+  neumí – zůstanou šedé):
   náhodná zamíchání se složí krok po kroku podle dílků hotových po krocích. Krok se řeší
   podle nastavení ze Sestavit:
   tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když

@@ -408,3 +408,32 @@ export function cellEditor(step, before, frame, onChange) {
     overview ? el('b', { className: 'bld-sub', textContent: 'Celé zadání kroku' }) : null, overview);
 }
 
+
+/**
+ * Zadání pro Lab z kroku i metody: výchozí strana = kostka po předchozích krocích, cíl =
+ * po kroku i (jen nálepky s jednou barvou; víc barev na nálepce Lab neumí – zůstanou
+ * nevybarvené a vrátí se v `lost`). Celé dílky v cíli mají styl „solved“.
+ */
+export function stepLabTask(steps, i, frame) {
+  const paint = (cells) => {
+    const out = FACELETS.map((f) => (SLOTS[SLOT_OF[f.index]].type === 'center' ? f.face : 'X'));
+    let lost = 0;
+    for (const [name, c] of Object.entries(cells)) {
+      const slot = slotByName(name);
+      const st = cellStickers(c, slot);
+      if (!st) { lost++; continue; }
+      for (const k of slot.facelets) {
+        const cs = st[FACELETS[k].face];
+        if (cs?.length === 1) out[k] = cs[0];
+        else if (cs?.length > 1) lost++;
+      }
+    }
+    return { out, lost };
+  };
+  const A = paint(cellsBefore(steps, i));
+  const B = paint(cellsBefore(steps, i + 1));
+  const constraints = {};
+  for (const slot of SLOTS) if (slot.facelets.every((k) => B.out[k] !== 'X')) constraints[slot.name] = 'solved';
+  const map = frameMap(frame);
+  return { task: { puzzle: '333', colorsA: A.out, colorsB: B.out, constraints, hold: holdFromFaces(map.U, map.F) }, lost: A.lost + B.lost };
+}

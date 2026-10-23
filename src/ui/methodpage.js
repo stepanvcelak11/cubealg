@@ -17,7 +17,7 @@ let sub = SUBS.includes(storage.get(SUB)) ? storage.get(SUB) : 'build';
 let root = null, title = null, tabs = null, build = null, test = null, cmp = null;
 let visible = () => false;
 
-/** @param {{lab, practice, train, labTask, isActive}} deps */
+/** @param {{lab, practice, train, labTask, openLab, isActive}} deps */
 export function initMethodPage(deps) {
   root = document.getElementById('method-root');
   visible = deps.isActive;
@@ -40,7 +40,7 @@ export function initMethodPage(deps) {
         action('download', 'Učebnice', 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, výsledek testu); jde vytisknout i znovu importovat', () => downloadLearning()),
         action('share', 'Sdílet', 'Poslat metodu i s algoritmy jako soubor', () => shareMethod()))),
     tabs, build, test, cmp);
-  initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask });
+  initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask, openLab: deps.openLab });
   initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
   // jiná metoda nebo úpravy odjinud: sestavení překreslit (při psaní se nepřekresluje)
   const refresh = () => { title.textContent = methods.get(methods.active()).name; if (visible() && sub === 'build' && !build.contains(document.activeElement)) renderBuilder(); };

@@ -65,6 +65,12 @@ initMethodPage({
   lab: () => labErgo(), labTask, isActive: () => page === 'method',
   train: (id) => { trainSetTo(id); showPage('trainer'); },
   practice: (id) => { practiceStep(id); showPage('timer'); },
+  openLab: (task, lost) => {
+    openTask(task);
+    showPage('lab');
+    toast(lost ? 'Krok je v Labu (Zpět vrátí původní zadání). Nálepky s víc barvami (např. bílá nebo žlutá) Lab neumí – zůstaly šedé, dobarvi je.'
+      : 'Krok je v Labu: Start = kostka před krokem, Cíl = po kroku (Zpět vrátí původní zadání)');
+  },
 });
 showPage(page);
 

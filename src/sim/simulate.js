@@ -225,20 +225,34 @@ const quantile = (xs, q) => {
 };
 
 /**
- * Model člověka pro odhad času. Simulace najde u každého kroku skoro nejlepší řešení,
- * člověk ne – a různé druhy kroků skládá různě rychle:
- *   alg        naučený algoritmus (OLL, PLL, CMLL…): tahy jako v simulaci, plné tempo
- *   intuitive  intuitivní krok (kříž, páry, EOLine): tahy jako v simulaci, o něco pomaleji
- *   blocks     stavění bloků (Roux, bloky ZZ): víc tahů a pomalejší tempo (plánování)
- * Koeficienty jsou nastavené podle skutečných skladačů: tahy vestavěných metod vyjdou
- * v rozmezí rekonstrukcí (CFOP 55–60, Roux 45–50, ZZ 50–58) a při stejné úrovni skladače
- * vyjdou CFOP a Roux časově podobně, ZZ o něco pomaleji – jako se shoduje komunita.
+ * Model člověka. Simulace najde u každého kroku skoro nejkratší řešení každého kroku
+ * zvlášť; skutečný skladač dělá tahy jinak podle druhu kroku:
+ *   alg        naučený algoritmus (OLL, PLL, CMLL…): tahy jako v simulaci
+ *   intuitive  intuitivní krok (kříž, páry, EOLine): o něco míň – profík dívá dopředu,
+ *              spojuje sloty a kroky (x-cross, multislotting), což simulace krok po kroku nedělá
+ *   blocks     stavění bloků (Roux, bloky ZZ): víc tahů (počítač najde bloky optimálně)
+ * Koeficienty jsou nastavené tak, aby vestavěné metody vyšly jako v rekonstrukcích
+ * světové špičky: CFOP kolem 57 tahů, Roux kolem 48 (references.js).
  */
 export const HUMAN = {
-  moves: { alg: 1, intuitive: 1, blocks: 1.2 },
+  moves: { alg: 1, intuitive: 0.9, blocks: 1.2 },
   tps: { alg: 1, intuitive: 0.9, blocks: 0.55 },
 };
 const kindOf = (kind) => (HUMAN.moves[kind] ? kind : 'intuitive');
+
+/**
+ * Úroveň skladače pro odhad času. Tempo (tahů za sekundu) podle druhu kroku – algoritmy
+ * jdou nejrychleji (naučené prsty), intuitivní kroky pomaleji, bloky nejpomaleji
+ * (plánování) – a kolik z nastaveného rozpoznání kroku zbude (špička rozpozná dřív,
+ * často už během předchozího kroku). Tempa špičky odpovídají rekonstrukcím (CFOP kolem
+ * 9 tahů/s celkem, Roux kolem 8), takže CFOP i Roux vyjdou kolem 6 s.
+ */
+export const LEVELS = {
+  pro: { label: 'Světová špička (potenciál metody)', tps: { alg: 13, intuitive: 11, blocks: 6.5 }, recog: 0.5, human: true },
+  fast: { label: 'Rychlý skladač (kolem 10 s)', tps: { alg: 8, intuitive: 6.5, blocks: 4.2 }, recog: 0.8, human: true },
+  custom: { label: 'Vlastní tempo (tahy za sekundu)', recog: 1, human: true },
+  computer: { label: 'Počítač (tahy simulace, jedno tempo)', recog: 1, human: false },
+};
 
 // realismus 0…1: 0 = jak to složí počítač (tahy simulace, plné tempo), 1 = model člověka
 const mix = (f, realism = 1) => 1 + (f - 1) * Math.max(0, Math.min(1, realism));
@@ -249,14 +263,34 @@ export const humanMoves = (moves, kind, realism = 1) => moves * mix(HUMAN.moves[
 /** Tempo člověka v kroku (tahů za sekundu) při celkové rychlosti tps. */
 export const humanTps = (tps, kind, realism = 1) => tps * mix(HUMAN.tps[kindOf(kind)], realism);
 
+/** Tempo kroku druhu `kind` na úrovni `level` (u vlastního tempa podle tps). */
+export function levelTps(kind, { level = 'custom', tps = 4 } = {}) {
+  const L = LEVELS[level] ?? LEVELS.custom;
+  if (L.tps) return L.tps[kindOf(kind)];
+  return L.human ? humanTps(tps, kind) : tps;
+}
+
 /**
- * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy člověka / jeho
- * tempo v kroku). Přeskočený krok nestojí nic.
+ * Rozpad odhadu kroku: tahy člověka, rozpoznání a provedení (s). Bez úrovně postaru:
+ * čas z trenažéru, jinak tahy člověka / jeho tempo.
  */
-export function stepTime(item, { tps = 4, recog = 0, kind = 'alg', realism = 1 } = {}) {
-  if (!item || item.source === 'skip') return 0;
-  if (Number.isFinite(item.time)) return recog + item.time / 1000 + (item.extra ?? 0) / tps;
-  return recog + humanMoves(item.length, kind, realism) / humanTps(tps, kind, realism);
+export function stepEstimate(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level } = {}) {
+  if (!item || item.source === 'skip') return { moves: 0, recog: 0, exec: 0, time: 0, tps: 0 };
+  if (!level) {
+    if (Number.isFinite(item.time)) return { moves: item.length, recog, exec: item.time / 1000 + (item.extra ?? 0) / tps, time: recog + item.time / 1000 + (item.extra ?? 0) / tps, tps };
+    const moves = humanMoves(item.length, kind, realism), speed = humanTps(tps, kind, realism);
+    return { moves, recog, exec: moves / speed, time: recog + moves / speed, tps: speed };
+  }
+  const L = LEVELS[level] ?? LEVELS.custom;
+  const moves = L.human ? humanMoves(item.length, kind) : item.length;
+  const speed = levelTps(kind, { level, tps });
+  const r = recog * L.recog;
+  return { moves, recog: r, exec: moves / speed, time: r + moves / speed, tps: speed };
+}
+
+/** Odhad času kroku: rozpoznání + provedení. Přeskočený krok nestojí nic. */
+export function stepTime(item, opts = {}) {
+  return stepEstimate(item, opts).time;
 }
 
 /**
@@ -269,14 +303,19 @@ export function stepTime(item, { tps = 4, recog = 0, kind = 'alg', realism = 1 }
 export function summarize(solves, stepCount, timing = {}) {
   const done = solves.filter((s) => s.ok);
   const tps = timing.tps ?? 4;
-  const times = done.map((s) => s.steps.map((x, i) => stepTime(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1 })));
+  const est = (x, i) => stepEstimate(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1, level: timing.level });
+  const ests = done.map((s) => s.steps.map(est));
+  const times = ests.map((e) => e.map((x) => x.time));
   const steps = Array.from({ length: stepCount }, (_, i) => {
     const items = done.map((s) => s.steps[i]).filter(Boolean);
     const lens = items.map((x) => x.length);
     const by = (src) => items.filter((x) => x.source === src).length;
     const needed = items.filter((x) => x.source !== 'skip').length;
     return {
-      moves: mean(lens), human: humanMoves(mean(lens), timing.kinds?.[i], timing.realism ?? 1), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
+      moves: mean(lens), human: mean(ests.map((e) => e[i]?.moves ?? 0)), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
+      // rozpad času: rozpoznání a provedení (průměr přes složení, přeskočené = 0)
+      recogTime: mean(ests.map((e) => e[i]?.recog ?? 0)), execTime: mean(ests.map((e) => e[i]?.exec ?? 0)),
+      tps: timing.level ? levelTps(timing.kinds?.[i], { level: timing.level, tps }) : humanTps(tps, timing.kinds?.[i], timing.realism ?? 1),
       score: mean(items.map((x) => x.score)),
       time: mean(times.map((t) => t[i] ?? 0)),
       skipped: items.length ? by('skip') / items.length : 0,

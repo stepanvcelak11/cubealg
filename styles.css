@@ -1455,3 +1455,19 @@ details.sim-card > summary small { color: var(--muted); font-size: 0.78rem; font
 .sim-cmp-head { display: grid; gap: 2px; }
 .sim-cmp-head b { font-family: var(--display); font-size: 1.2rem; }
 .sim-cmp-head small { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+.sim-res-share { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 0.72rem; font-weight: 800; }
+.sim-res-detail { color: var(--faint); font-size: 0.74rem; font-weight: 600; }
+.sim-explain { padding: 10px 12px; border-radius: 16px; background: var(--panel-2); font-size: 0.84rem; }
+.sim-explain summary { cursor: pointer; font-weight: 800; color: var(--accent); }
+.sim-explain dl { margin: 8px 0 0; display: grid; gap: 8px; }
+.sim-explain dt { font-weight: 800; }
+.sim-explain dd { margin: 2px 0 0; color: var(--muted); font-weight: 600; }
+.sim-cmp-sub { font-size: 0.95rem; margin-top: 4px; }
+.sim-cmp-step small { color: var(--muted); font-size: 0.7rem; font-weight: 600; }
+.sim-used summary { cursor: pointer; font-size: 0.8rem; font-weight: 800; color: var(--accent); }
+.sim-used .hint { font-size: 0.78rem; margin: 6px 0; }
+.sim-used-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.sim-used-table th { text-align: left; color: var(--muted); font-weight: 800; padding: 4px 6px; }
+.sim-used-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+.sim-used-table code { font-family: var(--mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+.sim-used-table small { color: var(--muted); }
