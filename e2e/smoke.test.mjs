@@ -588,8 +588,8 @@ test('vlastní metoda: části bez Labu (předvolba), nácvik z průvodce a zast
   // první krok: levý blok Roux (bílá dole, zelená vpředu)
   await p.locator('.bld-step-toggle').first().tap();
   await p.locator('.bld-step.open select[aria-label="Přidat předvolbu"]').selectOption('roux1');
-  assert.match(await p.locator('.bld-step.open .parts-head').innerText(), /5 hotových/);
-  assert.equal(await p.locator('.bld-step.open .part-chip.solved').count(), 5);
+  assert.match(await p.locator('.bld-step.open .bld-step-toggle small').innerText(), /po kroku: 5 hotových/);
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /2× roh jeho vlastní dílek, správně natočený[\s\S]*3× hrana jeho vlastní dílek/);
   // druhý krok: pravý blok na kterémkoli boku
   await p.locator('.bld-step-toggle').nth(1).tap();
   await p.locator('.bld-step.open').last().locator('select[aria-label="Přidat předvolbu"]').selectOption('roux2');
@@ -1041,27 +1041,31 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.bld-tpl').selectOption('separation');
   await p.waitForFunction(() => document.querySelectorAll('.bld-step').length === 10);
   assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
-  // kříž: pravidlo „na 4 místa dole patří kterékoli hrany s bílou nebo žlutou nálepkou, tou dolů“
+  // kříž: na 4 místech dole kterákoli hrana s bílou nebo žlutou, tou nálepkou dolů
   await p.locator('.bld-step-toggle').first().tap();
-  assert.match(await p.locator('.bld-step.open .rule-say').innerText(), /Na 4 místa \(hrany: 4 dole\) patří kterékoli hrany s bílou nebo žlutou nálepkou, tou nálepkou dolů/);
-  // úprava pravidla: jen bílé hrany → popis se změní, uloží se ke kroku
-  await p.locator('.bld-step.open .rule-row', { hasText: 's barvou' }).locator('.rule-chip', { hasText: 'žlutá' }).tap();
-  assert.match(await p.locator('.bld-step.open .rule-say').innerText(), /hrany s bílou nálepkou/);
-  const rules = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('ergocube.guides')); return Object.values(g).at(-1).steps[0].rules; });
-  assert.deepEqual(rules[0].colors, ['D']);
-  // přidání pravidla z předvolby a smazání
-  await p.locator('.bld-step.open .bld-rule-add').selectOption('sep-edges-u');
-  assert.equal(await p.locator('.bld-step.open .rule-card').count(), 2);
-  await p.locator('.bld-step.open .rule-card').nth(1).locator('.rule-head .icon-btn').tap();
-  assert.equal(await p.locator('.bld-step.open .rule-card').count(), 1);
-  // nesmysl hlásí: víc míst než dílků
-  await p.locator('.bld-step.open .rule-chip', { hasText: 'Nahoře' }).first().tap();
-  assert.match(await p.locator('.bld-step.open .rule-say.bad').innerText(), /Míst \(8\) je víc než dílků ve skupině \(4\)/);
-  await p.locator('.bld-step.open .rule-chip', { hasText: 'Nahoře' }).first().tap(); // zpět: kříž jen z bílých hran
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, bílou nebo žlutou nálepkou dolů/);
+  // políčko po políčku: vybrat hrany dole a nechat jen bílé hrany
+  await p.locator('.bld-step.open .cell-quick button', { hasText: 'Hrany dole' }).tap();
+  assert.match(await p.locator('.bld-step.open .cell-panel-title').innerText(), /Vybráno: 4 místa/);
+  assert.equal(await p.locator('.bld-step.open .rule-opt.on', { hasText: 'Některý z vybraných dílků' }).count(), 1);
+  await p.locator('.bld-step.open .cell-panel .rule-chip', { hasText: 'žlutá (nahoře)' }).tap();
+  assert.match(await p.locator('.bld-step.open .cell-panel .rule-say').innerText(), /4 místa: kterákoli hrana s bílou barvou/);
+  const cells = await p.evaluate(() => { const g = JSON.parse(localStorage.getItem('ergocube.guides')); return Object.values(g).at(-1).steps[0].cells; });
+  assert.ok(Object.values(cells).every((c) => c.pieces.length === 4));
+  // klepnutí na políčko kostky přidá místo do výběru; „Jeho vlastní dílek“ a zpět
+  await p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
+  assert.match(await p.locator('.bld-step.open .cell-panel-title').innerText(), /Vybráno: 5 míst/);
+  await p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'Jeho vlastní dílek' }).tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana jeho vlastní dílek, správně natočený/);
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'Některý z vybraných dílků' }).tap();
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'Určitá barva na určitou stranu' }).tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, bílou nebo žlutou nálepkou dolů/);
+  await p.locator('.bld-step.open .cell-panel .rule-chip', { hasText: 'žlutá (nahoře)' }).tap(); // kříž jen z bílých hran
   // test metody vidí všech 10 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.equal(await p.locator('.sim-step').count(), 10);
-  assert.match(await p.locator('.sim-step').nth(5).innerText(), /OLL[\s\S]*2× pravidlo/);
+  assert.match(await p.locator('.sim-step').nth(5).innerText(), /OLL[\s\S]*16 míst s kterýmkoli dílkem/);
   // nácvik kroku po kříži z pravidla: zamíchání vznikne složením kříže podle metody
   await p.evaluate(async () => {
     const { guides } = await import('./src/ui/store.js');
@@ -1074,12 +1078,11 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
     && /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent), null, { timeout: 90000 });
   const crossOk = await p.evaluate(async () => {
     const { solved, applyAlg } = await import('./src/core/cube.js');
-    const { compileRule } = await import('./src/core/rules.js');
+    const { compileCells } = await import('./src/core/cells.js');
     const { compileGoal } = await import('./src/core/constraints.js');
-    const { frameMap, DEFAULT_FRAME } = await import('./src/ui/parts.js');
     const { guides } = await import('./src/ui/store.js');
     const loc = applyAlg(solved(), document.querySelector('#t-scramble').textContent);
-    return compileGoal(compileRule(guides.get().steps[0].rules[0], frameMap(DEFAULT_FRAME))).test(loc);
+    return compileGoal(compileCells(guides.get().steps[0].cells)).test(loc);
   });
   assert.equal(crossOk, true);
   assert.deepEqual(errors, []);

@@ -12,6 +12,7 @@ import { MOVESET_PRESETS } from '../core/moveset.js';
 import { getPuzzle } from '../puzzles/index.js';
 import { scoreFor } from '../ergonomics/puzzles.js';
 import { compileRule, mergeConstraints, constraintsKey } from '../core/rules.js';
+import { compileCells, remapCells } from '../core/cells.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
 
 const P = getPuzzle('333');
@@ -109,13 +110,17 @@ const LABEL = COLORS;
  * Kolik různých míst volnost kroku nabízí (z držení metody): nové dílky kroku
  * (ty, které nebyly hotové dřív) přesunuté do každé povolené orientace.
  */
-export function placesCount(frame, before, parts, cfg = {}, rules = []) {
+export function placesCount(frame, before, parts, cfg = {}, rules = [], cells = {}) {
   const f = validFrame(frame) ? frame : DEFAULT_FRAME;
   const fresh = Object.fromEntries(Object.entries(parts).filter(([n, st]) => before[n] !== st));
-  if (!Object.keys(fresh).length && !rules.length) return 1;
+  const groups = Object.fromEntries(Object.entries(cells).filter(([, c]) => c?.pieces));
+  if (!Object.keys(fresh).length && !rules.length && !Object.keys(groups).length) return 1;
+  const a = frameMap(f);
   return new Set(freeFrames(f, cfg.free ?? 'fixed', cfg).map((g) => {
     let c = remap(fresh, f, g);
     for (const rule of rules) c = mergeConstraints(c, compileRule(rule, frameMap(g)));
+    const b = frameMap(g);
+    if (Object.keys(groups).length) c = mergeConstraints(c, compileCells(remapCells(groups, Object.fromEntries(Object.entries(a).map(([r, x]) => [x, b[r]])))));
     return constraintsKey(c);
   })).size;
 }
@@ -148,7 +153,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   const all = [];
   guide.steps.forEach((st, index) => {
     const parts = stepParts(st);
-    if (!Object.keys(parts).length && !st.rules?.length) return;
+    if (!Object.keys(parts).length && !st.rules?.length && !Object.keys(st.cells ?? {}).length) return;
     const algs = st.set ? setAlgs(st.set) : [];
     all.push({ st, index, parts, algs, cfg: { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) } });
   });
@@ -161,13 +166,17 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   // dílky a pravidla kroku: jeho vlastní + z vypnutých kroků před ním (složí se s ním).
   // Vlastní, ne rozdíl proti předchozím krokům – kroky se stejnými dílky (pár do
   // kteréhokoli slotu ×4) pak s volností každý přidá další místo.
-  const fresh = [], rulesOf = [];
-  let pend = {}, pendRules = [];
+  const fresh = [], rulesOf = [], groupsOf = [];
+  let pend = {}, pendRules = [], pendCells = {};
   for (const x of all) {
     pend = mergeParts(pend, x.parts);
     pendRules.push(...(x.st.rules ?? []));
-    if (steps.includes(x)) { fresh.push(pend); rulesOf.push(pendRules); pend = {}; pendRules = []; }
+    // buňky „některý z dílků“ (vlastní dílky jsou už v parts)
+    for (const [n, c] of Object.entries(x.st.cells ?? {})) if (c?.pieces) pendCells[n] = c;
+    if (steps.includes(x)) { fresh.push(pend); rulesOf.push(pendRules); groupsOf.push(pendCells); pend = {}; pendRules = []; pendCells = {}; }
   }
+  // stěna v držení metody → stěna v orientaci f (buňky jsou ve skutečných názvech pro držení metody)
+  const faceMove = (f) => { const a = frameMap(frame), b = frameMap(f); return Object.fromEntries(Object.entries(a).map(([r, x]) => [x, b[r]])); };
   // orientace, do kterých se simulace může dostat (postupně podle volností kroků)
   const frames = [frame];
   const index = new Map([[fid(frame), 0]]);
@@ -225,6 +234,7 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
         // a pravidla pro skupiny dílků (core/rules.js) přeložená do této orientace
         let parts = { ...remap(fresh[i], frame, f), ...(i === steps.length - 1 ? CENTERS : {}) };
         for (const rule of rulesOf[i]) parts = mergeConstraints(parts, compileRule(rule, map));
+        if (Object.keys(groupsOf[i]).length) parts = mergeConstraints(parts, compileCells(remapCells(groupsOf[i], faceMove(f))));
         return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates, parts };
       }),
     };

@@ -44,18 +44,19 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   míst), 4. čím krok skládáš (sada algoritmů, co když v ní případ chybí, tahy,
   natočení vrstev, pomocné algoritmy) a nepovinně podrobnosti pro test a obrázek
   z Labu. Nastavení se ukládá přímo ke krokům metody (`src/ui/builder.js`,
-  `st.sim`). Kromě konkrétních dílků má krok **pravidla pro skupiny dílků**
-  (`src/core/rules.js`, editor `src/ui/ruleeditor.js`): jaké dílky (hrany / rohy
-  s barvou…, bez barvy…), kam (místa po vrstvách), jak (každé místo obsadí některý
-  z nich / všechny musí být v místech) a jak natočené (jakkoli / nálepkou barvy na
-  stranu / správně) – s popisem slovy. Tak jde zadat např. kříž z kterýchkoli
-  bílých a žlutých hran bílou/žlutou dolů, do slotu kterýkoli takový roh, natočení
-  horní a spodní vrstvy nebo separaci barev. Jádro hledání má pro „obsadit místa
-  kterýmkoli dílkem skupiny“ přesné databáze podle poloh nálepek skupiny
-  (`#classes` v `core/constraints.js` a `search/engine.js`). **Šablony** (CFOP,
+  `st.sim`). **Co je po kroku hotové se zadává políčko po políčku** (`src/core/cells.js`,
+  editor `src/ui/celleditor.js`): rozložená kostka, klepnutím se vybírají místa (i víc
+  najednou nebo celé vrstvy) a ke každému místu dvě otázky – *co tu musí být* (nic /
+  jeho vlastní dílek / některý z vybraných dílků, např. všechny s bílou nebo žlutou)
+  a *jak natočený* (správně / jakkoli / určitá barva na určitou stranu). Kostka hned
+  ukazuje, co na kterém políčku musí být. Tak jde zadat jakákoli metoda: kříž
+  z kterýchkoli hran, do slotu kterýkoli roh, natočení vrstev, separaci barev, EO…
+  Jádro hledání má pro „některý z dílků“ přesné databáze podle poloh nálepek skupiny
+  (`#classes` v `core/constraints.js` a `search/engine.js`). Starší zadání (dílky se
+  styly, pravidla `core/rules.js`) se při otevření kroku převede. **Šablony** (CFOP,
   Roux, ZZ, separační metoda; `src/sim/templates.js`) založí novou metodu se vším
-  nastaveným. Nácvik kroku v timeru po krocích s pravidly zamíchá tak, že náhodnou
-  kostku složí podle předchozích kroků metody.
+  nastaveným. Nácvik kroku v timeru po krocích s „některým z dílků“ zamíchá tak, že
+  náhodnou kostku složí podle předchozích kroků metody.
   **Otestovat** – test metody (simulátor níž) jen čte kroky a pouští se.
   **Průvodce metodou** (na čtení; „Upravit“ vede do Sestavit): úvod a kroky se slovním popisem,
   obrázkem kostky „před → po“ převzatým z Labu a odkazem na sadu algoritmů

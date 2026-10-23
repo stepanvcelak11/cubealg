@@ -7,6 +7,7 @@ import { icon } from './icons.js';
 import { solves, groups, methods, guides, algs } from './store.js';
 import { buildPlan } from '../sim/plan.js';
 import { stepConfig } from './stepcfg.js';
+import { hasGroupCells } from '../core/cells.js';
 import { Stopwatch } from './stopwatch.js';
 import { renderPreview } from './preview.js';
 import { partsBefore, describeParts } from './parts.js';
@@ -51,7 +52,7 @@ function practicePlan(stepId) {
   const guide = guides.get();
   const end = guide.steps.findIndex((st) => st.id === stepId);
   const before = guide.steps.slice(0, Math.max(0, end));
-  if (!before.some((st) => st.rules?.length)) return null;
+  if (!before.some((st) => st.rules?.length || hasGroupCells(st.cells))) return null;
   const method = methods.active();
   // na kvalitě řešení tu nezáleží – krátké hledání
   const config = Object.fromEntries(before.map((st) => [st.id, { ...stepConfig(method, st), time: 0.15 }]));
@@ -240,7 +241,7 @@ export function initTimer({ isActive }) {
     document.body.toggleAttribute('data-practice', !!step);
     if (step) {
       const before = describeParts(stepFixed(step));
-      const byRules = i > 0 && steps.slice(0, i).some((st) => st.rules?.length);
+      const byRules = i > 0 && steps.slice(0, i).some((st) => st.rules?.length || hasGroupCells(st.cells));
       info.textContent = i === 0 ? 'od zamíchané kostky' : byRules ? `předem: kroky 1–${i} složené podle metody` : before === 'nic' ? 'nastav dílky předchozích kroků' : `předem: ${before}`;
       info.classList.toggle('warn', i > 0 && !byRules && before === 'nic');
     }

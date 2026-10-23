@@ -14,6 +14,7 @@ import { downloadLearning } from './learnexport.js';
 import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME } from './parts.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore, cellsLines } from './celleditor.js';
 
 let dialog = null;
 let deps = { labTask: () => null, train: () => {}, practice: null, simulate: null, build: null };
@@ -138,7 +139,10 @@ function draw() {
         el('h3', {}, el('span', { className: 'guide-n', textContent: String(i + 1) }), st.title || `Krok ${i + 1}`),
         st.text?.trim() ? richText(st.text) : null,
         illustration(st.task),
-        !st.task && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
+        !st.task && st.cells && Object.keys(st.cells).length ? el('figure', { className: 'guide-fig guide-parts guide-cells' },
+          Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks(st.cells, cellsBefore(guide.steps, i)), validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME, { size: 220 }) }),
+          el('figcaption', {}, ...cellsLines(st.cells, validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME).map((t) => el('span', { className: 'guide-cell-line', textContent: t })))) : null,
+        !st.task && !st.cells && Object.keys(stepParts(st)).length ? el('figure', { className: 'guide-fig guide-parts' },
           partsCube(partsBefore(guide.steps, st.id), stepParts(st), guide.frame, `Po kroku ${i + 1}`),
           el('figcaption', { textContent: `po kroku: ${describeParts(stepParts(st))}` })) : null,
         st.rules?.length ? el('ul', { className: 'guide-rules' }, ...st.rules.map((r) => {

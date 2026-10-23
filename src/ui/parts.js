@@ -10,6 +10,7 @@ import { stickersOf } from './cubeview.js';
 import { Cube3D } from './cube3d.js';
 import { el } from './dom.js';
 import { icon } from './icons.js';
+import { cellsToParts, remapCells } from '../core/cells.js';
 
 export const COLOR_NAME = { U: 'bílá', D: 'žlutá', F: 'zelená', B: 'modrá', R: 'červená', L: 'oranžová' };
 const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
@@ -72,6 +73,7 @@ export function remapParts(steps, from, to) {
   const a = frameMap(validFrame(from) ? from : DEFAULT_FRAME), b = frameMap(to);
   const back = Object.fromEntries(Object.entries(a).map(([r, f]) => [f, r]));
   for (const st of steps) {
+    if (st.cells) st.cells = remapCells(st.cells, Object.fromEntries(Object.keys(back).map((f) => [f, b[back[f]]])));
     if (!st.parts) continue;
     st.parts = Object.fromEntries(Object.entries(st.parts).map(([n, s]) => {
       try { return [toCube([...n].map((f) => back[f]).join(''), b), s]; } catch { return [n, s]; }
@@ -97,8 +99,10 @@ export function mergeParts(a, b) {
   return out;
 }
 
-/** Dílky hotové po kroku: vlastní výběr, jinak cíl obrázku z Labu (3×3). */
+/** Dílky hotové po kroku (vlastní dílky na místě): buňky a výběr dílků, jinak cíl obrázku z Labu (3×3). */
 export function stepParts(step) {
+  // buňky s vlastním dílkem (zadání políčko po políčku, core/cells.js) + starší výběr dílků
+  if (step.cells) return mergeParts(step.parts ?? {}, cellsToParts(step.cells));
   if (step.parts && Object.keys(step.parts).length) return step.parts;
   if (step.task && (step.task.puzzle ?? '333') === '333') {
     const pieces = new Set(PIECES.map((s) => s.name));

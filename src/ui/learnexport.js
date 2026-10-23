@@ -15,6 +15,7 @@ import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig } from './stepcfg.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore, cellsLines, cellsSummary } from './celleditor.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -120,10 +121,12 @@ export function learningHtml(method = methods.active()) {
     return `<section class="step">
   <div class="step-head"><span class="n">${i + 1}</span><h2>${esc(st.title || `Krok ${i + 1}`)}</h2>${res ? `<span class="pill">${fmt(res.moves)} tahů v průměru</span>` : ''}</div>
   <div class="step-body">
-    ${Object.keys(now).length ? `<figure>${stepSvg(before, now, hold)}<figcaption>${esc(describeParts(now))}</figcaption></figure>` : ''}
+    ${st.cells && Object.keys(st.cells).length ? `<figure>${cellsNetSvg(cellLooks(st.cells, cellsBefore(guide.steps, i)), frame, { size: 200 })}</figure>`
+    : Object.keys(now).length ? `<figure>${stepSvg(before, now, hold)}<figcaption>${esc(describeParts(now))}</figcaption></figure>` : ''}
     <div>
       ${st.text ? String(st.text).split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}
       ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
+      ${st.cells && Object.keys(st.cells).length ? `<ul class="rules">${cellsLines(st.cells, frame).map((t) => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : ''}
       ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${ruleNetSvg(r, frame, 96)}<span>${esc(describeRule(r, map))}</span></li>`).join('')}</ul>` : ''}
       ${settings.length ? `<dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : ''}
     </div>
@@ -179,7 +182,7 @@ ${last ? `<p><b>Simulace (${esc(new Date(last.at).toLocaleDateString('cs-CZ'))},
 ${guide.steps.map((st, i) => {
     const res = last?.steps.find((x) => x.id === st.id);
     const set = st.set ? sets.get(st.set) : null;
-    return `<tr><td>${i + 1}</td><td>${esc(st.title || `Krok ${i + 1}`)}</td><td>${esc([Object.keys(stepParts(st)).length ? describeParts(stepParts(st)) : '', st.rules?.length ? `${st.rules.length}× pravidlo pro skupinu` : ''].filter(Boolean).join(' + ') || '–')}</td><td>${set ? `${esc(set.name)} (${setAlgs(set.id).length})` : '–'}</td><td>${esc(freeText(sim[st.id]))}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
+    return `<tr><td>${i + 1}</td><td>${esc(st.title || `Krok ${i + 1}`)}</td><td>${esc(st.cells && Object.keys(st.cells).length ? cellsSummary(st.cells) : [Object.keys(stepParts(st)).length ? describeParts(stepParts(st)) : '', st.rules?.length ? `${st.rules.length}× pravidlo pro skupinu` : ''].filter(Boolean).join(' + ') || '–')}</td><td>${set ? `${esc(set.name)} (${setAlgs(set.id).length})` : '–'}</td><td>${esc(freeText(sim[st.id]))}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
   }).join('')}
 </tbody></table>
 ${steps.join('\n')}

@@ -1107,7 +1107,7 @@ body.timing .round-panel { visibility: hidden; }
 .bld-how { padding: 12px 14px; border-radius: 18px; background: var(--accent-soft); font-size: 0.86rem; }
 .bld-how .bld-tpl { width: 100%; max-width: none; margin-top: 8px; }
 .bld-how ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 2px; }
-.bld-card { display: grid; gap: 10px; padding: 14px; border-radius: 22px; background: var(--panel); box-shadow: var(--shadow-sm); min-width: 0; }
+.bld-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px; border-radius: 22px; background: var(--panel); box-shadow: var(--shadow-sm); min-width: 0; }
 .bld-q { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; }
 .bld-q > div { display: flex; flex-direction: column; min-width: 0; }
 .bld-q b { font-size: 0.98rem; }
@@ -1137,6 +1137,23 @@ body.timing .round-panel { visibility: hidden; }
 .bld-sub { font-size: 0.86rem; margin-top: 4px; }
 .bld-sub-hint { margin: -4px 0 0; font-size: 0.78rem; }
 .bld-step .bld-rule-add { width: 100%; max-width: none; }
+.cell-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.cell-panel { grid-template-columns: minmax(0, 1fr); }
+.cell-tools .cell-preset { flex: 1; max-width: none; min-width: 0; }
+.cell-net { display: flex; justify-content: center; padding: 6px 0; }
+.cell-net svg { width: min(100%, 360px); touch-action: manipulation; }
+.cell-net .cell-hit { cursor: pointer; }
+.cell-legend { margin: 0; font-size: 0.74rem; }
+.cell-quick { justify-content: center; }
+.cell-panel { display: grid; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--panel-2); }
+.cell-panel-title { font-size: 0.92rem; }
+.cell-hint { margin: 0; text-align: center; }
+.cell-pieces summary { cursor: pointer; font-size: 0.8rem; font-weight: 700; color: var(--accent); }
+.cell-pieces .rule-chips { margin-top: 6px; }
+.piece-chip { gap: 2px; padding: 4px 8px; }
+.guide-cells figcaption { display: grid; gap: 2px; text-align: left; max-width: 320px; }
+.guide-cell-line { font-size: 0.8rem; }
+.cell-overview { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 0.84rem; }
 .rule-card { display: grid; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--panel-2); min-width: 0; }
 .rule-head { display: flex; align-items: center; gap: 8px; }
 .rule-head small { flex: 1; color: var(--muted); font-size: 0.76rem; font-weight: 600; }

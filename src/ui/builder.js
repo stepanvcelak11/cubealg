@@ -10,13 +10,13 @@
 import { el } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algSets, algs } from './store.js';
-import { partsEditor, frameEditor, partsBefore, stepParts, describeParts, PRESETS, presetParts, remapParts, validFrame, DEFAULT_FRAME } from './parts.js';
+import { frameEditor, partsBefore, stepParts, describeParts, PRESETS, presetParts, remapParts, validFrame, DEFAULT_FRAME, frameMap } from './parts.js';
 import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount } from '../sim/plan.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
-import { ruleEditor, newRule } from './ruleeditor.js';
-import { RULE_PRESETS } from '../core/rules.js';
+import { cellEditor, cellsSummary, cellsBefore } from './celleditor.js';
+import { cellsFromLegacy } from '../core/cells.js';
 import { TEMPLATES, templateGuide } from '../sim/templates.js';
 
 const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
@@ -89,19 +89,26 @@ export function renderBuilder() {
   const setOpts = () => ({ '': '— bez sady —', ...Object.fromEntries(algSets.list(method).map((x) => [x.id, `${x.name} (${algs.inSet(x.id).length})`])), '+new': '+ Nová sada…' });
   const stepCards = guide.steps.map((st, i) => {
     const k = i + 1;
+    // starší zadání (dílky + pravidla) → políčka (core/cells.js), jednou při otevření kroku
+    if (open.has(st.id) && !st.cells && (st.parts || st.rules?.length)) {
+      st.cells = cellsFromLegacy(st.parts, st.rules, () => frameMap(frame));
+      delete st.parts; delete st.rules;
+      save();
+    }
     const before = partsBefore(guide.steps, st.id);
     const parts = stepParts(st);
     const cfg = stepConfig(method, st);
     const set = st.set ? algSets.list(method).find((x) => x.id === st.set) : null;
     const nSet = set ? algs.inSet(set.id).length : 0;
     const rules = st.rules ?? [];
-    const places = placesCount(frame, before, parts, cfg, rules);
+    const places = placesCount(frame, before, parts, cfg, rules, st.cells ?? {});
     const patch = (p, again = true) => { setStepConfig(method, st, p); if (again) redraw(); else save(); };
     const isOpen = open.has(st.id);
     const summary = [
-      Object.keys(parts).length || rules.length
-        ? [Object.keys(parts).length ? `hotovo: ${describeParts(parts)}` : null, rules.length ? `${rules.length} ${rules.length === 1 ? 'pravidlo' : rules.length < 5 ? 'pravidla' : 'pravidel'} pro skupiny` : null].filter(Boolean).join(' + ')
-        : 'dílky zatím nevybrané',
+      st.cells && Object.keys(st.cells).length ? `po kroku: ${cellsSummary(st.cells)}`
+        : Object.keys(parts).length || rules.length
+          ? [Object.keys(parts).length ? `hotovo: ${describeParts(parts)}` : null, rules.length ? `${rules.length} ${rules.length === 1 ? 'pravidlo' : rules.length < 5 ? 'pravidla' : 'pravidel'} pro skupiny` : null].filter(Boolean).join(' + ')
+          : 'zatím nic nevybráno',
       cfg.free && cfg.free !== 'fixed' ? `${FREE_TEXT[cfg.free]?.[0].toLowerCase()} (${plural(places, 'místo', 'místa', 'míst')})` : 'přesně tady',
       set ? `sada ${set.name} (${nSet})` : 'bez sady',
     ].join(' · ');
@@ -135,7 +142,7 @@ export function renderBuilder() {
         box.onchange = () => patch({ [key]: Object.keys(COLORS).filter((x) => (x === f ? box.checked : (cfg[key] ?? []).includes(x))) });
         return el('label', { className: 'sim-color', title: cname }, box, el('i', { style: `--c: var(--c-${f})` }), el('span', { textContent: cname }));
       }));
-    const placesNote = !Object.keys(parts).length && !rules.length ? 'Nejdřív vyber dílky nebo pravidlo (bod 2).'
+    const placesNote = !Object.keys(parts).length && !rules.length && !Object.keys(st.cells ?? {}).length ? 'Nejdřív v bodě 2 vyber, co má být po kroku hotové.'
       : places > 1 ? `Krok je hotový na kterémkoli z možných míst (${places}). Test u každého zamíchání vybere to nejvýhodnější a další kroky pokračují odtamtud.`
         : free === 'fixed' ? 'Krok je hotový jen tehdy, když jsou hotové přesně vybrané dílky.' : 'Tyhle dílky jsou ve všech povolených polohách na stejném místě – volnost tu nic nemění.';
 
@@ -185,28 +192,9 @@ export function renderBuilder() {
 
     return el('section', { className: 'bld-card bld-step open' }, head,
       q('1', 'Název a popis'), title, text,
-      q('2', 'Co je po kroku hotové?', 'Klepni na dílky, nebo vyber předvolbu. Bledé jsou hotové z dřívějších kroků.'),
-      el('b', { className: 'bld-sub', textContent: 'a) Konkrétní dílky' }),
-      partsEditor(st, before, frame, redraw),
-      el('b', { className: 'bld-sub', textContent: 'b) Kterékoli dílky ze skupiny' }),
-      el('p', { className: 'hint bld-sub-hint', textContent: 'Když nezáleží na tom, který dílek to je – např. kříž z kterýchkoli bílých a žlutých hran, do slotu kterýkoli bílý/žlutý roh, natočení horní a spodní vrstvy, separace barev.' }),
-      ...rules.map((r, j) => ruleEditor(r, frame, j + 1, redraw, () => { rules.splice(j, 1); st.rules = rules.length ? rules : undefined; redraw(); })),
-      (() => {
-        const add = el('select', { className: 'small-select bld-rule-add', ariaLabel: `Přidat pravidlo – krok ${k}` },
-          el('option', { value: '', textContent: '+ Přidat pravidlo pro skupinu dílků…' }),
-          el('option', { value: 'new', textContent: 'Vlastní pravidlo (nastavím sám)' }),
-          el('optgroup', { label: 'Předvolby' }, ...RULE_PRESETS.map((p) => el('option', { value: p.id, textContent: p.label }))));
-        add.onchange = () => {
-          if (!add.value) return;
-          const preset = RULE_PRESETS.find((p) => p.id === add.value);
-          st.rules = [...rules, preset ? structuredClone(preset.rule) : newRule()];
-          redraw();
-        };
-        return add;
-      })(),
-      q('3', 'Musí to být přesně tady?', rules.length
-        ? 'Pravidla výš už říkají, které dílky smí být kde. Tady jde o celý krok: smí se složit i otočený (na jiném boku, s jinou barvou dole)? Např. pár do kteréhokoli slotu = „Na kterémkoli boku“.'
-        : 'Např. pár: „Přesně tady“ = jen ten jeden pár, „Na kterémkoli boku“ = kterýkoli ze 4 párů.'),
+      q('2', 'Co je po kroku hotové?', 'Klepni na políčko kostky (nebo vyber víc míst) a řekni, co tam po kroku musí být. Bledé je hotové z dřívějších kroků.'),
+      cellEditor(st, cellsBefore(guide.steps, i), frame, redraw),
+      q('3', 'Smí se celý krok složit i jinde?', 'Bod 2 říká, co kde musí být. Tady jde o celý krok otočený: např. pár do kteréhokoli slotu = „Na kterémkoli boku“, kříž s bílou i žlutou dole = „Dvě barvy dole“.'),
       freeList,
       free === 'colors' ? el('div', { className: 'sim-colors-box' },
         colorPick('downs', 'Dole smí být', 'Barvy, které smí být po kroku dole'),
@@ -230,7 +218,7 @@ export function renderBuilder() {
     if (!add.value) return;
     const preset = PRESETS.find((p) => p.id === add.value);
     const st = guides.newStep(preset ? preset.label.replace(/ \(.*\)$/, '') : '');
-    if (preset) st.parts = presetParts(preset.id, frame);
+    st.cells = preset ? cellsFromLegacy(presetParts(preset.id, frame), [], () => frameMap(frame)) : {};
     // páry se obvykle skládají do kteréhokoli slotu
     if (preset?.id === 'pair') st.sim = { free: 'side' };
     guide.steps.push(st);
