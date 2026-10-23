@@ -6,7 +6,7 @@
 // Výsledek je čistě datový (viz stepsolver.js), aby šel poslat do workerů.
 
 import { stepParts, partsBefore, mergeParts, frameMap, validFrame, DEFAULT_FRAME } from '../ui/parts.js';
-import { slotByName } from '../core/geometry.js';
+import { slotByName, SLOTS } from '../core/geometry.js';
 import { holdOf, holdFromFaces } from '../core/hold.js';
 import { MOVESET_PRESETS } from '../core/moveset.js';
 import { getPuzzle } from '../puzzles/index.js';
@@ -153,9 +153,14 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   const all = [];
   guide.steps.forEach((st, index) => {
     const parts = stepParts(st);
-    if (!Object.keys(parts).length && !st.rules?.length && !Object.keys(st.cells ?? {}).length) return;
-    const algs = st.set ? setAlgs(st.set) : [];
-    all.push({ st, index, parts, algs, cfg: { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) } });
+    // krok „jen někdy“ (pevný algoritmus, např. parita) nic nového neskládá
+    const fixed = config[st.id]?.solveBy === 'fixed' && !!clean(config[st.id]?.fixedAlg ?? '');
+    if (!fixed && !Object.keys(parts).length && !st.rules?.length && !Object.keys(st.cells ?? {}).length) return;
+    const algs = st.set && !fixed ? setAlgs(st.set) : [];
+    const cfg = { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) };
+    if (fixed) cfg.on = true;
+    else if (cfg.solveBy === 'fixed') cfg.solveBy = 'intuitive';
+    all.push({ st, index, parts: fixed ? {} : parts, algs, cfg, fixed });
   });
   // poslední krok s dílky se simuluje vždy (jinak by se nic neskládalo)
   if (all.length && !all.some((x) => x.cfg.on)) all.at(-1).cfg.on = true;
@@ -169,6 +174,8 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   const fresh = [], rulesOf = [], groupsOf = [];
   let pend = {}, pendRules = [], pendCells = {};
   for (const x of all) {
+    // krok „jen někdy“ nic neskládá – dílky vypnutých kroků před ním jdou do dalšího kroku
+    if (x.fixed) { fresh.push({}); rulesOf.push([]); groupsOf.push({}); continue; }
     pend = mergeParts(pend, x.parts);
     pendRules.push(...(x.st.rules ?? []));
     // buňky „některý z dílků“ (vlastní dílky jsou už v parts)
@@ -236,7 +243,15 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
         let parts = { ...remap(fresh[i], frame, f), ...(i === steps.length - 1 ? CENTERS : {}) };
         for (const rule of rulesOf[i]) parts = mergeConstraints(parts, compileRule(rule, map));
         if (Object.keys(groupsOf[i]).length) parts = mergeConstraints(parts, compileCells(remapCells(groupsOf[i], faceMove(f))));
-        return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates, parts };
+        // krok „jen někdy“: pevné algoritmy a kdy se dělají (vrstvy v této orientaci, skutečné názvy)
+        const fixed = x.fixed ? {
+          algs: String(x.cfg.fixedAlg).split(/[,;\n]/).map(clean).filter(Boolean).flatMap((d) => {
+            try { return [{ display: d, model: toModel(d), score: scoreOnce(d) }]; } catch { return []; }
+          }),
+          when: x.cfg.when ?? 'parity',
+          layers: Object.fromEntries(['U', 'D'].map((L) => [L, SLOTS.filter((s) => s.type !== 'center' && s.name.includes(map[L])).map((s) => s.name)])),
+        } : undefined;
+        return { moves, held, adjust: { pre: adjust, post: adjust, helpers }, candidates, parts, ...(fixed ? { fixed } : {}) };
       }),
     };
   });

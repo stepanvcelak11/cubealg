@@ -50,8 +50,13 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   na nálepky (nebo celý dílek; klepnutí na střed vybarví celou stranu). Uloží se jako
   buňka `{ colors: { stěna: [barvy] } }` (`core/cells.js`: každá nálepka = podmínka
   „na této pozici některá z barev“, všechny vlastní barvy = hotový dílek). Volnost
-  „smí se složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat /
-  moje sada). **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat).
+  „smí se složit i jinde“. **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat:
+  test si algoritmy vytvoří sám při každém spuštění a uloží je jako sadu kroku s otiskem
+  kroku – když se krok nebo kroky před ním změní, vytvoří se při dalším testu znovu /
+  moje sada / **jen někdy – pevný algoritmus**: krok, který nic nového neskládá a dělá se
+  jen při splnění podmínky, např. parita M2 U2 M2 „když je parita“ = lichá permutace
+  dílků vrstvy nahoře nebo dole, hrany XOR rohy, takže ji natočení vrstvy nemění;
+  `fixedNeeded` v `sim/simulate.js`). **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat).
   **4. Vyzkoušet** (náhodné zamíchání kroky 1…i). Dole předchozí/další krok nebo
   „Přidat další krok“. Na širokém displeji je osa vlevo vedle kroku. Nastavení se
   ukládá ke krokům (`st.sim`). Pokročilé zadání (`src/core/cells.js`,
@@ -80,9 +85,9 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   z předchozích kroků a časy nácviku se ukládají zvlášť. Krok jde spustit i přímo
   z průvodce tlačítkem „Nacvičit“.
   **Test metody** (Metoda → Otestovat, i z průvodce; běží dál, i když přepneš jinam)
-  je rozdělený do karet: 1. Spustit test (délka, tahy za sekundu, realismus; semínko
-  a otočení kostky pod „Další nastavení“), 2. Výsledek, 3. Srovnání s jinými metodami,
-  pak sbalené „Co se testuje“ a historie testů:
+  má nastavení testu (délka, tahy za sekundu, realismus; semínko a otočení kostky pod
+  „Další nastavení“), sbalené „Co se testuje“ a výsledek; třetí část **Porovnat** má
+  srovnání s jinými metodami a historii testů:
   náhodná zamíchání se složí krok po kroku podle dílků hotových po krocích. Krok se řeší
   podle nastavení ze Sestavit:
   tahy (předvolby nebo vlastní výběr), **tvoje sada** (algoritmus ze sady kroku, když

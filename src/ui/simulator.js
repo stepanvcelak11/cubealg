@@ -21,7 +21,7 @@ import { solve as twoPhase } from '../timer/twophase.js';
 import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 import { toast } from './share.js';
 import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
-import { stepConfig, setStepConfig } from './stepcfg.js';
+import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } from './stepcfg.js';
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
 
@@ -91,8 +91,10 @@ export function showSimulator() {
   if (!host) return;
   if (current?.running()) return;
   current?.destroy();
+  const cmpHost = document.getElementById('cmp-root');
   host.replaceChildren();
-  current = mountSimulator(host, deps.lab(), { onEdit: deps.onEdit });
+  cmpHost?.replaceChildren();
+  current = mountSimulator(host, deps.lab(), { onEdit: deps.onEdit, cmpHost });
 }
 
 /**
@@ -100,14 +102,15 @@ export function showSimulator() {
  * @param {{ergo: object, lambda: number}} lab hodnocení z Labu (Tahy a váhy)
  * @param {{onEdit?: () => void}} [opts] onEdit = upravit dílky kroků v průvodci
  */
-function mountSimulator(host, lab, { onEdit } = {}) {
+function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const method = methods.active();
   const guide = guides.get(method);
   const saved = storage.get(OPTS) ?? {};
   // nastavení kroků patří ke krokům metody (Sestavit), test je jen čte
   const config = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig(method, st)]));
   const setAlgs = (id) => algs.list().filter((a) => a.set === id);
-  const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) })).filter((x) => Object.keys(x.parts).length || x.st.rules?.length || Object.keys(x.st.cells ?? {}).length);
+  const stepsWithParts = guide.steps.map((st, i) => ({ st, i, parts: stepParts(st) }))
+    .filter((x) => Object.keys(x.parts).length || x.st.rules?.length || Object.keys(x.st.cells ?? {}).length || (config[x.st.id].solveBy === 'fixed' && config[x.st.id].fixedAlg));
 
   const body = el('div', { className: 'sim-body' });
   host.append(body);
@@ -128,6 +131,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       el('p', { textContent: 'Test potřebuje kroky metody s vybranými dílky.' }),
       el('p', { className: 'hint', textContent: 'V části „Sestavit“ přidej kroky a u každého vyber, co je po něm hotové (předvolby jako kříž, pár, bloky…).' }),
       editBtn('Upravit kroky', 'primary')));
+    if (cmpHost !== host) cmpHost.append(el('div', { className: 'guide-empty' }, el('p', { textContent: 'Porovnat jde až otestovanou metodu – nejdřív přidej kroky v části „Sestavit“.' })));
     return { running: () => false, destroy };
   }
 
@@ -153,7 +157,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       const n = st.set ? setAlgs(st.set).length : 0;
       const at = planSteps.findIndex((x) => x.st.id === st.id);
       const places = at >= 0 ? plan?.choices?.[at] ?? 1 : 1;
-      const info = cfg.on === false ? 'v testu spojený s dalším krokem' : [
+      const info = cfg.solveBy === 'fixed' ? `jen někdy: ${cfg.fixedAlg} (${cfg.when === 'always' ? 'vždy' : 'když je parita'})` : cfg.on === false ? 'v testu spojený s dalším krokem' : [
         st.cells && Object.keys(st.cells).length ? cellsSummary(st.cells) : [Object.keys(parts).length ? describeParts(parts) : null, st.rules?.length ? `${st.rules.length}× pravidlo` : null].filter(Boolean).join(' + '),
         cfg.free && cfg.free !== 'fixed' ? `${FREEDOM[cfg.free]?.label.replace(/ \(.*\)|…/g, '').toLowerCase()} (${places} míst)` : 'přesně tady',
         n && cfg.mode !== 'search' ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání',
@@ -196,7 +200,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   body.append(
     banner,
     el('section', { className: 'sim-card sim-setup' },
-      head('1', 'Spustit test', 'Náhodná zamíchání se složí krok po kroku podle tvé metody – algoritmem ze sady, jinak hledáním. Výsledek: tahy, odhad času a srovnání s CFOP, Roux a ZZ.'),
+      head('1', 'Spustit test', 'Náhodná zamíchání se složí krok po kroku podle tvé metody – algoritmem ze sady, jinak hledáním. Algoritmy kroků „vygenerovat“ si test vytvoří sám. Srovnání s CFOP, Roux a ZZ je v části „Porovnat“.'),
       el('div', { className: 'grid-fields' },
         field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
         field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)'),
@@ -206,12 +210,13 @@ function mountSimulator(host, lab, { onEdit } = {}) {
           field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
           field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'))),
       el('div', { className: 'row-btns sim-run-btns' }, go, more, stop), track, status),
-    results, compare,
     el('details', { className: 'sim-card sim-steps-box' },
       el('summary', {}, el('b', { textContent: `Co se testuje (${stepsWithParts.length} ${stepsWithParts.length === 1 ? 'krok' : stepsWithParts.length < 5 ? 'kroky' : 'kroků'})` }),
         el('small', { textContent: 'kroky a jejich nastavení – upravíš v Sestavit' })),
       stepList, el('div', { className: 'row-btns' }, editBtn('Upravit kroky', 'secondary small'))),
-    history);
+    results);
+  // část „Porovnat“: srovnání s jinými metodami a historie testů
+  cmpHost.append(el('div', { className: 'sim-body' }, compare, history));
 
   let sigNow = '';
   let plan = null, planSteps = [];
@@ -260,7 +265,26 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     })),
   });
 
+  /**
+   * Kroky „algoritmy – vygenerovat“: test si je vytvoří sám. Když se krok od minulého
+   * vygenerování změnil, staré algoritmy pryč (vytvoří se znovu); na konci testu se
+   * nalezená řešení uloží jako sada kroku.
+   */
+  function generatedSteps() {
+    const g = guides.get(method);
+    const ids = [];
+    for (const st of g.steps) {
+      const cfg = stepConfig(method, st);
+      if (solveByOf(cfg, st) !== 'generate') continue;
+      if (generatedState(method, g, st) === 'stale' && cfg.genSet === st.set) for (const a of algs.inSet(st.set)) algs.remove(a.id);
+      ids.push(st.id);
+    }
+    for (const st of g.steps) config[st.id] = stepConfig(method, st);
+    return ids;
+  }
+
   async function run(resume) {
+    harvestTargets = [...new Set([...harvestTargets, ...generatedSteps()])];
     changed();
     const len = LENGTHS[length.value];
     const meta = resume?.meta ?? {
@@ -352,10 +376,9 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     status.textContent = `${finished ? 'Hotovo' : 'Zastaveno'}: ${solves.length} zamíchání${sum?.failed ? ` (${sum.failed} se nepodařilo složit – zkus delší hledání, víc tahů nebo „Moje sada, jinak hledání“)` : ''} · ${fmtTime(performance.now() - t0)}`;
     if (sum?.count) { addHistory(sum, meta); renderHistory(); }
     const targets = harvestTargets.splice(0);
-    if (targets.length === 1) { const i = meta.stepIds.indexOf(targets[0]); if (i >= 0) saveHarvest(i, meta); }
-    else if (targets.length) {
+    if (targets.length) {
       const done = targets.map((id) => meta.stepIds.indexOf(id)).filter((i) => i >= 0).map((i) => saveHarvest(i, meta, true)).filter(Boolean);
-      toast(`Algoritmy uložené: ${done.map((x) => `${x.title} +${x.added}`).join(' · ') || 'nic nového'} – spusť test znovu, kroky je budou používat`);
+      if (done.length) toast(`Algoritmy kroků uložené: ${done.map((x) => `${x.title} ${x.total} (+${x.added})`).join(' · ')} – najdeš je v Trenažéru`);
     }
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
@@ -370,8 +393,13 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const st = guide.steps.find((x) => x.id === meta.stepIds[i]);
     if (!st) return null;
     const title = st.title || `Krok ${i + 1}`;
-    let setId = st.set && algSets.list(method).some((x) => x.id === st.set) ? st.set : null;
-    if (!setId) { setId = algSets.add(title); st.set = setId; }
+    const cfg = stepConfig(method, st);
+    const generated = solveByOf(cfg, st) === 'generate';
+    const exists = (id) => id && algSets.list(method).some((x) => x.id === id);
+    // vygenerované algoritmy do vlastní sady kroku (ne do tvé ručně vybrané sady)
+    let setId = generated ? (exists(cfg.genSet) ? cfg.genSet : null) : exists(st.set) ? st.set : null;
+    if (!setId) setId = algSets.add(title);
+    st.set = setId;
     const have = new Set(algs.inSet(setId).map((a) => a.alg));
     const all = Object.fromEntries(SLOTS.map((x) => [x.name, 'solved']));
     let n = algs.inSet(setId).length, added = 0;
@@ -380,12 +408,13 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       algs.add({ alg, name: `${title} ${++n}`, set: setId, task: { puzzle: '333', constraints: all, colorsA: [...h.a], colorsB: [...h.b], hold: h.hold } });
       added++;
     }
-    // krok teď skládá sadou (chybějící případy dál hledáním)
-    setStepConfig(method, st, { mode: 'auto' });
+    // krok teď skládá sadou (chybějící případy dál hledáním); u vygenerovaných i otisk kroku
+    setStepConfig(method, st, { mode: 'auto', ...(generated ? { solveBy: 'generate', genSet: setId } : {}) });
+    if (generated) setStepConfig(method, st, { genSig: stepSignature(method, guide, st) });
     found.clear();
     guides.set(method, guide);
     if (!quiet) toast(`${title}: ${added} ${added === 1 ? 'nový algoritmus' : added < 5 ? 'nové algoritmy' : 'nových algoritmů'} v sadě – spusť test znovu, krok je bude používat`);
-    return { title, added };
+    return { title, added, total: algs.inSet(setId).length };
   }
   more.onclick = () => { if (last && last.meta.sig === sigNow) run(last); };
   stop.onclick = () => { stopAll(); stopResolve(); };
@@ -402,7 +431,9 @@ function mountSimulator(host, lab, { onEdit } = {}) {
     const rows = meta.stepTitles.map((t, i) => {
       const s = sum.steps[i];
       const tags = [i === sum.worst ? 'nejvíc tahů' : null, i === sum.slowest && sum.slowest !== sum.worst ? 'nejvíc času' : null].filter(Boolean);
-      const info = [`medián ${s.median}`, `90 % ≤ ${s.p90}`, `náročnost ${fmt(s.score)}`, `${fmt(s.time, 2)} s`, `${pct(s.share)} tahů`, s.skipped ? `${pct(s.skipped)} přeskočeno` : null].filter(Boolean).join(' · ');
+      const info = config[meta.stepIds[i]]?.solveBy === 'fixed'
+        ? `potřeba v ${pct(1 - s.skipped)} složení · ${fmt(s.time, 2)} s · ${pct(s.share)} tahů`
+        : [`medián ${s.median}`, `90 % ≤ ${s.p90}`, `náročnost ${fmt(s.score)}`, `${fmt(s.time, 2)} s`, `${pct(s.share)} tahů`, s.skipped ? `${pct(s.skipped)} přeskočeno` : null].filter(Boolean).join(' · ');
       const cover = meta.hasSet[i] && s.needed
         ? [`sadou ${pct(s.fromSet / s.needed)} případů`, s.searched ? `${s.searched}× chyběl algoritmus` : null, s.helper ? `${s.helper}× s pomocným algoritmem` : null].filter(Boolean).join(' · ') : null;
       const pstep = prev?.steps.find((x) => x.id === meta.stepIds[i]);
@@ -432,6 +463,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       sum.hist.length > 1 ? el('div', { className: 'sim-hist', role: 'img', ariaLabel: 'Rozložení počtu tahů na složení' },
         ...sum.hist.map((h) => el('div', { className: 'sim-hist-col', title: `${h.from}–${h.to} tahů: ${h.n}×` },
           el('i', { style: `height: ${(h.n / Math.max(...sum.hist.map((x) => x.n))) * 100}%` }), el('small', { textContent: String(h.from) })))) : null,
+      deps.onCompare ? Object.assign(el('button', { type: 'button', className: 'primary sim-to-cmp' }), { textContent: 'Porovnat s jinými metodami →', onclick: () => deps.onCompare() }) : null,
       missingCases(solves, meta),
       examples.length ? el('details', { className: 'sim-example' }, el('summary', { textContent: 'Ukázková složení' }),
         ...examples.map(({ label, s }) => {
@@ -545,7 +577,8 @@ function mountSimulator(host, lab, { onEdit } = {}) {
         el('div', { className: 'sim-cmp-step-head' }, el('span', { textContent: st.title }), el('b', { textContent: fmt(st.moves) })),
         el('div', { className: 'sim-res-bar' }, el('i', { style: `width: ${(st.moves / max) * 100}%` }))))));
     compare.replaceChildren(
-      head('3', 'Srovnání s jinými metodami', 'Vlevo metoda ke srovnání, vpravo tvoje – stejný odhad času pro obě.'),
+      el('header', { className: 'sim-card-head sim-cmp-head' }, el('b', { textContent: 'Srovnání s jinými metodami' }),
+        el('small', { textContent: `Vlevo metoda ke srovnání, vpravo tvoje. Odhad času pro obě stejně: ${fmt(Number(tps.value))} tahů/s, realismus ${realismText()} (nastavíš v Otestovat).` })),
       el('div', { className: 'sim-cmp' },
         el('div', { className: 'sim-cmp-pick' }, pick(cmpLeft, (v) => { cmpLeft = v; const all = storage.get(OPTS) ?? {}; storage.set(OPTS, { ...all, cmpLeft: v }); }, 'Metoda ke srovnání')),
         el('div', { className: 'sim-cmp-pick mine' }, pick(cmpRight, (v) => { cmpRight = v; }, 'Tvoje metoda'))),

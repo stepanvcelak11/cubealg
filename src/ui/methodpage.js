@@ -1,5 +1,6 @@
 // Sekce Metoda: celá vlastní metoda na jednom místě. „Sestavit“ = kroky a jejich
-// nastavení (builder.js), „Otestovat“ = simulace náhodných zamíchání (simulator.js).
+// nastavení (builder.js), „Otestovat“ = nastavení testu a jeho výsledek, „Porovnat“ =
+// výsledek proti jiným metodám a minulým testům (obojí simulator.js).
 // Nahoře průvodce na čtení, učebnice a sdílení.
 
 import { el, storage } from './dom.js';
@@ -11,8 +12,9 @@ import { downloadLearning } from './learnexport.js';
 import { showGuide, shareMethod } from './methods.js';
 
 const SUB = 'ergocube.method.sub';
-let sub = storage.get(SUB) === 'test' ? 'test' : 'build';
-let root = null, title = null, tabs = null, build = null, test = null;
+const SUBS = ['build', 'test', 'compare'];
+let sub = SUBS.includes(storage.get(SUB)) ? storage.get(SUB) : 'build';
+let root = null, title = null, tabs = null, build = null, test = null, cmp = null;
 let visible = () => false;
 
 /** @param {{lab, practice, train, labTask, isActive}} deps */
@@ -25,10 +27,11 @@ export function initMethodPage(deps) {
     b.dataset.sub = id;
     return b;
   };
-  tabs = el('nav', { className: 'segmented steps mp-tabs', ariaLabel: 'Metoda' }, tab('build', 1, 'Sestavit'), tab('test', 2, 'Otestovat'));
+  tabs = el('nav', { className: 'segmented steps mp-tabs', ariaLabel: 'Metoda' }, tab('build', 1, 'Sestavit'), tab('test', 2, 'Otestovat'), tab('compare', 3, 'Porovnat'));
   const action = (ic, label, hint, fn) => Object.assign(el('button', { type: 'button', className: 'secondary small', title: hint }), { innerHTML: `${icon(ic, { size: 16 })}<span>${label}</span>`, onclick: fn });
   build = el('div', { className: 'mp-build' });
   test = el('div', { id: 'sim-root', className: 'sim-page' });
+  cmp = el('div', { id: 'cmp-root', className: 'sim-page' });
   root.append(
     el('div', { className: 'mp-head' },
       el('div', {}, el('small', { className: 'hint', textContent: 'Tvoje metoda · přepneš ji nahoře v liště' }), title),
@@ -36,9 +39,9 @@ export function initMethodPage(deps) {
         action('book', 'Průvodce', 'Celá metoda na čtení (s obrázky a ukázkami)', () => showGuide()),
         action('download', 'Učebnice', 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, výsledek testu); jde vytisknout i znovu importovat', () => downloadLearning()),
         action('share', 'Sdílet', 'Poslat metodu i s algoritmy jako soubor', () => shareMethod()))),
-    tabs, build, test);
+    tabs, build, test, cmp);
   initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask });
-  initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), isVisible: () => visible() && sub === 'test' });
+  initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
   // jiná metoda nebo úpravy odjinud: sestavení překreslit (při psaní se nepřekresluje)
   const refresh = () => { title.textContent = methods.get(methods.active()).name; if (visible() && sub === 'build' && !build.contains(document.activeElement)) renderBuilder(); };
   methods.subscribe(refresh);
@@ -47,12 +50,13 @@ export function initMethodPage(deps) {
 
 /** Zobrazí sekci (sestavit / otestovat), případně rovnou otevře krok. */
 export function showMethodPage(which = sub, stepId = null) {
-  sub = which === 'test' ? 'test' : 'build';
+  sub = SUBS.includes(which) ? which : 'build';
   storage.set(SUB, sub);
   title.textContent = methods.get(methods.active()).name;
   for (const b of tabs.querySelectorAll('button')) b.classList.toggle('active', b.dataset.sub === sub);
   build.hidden = sub !== 'build';
   test.hidden = sub !== 'test';
+  cmp.hidden = sub !== 'compare';
   if (sub === 'build') openBuilderStep(stepId);
   else showSimulator();
 }

@@ -195,3 +195,27 @@ test('volnost kroku: pár v kterémkoli slotu, otočení kostky, kříž libovol
   const e = await solveScrambles(cn, [applyAlg(solved(), 'D')], { virtual: true });
   assert.equal(e.solves[0].steps[0].source, 'skip'); // bílý kříž je hotový
 });
+
+test('krok „jen někdy“: parita M2 U2 M2 jen při liché vrstvě, pak další krok', async () => {
+  const { fixedNeeded, layerOdd } = await import('../src/sim/simulate.js');
+  const guide = { steps: [
+    { id: 'p', title: 'Parita', cells: {} },
+    { id: 'e', title: 'Hrany', cells: { UR: { own: 'solved' }, UL: { own: 'solved' } } },
+  ] };
+  const config = { p: { solveBy: 'fixed', fixedAlg: 'M2 U2 M2', when: 'parity' }, e: { time: 1 } };
+  const { plan, steps } = buildPlan({ guide, config });
+  assert.equal(steps.length, 2);
+  const fixed = plan.variants[0].steps[0].fixed;
+  assert.ok(fixed.algs.length === 1 && fixed.layers.U.length === 8);
+  // výchozí držení (bílá dole): nahoře žlutá vrstva = skutečná D
+  assert.equal(layerOdd(solved(), fixed.layers.U), 0);
+  const odd = applyAlg(solved(), fixed.algs[0].model); // zápis podle držení (bílá dole)
+  assert.ok(fixedNeeded(fixed, odd));
+  assert.ok(!fixedNeeded(fixed, applyAlg(solved(), 'U'))); // natočení vrstvy paritu nemění
+  const { solves } = await solveScrambles(plan, [odd, applyAlg(solved(), 'D')], { virtual: true });
+  assert.equal(solves[0].steps[0].source, 'fixed');
+  assert.equal(solves[0].steps[0].length, 3);
+  assert.equal(solves[0].steps[1].source, 'skip');
+  assert.equal(solves[1].steps[0].source, 'skip');
+  assert.ok(solves.every((s) => s.ok));
+});

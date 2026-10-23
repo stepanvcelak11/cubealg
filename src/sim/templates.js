@@ -66,7 +66,7 @@ export const TEMPLATES = [
   },
   {
     id: 'separation', name: 'Separační metoda',
-    intro: 'Kříž z kterýchkoli hran barvy dole a nahoře (tou barvou dolů), páry s kterýmkoli takovým rohem, natočení horní vrstvy (OLL), oddělení hran a rohů podle barvy, permutace rohů a nakonec parita (M2 U2 M2) a EPBL.',
+    intro: 'Kříž z kterýchkoli hran barvy dole a nahoře (tou barvou dolů), páry s kterýmkoli takovým rohem, natočení horní vrstvy (OLL), oddělení hran a rohů podle barvy, permutace rohů, jen někdy parita (M2 U2 M2) a nakonec EPBL.',
     steps: [
       { title: 'Kříž', cells: colorTo(CROSS, ['D', 'U']), sim: { recog: 0 }, text: 'Kterékoli 4 hrany s barvou dole nebo nahoře, tou barvou dolů.' },
       ...PAIRS.map(([c, e], k) => ({ title: `Pár ${k + 1}`, cells: { ...colorTo([c], ['D', 'U']), ...own([e]) }, sim: { free: 'side', recog: 0.4 },
@@ -75,8 +75,10 @@ export const TEMPLATES = [
       { title: 'Separace hran', cells: { ...colorTo(CROSS, ['D']), ...colorTo(UE, ['U']) }, sim: { recog: 0.4, kind: 'alg' }, text: 'Hrany barvy dole dolů, barvy nahoře nahoru – pořád natočené.' },
       { title: 'Separace rohů', cells: { ...colorTo(DC, ['D']), ...colorTo(UC, ['U']) }, sim: { recog: 0.4, kind: 'alg' } },
       { title: 'Permutace rohů', cells: own([...UC, ...DC]), sim: { recog: 0.5, kind: 'alg' }, text: 'Rohy na svá místa ve své vrstvě.' },
-      { title: 'Parita + EPBL', cells: own([...UE, ...CROSS, ...E]), sim: { moves: 'MUD', helpers: 'M2 U2 M2', recog: 0.6, kind: 'alg' },
-        text: 'Lichý případ nejdřív M2 U2 M2, pak algoritmus na hrany nahoře i dole.' },
+      { title: 'Parita', cells: {}, sim: { solveBy: 'fixed', fixedAlg: 'M2 U2 M2', when: 'parity', recog: 0.2, kind: 'alg' },
+        text: 'Jen když je parita (hrany nahoře i dole prohozené lichým počtem výměn): M2 U2 M2.' },
+      { title: 'EPBL', cells: own([...UE, ...CROSS, ...E]), sim: { moves: 'MUD', recog: 0.6, kind: 'alg' },
+        text: 'Algoritmus na hrany nahoře i dole najednou.' },
     ],
   },
 ];

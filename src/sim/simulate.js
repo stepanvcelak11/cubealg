@@ -10,6 +10,7 @@
 
 import { compileGoal } from '../core/constraints.js';
 import { applyAlg } from '../core/cube.js';
+import { SLOT_OF, slotByName } from '../core/geometry.js';
 import { practiceState } from '../timer/practice.js';
 import { mergeConstraints, constraintsKey } from './../core/rules.js';
 
@@ -79,6 +80,40 @@ export function pickFromSet(state, test, candidates, adjust = {}) {
   return best;
 }
 
+/**
+ * Parita vrstvy (místa `names`, skutečné názvy): lichá permutace hran XOR rohů – natočení
+ * vrstvy (AUF) ji nemění. Když dílky vrstvy nejsou všechny ve své vrstvě, parita není (null).
+ */
+export function layerOdd(state, names) {
+  let par = 0;
+  for (const type of ['edge', 'corner']) {
+    const slots = names.map(slotByName).filter((x) => x.type === type);
+    const index = new Map(slots.map((x, k) => [x.id, k]));
+    const perm = slots.map((x) => index.get(SLOT_OF[state[x.facelets[0]]]));
+    if (perm.some((k) => k === undefined)) return null;
+    const seen = new Array(perm.length).fill(false);
+    for (let k = 0; k < perm.length; k++) {
+      if (seen[k]) continue;
+      let len = 0;
+      for (let j = k; !seen[j]; j = perm[j]) { seen[j] = true; len++; }
+      par ^= (len - 1) & 1;
+    }
+  }
+  return par;
+}
+
+/**
+ * Je potřeba krok „jen někdy“? when: 'always' | 'parity' (lichá vrstva nahoře nebo dole)
+ * | 'parity-U' | 'parity-D'.
+ */
+export function fixedNeeded(fixed, state) {
+  if (fixed.when === 'always') return true;
+  const odd = (L) => layerOdd(state, fixed.layers[L]) === 1;
+  if (fixed.when === 'parity-U') return odd('U');
+  if (fixed.when === 'parity-D') return odd('D');
+  return odd('U') || odd('D');
+}
+
 const merge = mergeConstraints;
 const keyOf = constraintsKey;
 
@@ -135,6 +170,16 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
     let done = {};
     for (let i = 0; i < steps && !stopped(); i++) {
       onProgress?.({ solve: k, step: i, solves });
+      // krok „jen někdy“ (např. parita M2 U2 M2): pevný algoritmus, jen když je potřeba
+      const fixed = dynamic ? variants[v].steps[i].fixed : null;
+      if (fixed) {
+        if (!fixedNeeded(fixed, state) || !fixed.algs.length) { out.push({ model: '', display: '', length: 0, score: 0, source: 'skip', variant: v }); continue; }
+        // víc algoritmů: první, po kterém už potřeba není
+        const a = fixed.algs.find((x) => { try { return !fixedNeeded(fixed, applyAlg(state, x.model)); } catch { return false; } }) ?? fixed.algs[0];
+        state = applyAlg(state, a.model);
+        out.push({ model: a.model, display: a.display, length: lengthOf(a.display), score: a.score ?? 0, source: 'fixed', variant: v });
+        continue;
+      }
       const opts = options(i, v, done);
       let r = null, pick = opts[0];
       // už složené (v kterékoli povolené orientaci) = přeskočeno

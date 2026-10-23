@@ -997,8 +997,8 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   assert.ok(await p.locator('.sim-chips label').count() > 6);
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   assert.match(await p.locator('.sim-step').first().textContent(), /vybrané barvy \(8 míst\)/);
-  // porovnání vestavěných metod je vidět hned
-  assert.match(await p.locator('.sim-cmp-table').innerText(), /CFOP/);
+  // porovnání vestavěných metod je v části Porovnat hned
+  assert.match(await p.locator('.sim-cmp-table').textContent(), /CFOP/);
   await p.locator('.sim-page button', { hasText: 'Spustit test' }).tap();
   await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
   assert.match(await p.locator('.sim-hero').innerText(), /Průměr na složení[\s\S]*\d+,\d tahů[\s\S]*Odhad času/i);
@@ -1007,10 +1007,12 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   const hist = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));
   assert.equal(hist.length, 1);
   assert.equal(hist[0].n, 10);
-  // vpravo tvoje simulace, vlevo vestavěná metoda
+  // Porovnat: vpravo tvoje simulace, vlevo vestavěná metoda
+  await p.locator('.sim-to-cmp').tap();
   assert.match(await p.locator('.sim-cmp-pick.mine select option:checked').innerText(), /Základní/);
   assert.match(await p.locator('.sim-cmp-total').innerText(), /[−+]\d+,\d+ s \([−+]\d+ %\)[\s\S]*tahy člověka/);
   assert.equal(await p.locator('.sim-cmp-col').count(), 2);
+  await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
   await p.locator('.sim-example summary', { hasText: 'Ukázková složení' }).tap();
   assert.match(await p.locator('.sim-example').first().innerText(), /Zamíchání[\s\S]*Hrana vpravo:/);
   // jinam a zpět: poslední běh jde doplnit dalšími zamícháními (stejné semínko)
@@ -1041,7 +1043,7 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
   await p.locator('.bld-tpl').selectOption('separation');
-  await p.waitForFunction(() => document.querySelectorAll('.bld-tl-item').length === 10);
+  await p.waitForFunction(() => document.querySelectorAll('.bld-tl-item').length === 11);
   assert.equal(await p.locator('#method option:checked').innerText(), 'Separační metoda');
   // kříž: nálepky dole na 4 hranách bílá nebo žlutá, boky šedé (na barvě nezáleží)
   await p.locator('.bld-tl-item').first().tap();
@@ -1075,9 +1077,14 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   assert.match(await say(), /4× hrana kterákoli hrana s bílou nebo žlutou barvou, tou barvou dolů/);
   await p.locator('.bld-step.open .cell-adv', { hasText: 'Zpět' }).tap();
   assert.equal(await p.locator('.bld-step.open .cell-palette').count(), 1);
-  // test metody vidí všech 10 kroků i s pravidly
+  // krok „jen někdy“: parita M2 U2 M2
+  await p.locator('.bld-ed-chips .bld-chip', { hasText: 'Parita' }).tap();
+  assert.equal(await p.locator('.bld-step.open .bld-fixed-alg').inputValue(), 'M2 U2 M2');
+  assert.equal(await p.locator('.bld-step.open .cell-palette').count(), 0);
+  // test metody vidí všech 11 kroků i s pravidly
   await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
-  assert.equal(await p.locator('.sim-step').count(), 10);
+  assert.equal(await p.locator('.sim-step').count(), 11);
+  assert.match(await p.locator('.sim-step').nth(9).textContent(), /Parita[\s\S]*jen někdy: M2 U2 M2/);
   assert.match(await p.locator('.sim-step').nth(5).textContent(), /OLL[\s\S]*16 dílků s barvami/);
   // nácvik kroku po kříži z pravidla: zamíchání vznikne složením kříže podle metody
   await p.evaluate(async () => {
@@ -1131,7 +1138,7 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   await p.waitForFunction(() => /Funguje: kroky 1–2/.test(document.querySelector('.bld-step.open .bld-check')?.textContent ?? ''), null, { timeout: 60000 });
   assert.match(await p.locator('.bld-step.open .bld-check').innerText(), /Zamíchání:[\s\S]*Hrana vpravo:/);
   await p.locator('.bld-step.open .rule-opt', { hasText: 'Algoritmy – vygenerovat' }).tap();
-  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Algoritmy zatím nejsou/);
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Algoritmy vytvoří test sám/);
   await p.locator('.bld-step.open .bld-make-algs').tap();
   // test se sám spustí a na konci uloží řešení kroku 2 do nové sady
   await p.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('ergocube.guides'))).at(-1).steps[1].set, null, { timeout: 120000 });
@@ -1146,6 +1153,9 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   // v Sestavit je vidět sada kroku
   await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap(); // krok 2 zůstal otevřený
   assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Vygenerováno: \d+ algoritm/);
+  // změna kroku (jiné tahy): algoritmy se při dalším testu vytvoří znovu
+  await p.locator('.bld-step.open select[aria-label="Tahy – krok 2"]').selectOption('facesM');
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Krok se změnil/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
