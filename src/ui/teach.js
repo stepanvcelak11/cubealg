@@ -8,7 +8,9 @@ import { stepConfig, solveByOf } from './stepcfg.js';
 import { buildPlan, stepBases } from '../sim/plan.js';
 import { explainStep, MOVE_TEXT } from '../sim/explain.js';
 import { holdOf } from '../core/hold.js';
-import { applyAlg, solved, toFacelets, equals } from '../core/cube.js';
+import { applyAlg, toFacelets } from '../core/cube.js';
+import { compileGoal } from '../core/constraints.js';
+import { mergeConstraints } from '../core/rules.js';
 import { solve as twoPhase } from '../timer/twophase.js';
 
 const invert = (m) => (m.endsWith("'") ? m.slice(0, -1) : m.endsWith('2') ? m : `${m}'`);
@@ -38,8 +40,8 @@ export function notationOf(method, guide) {
 
 /**
  * Ukázkové složení z posledního testu metody: zamíchání a každý krok (tahy, otočení,
- * kostka po kroku). Tahy kroků se ověří – když složení nesedí (metoda se mezitím
- * změnila), vezme se další; bez vhodného testu null.
+ * kostka po kroku). Každý krok se ověří (po něm platí jeho cíl) – když složení nesedí
+ * (metoda se mezitím změnila), vezme se další; bez vhodného testu null.
  * @returns {{scramble: string, steps: {id, title, alg, rotation, skipped, fixed, facelets, hold, label}[]}|null}
  */
 export function exampleSolve(method, guide) {
@@ -53,7 +55,6 @@ export function exampleSolve(method, guide) {
     ({ plan } = buildPlan({ guide, config, setAlgs: (id) => algs.list().filter((a) => (a.set ?? 'default') === id) }));
   } catch { return null; }
   if (plan.variants[0].steps.length !== ids.length) return null;
-  const goal = solved();
   // nejkratší z ověřitelných složení (u ukázky je lepší jednodušší)
   const candidates = run.solves.filter((s) => s.ok && s.start && s.steps.every((x) => x.source === 'skip' || x.display != null))
     .sort((a, b) => a.steps.reduce((t, x) => t + (x.length ?? 0), 0) - b.steps.reduce((t, x) => t + (x.length ?? 0), 0));
@@ -61,6 +62,7 @@ export function exampleSolve(method, guide) {
     let state = Uint8Array.from(s.start);
     const steps = [];
     let ok = true;
+    let done = {};
     for (const [j, x] of s.steps.entries()) {
       const v = plan.variants[x.variant ?? 0] ?? plan.variants[0];
       const title = guide.steps.find((st) => st.id === ids[j])?.title || `Krok ${j + 1}`;
@@ -68,9 +70,14 @@ export function exampleSolve(method, guide) {
       if (x.source !== 'skip' && x.display) {
         try { state = applyAlg(state, x.model || holdOf(v.hold).toModelString(x.display)); } catch { ok = false; break; }
       }
+      // po kroku musí platit jeho cíl (dosud hotové + dílky kroku v jeho orientaci)
+      if (!fixed) {
+        done = mergeConstraints(done, v.steps[j].parts);
+        if (!compileGoal(done).test(state)) { ok = false; break; }
+      }
       steps.push({ id: ids[j], title, alg: x.source === 'skip' ? '' : x.display, rotation: x.rotation ?? '', skipped: x.source === 'skip', fixed, facelets: toFacelets(state), hold: v.hold, label: v.label, length: x.length ?? 0 });
     }
-    if (!ok || !equals(state, goal)) continue;
+    if (!ok) continue;
     let scramble = '';
     try { scramble = (twoPhase(toFacelets(Uint8Array.from(s.start)), { timeLimit: 1500 }) ?? '').split(' ').filter(Boolean).reverse().map(invert).join(' '); } catch { /* bez zápisu */ }
     if (!scramble) continue;

@@ -15,7 +15,7 @@ import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, solveByOf } from './stepcfg.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
-import { cellsNetSvg, cellLooks, cellsBefore } from './celleditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore, freshCells } from './celleditor.js';
 import { netSvg } from './netsvg.js';
 import { teachStep, notationOf, exampleSolve } from './teach.js';
 
@@ -85,6 +85,8 @@ const freeText = (cfg) => {
   return FREEDOM[cfg.free]?.label.toLowerCase() ?? cfg.free;
 };
 
+/** Barva středu v 1. pádě rodu mužského (bílý, žlutý…). */
+const centerName = (face) => COLOR_NAME[face].replace(/á$/, 'ý');
 const KIND_LABEL = { intuitive: 'intuitivně', generate: 'algoritmy', own: 'algoritmy', fixed: 'jen někdy' };
 const list = (items) => (items.length ? `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
 
@@ -119,7 +121,7 @@ export function learningHtml(method = methods.active()) {
     const algList = set ? setAlgs(set.id) : [];
     const cellsPrev = cellsBefore(guide.steps, i);
     const hasCells = st.cells && Object.keys(st.cells).length;
-    const pics = hasCells ? `<div class="nets"><figure>${cellsNetSvg(cellLooks({}, cellsPrev), frame, { size: 190 })}<figcaption>před krokem</figcaption></figure><span class="arrow">→</span><figure>${cellsNetSvg(cellLooks(st.cells, cellsPrev), frame, { size: 190 })}<figcaption>po kroku (nové s rámečkem)</figcaption></figure></div>`
+    const pics = hasCells ? `<div class="nets"><figure>${cellsNetSvg(cellLooks({}, cellsPrev), frame, { size: 190 })}<figcaption>před krokem</figcaption></figure><span class="arrow">→</span><figure>${cellsNetSvg(cellLooks(freshCells(st.cells, cellsPrev), cellsPrev), frame, { size: 190 })}<figcaption>po kroku (nové s rámečkem)</figcaption></figure></div>`
       : Object.keys(now).length ? `<figure>${stepSvg(before, now, hold)}<figcaption>${esc(describeParts(now))}</figcaption></figure>` : '';
     const settings = cfg ? [
       ['Volnost', freeText(cfg)],
@@ -129,7 +131,7 @@ export function learningHtml(method = methods.active()) {
       cfg.helpers ? ['Pomocné algoritmy', cfg.helpers] : null,
     ].filter((x) => x && x[1]) : [];
     return `<section class="step" id="krok-${i + 1}">
-  <div class="step-head"><span class="n">${i + 1}</span><h2>${esc(st.title || `Krok ${i + 1}`)}</h2><span class="chip">${esc(t.title)} · ${esc(KIND_LABEL[solveBy] ?? '')}</span>${res ? `<span class="pill">${fmt(res.moves)} tahů v průměru</span>` : ''}</div>
+  <div class="step-head"><span class="n">${i + 1}</span><h2>${esc(st.title || `Krok ${i + 1}`)}</h2><span class="chip">${esc(solveBy === 'fixed' ? t.title : `${t.title} · ${KIND_LABEL[solveBy] ?? ''}`)}</span>${res ? `<span class="pill">${fmt(res.moves)} tahů v průměru</span>` : ''}</div>
   <p class="lead">${esc(t.text)}</p>
   ${pics}
   <div class="cols">
@@ -216,7 +218,7 @@ ${last ? `<p><b>Test metody (${esc(new Date(last.at).toLocaleDateString('cs-CZ')
 <section class="box">
   <h2>Než začneš</h2>
   <h3>Jak držet kostku</h3>
-  <p>Celou dobu drž kostku tak, aby <b>${esc(COLOR_NAME[frame.down])}</b> střed byl dole a <b>${esc(COLOR_NAME[frame.front])}</b> vpředu (k tobě). Středy se nikdy nehýbou vůči sobě, takže podle nich vždycky poznáš, kam který dílek patří: dílek patří tam, kde jsou středy jeho barev.</p>
+  <p>Celou dobu drž kostku tak, aby <b>${esc(centerName(frame.down))}</b> střed byl dole a <b>${esc(centerName(frame.front))}</b> vpředu (k tobě). Středy se nikdy nehýbou vůči sobě, takže podle nich vždycky poznáš, kam který dílek patří: dílek patří tam, kde jsou středy jeho barev.</p>
   <h3>Jak číst obrázky</h3>
   <p class="legend"><span><i style="background:${HEX.F}"></i>barva = tahle barva tu musí být</span><span><i style="background:linear-gradient(90deg,${HEX.U} 50%,${HEX.D} 50%);border:1px solid #ccc"></i>dvě barvy = může tu být kterákoli z nich</span><span><i style="background:#d6d8de"></i>šedá = na tomhle místě zatím nezáleží</span><span><i style="border:2px solid #e8467c"></i>rámeček = nové v tomto kroku</span></p>
   <p>Obrázek je kostka „rozložená“ do roviny: v prostředním řádku je zleva levá, přední, pravá a zadní strana, nad přední stranou horní a pod ní spodní.</p>
@@ -235,7 +237,8 @@ ${guide.steps.map((st, i) => {
     const res = last?.steps.find((x) => x.id === st.id);
     const solveBy = solveByOf(sim[st.id], st);
     const set = st.set ? sets.get(st.set) : null;
-    const how = solveBy === 'intuitive' ? 'intuitivně' : solveBy === 'fixed' ? 'jen někdy' : `${set ? setAlgs(set.id).length : 0} algoritmů`;
+    const nAlgs = set ? setAlgs(set.id).length : 0;
+    const how = solveBy === 'intuitive' ? 'intuitivně' : solveBy === 'fixed' ? 'jen někdy' : nAlgs ? `${nAlgs} ${nAlgs === 1 ? 'algoritmus' : nAlgs < 5 ? 'algoritmy' : 'algoritmů'}` : 'algoritmy (vytvoří test)';
     return `<tr><td>${i + 1}</td><td><a href="#krok-${i + 1}">${esc(st.title || `Krok ${i + 1}`)}</a></td><td>${esc(teach[i].title)}</td><td>${esc(how)}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
   }).join('')}
 </tbody></table>

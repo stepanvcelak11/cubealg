@@ -15,7 +15,7 @@ import { playSpeed } from './lab.js';
 import { stepParts, partsBefore, partsCube, describeParts, frameMap, validFrame, DEFAULT_FRAME, COLOR_NAME } from './parts.js';
 import { describeRule } from '../core/rules.js';
 import { ruleNetSvg } from './ruleeditor.js';
-import { cellsNetSvg, cellLooks, cellsBefore } from './celleditor.js';
+import { cellsNetSvg, cellLooks, cellsBefore, freshCells } from './celleditor.js';
 import { netSvg } from './netsvg.js';
 import { teachStep, notationOf, exampleSolve } from './teach.js';
 
@@ -124,7 +124,7 @@ function startBox(method, guide) {
   const notation = notationOf(method, guide);
   return el('details', { className: 'guide-start' },
     el('summary', {}, el('b', { textContent: 'Než začneš' }), el('small', { textContent: ' držení kostky, obrázky a zápis tahů' })),
-    el('p', { textContent: `Drž kostku tak, aby ${COLOR_NAME[frame.down]} střed byl dole a ${COLOR_NAME[frame.front]} vpředu. Středy se vůči sobě nehýbou – dílek patří tam, kde jsou středy jeho barev.` }),
+    el('p', { textContent: `Drž kostku tak, aby ${COLOR_NAME[frame.down].replace(/á$/, 'ý')} střed byl dole a ${COLOR_NAME[frame.front].replace(/á$/, 'ý')} vpředu. Středy se vůči sobě nehýbou – dílek patří tam, kde jsou středy jeho barev.` }),
     el('p', { textContent: 'Obrázky: barva = tahle barva tu musí být, dvě barvy = kterákoli z nich, šedá = zatím nezáleží, růžový rámeček = nové v tomto kroku. V prostředním řádku je zleva levá, přední, pravá a zadní strana, nad přední horní a pod ní spodní.' }),
     notation.length ? el('p', { textContent: `Zápis tahů: písmeno = čtvrt otáčky po směru hodinových ručiček (díváš se přímo na tu stranu), ' = proti směru, 2 = půl otáčky. ${notation.map(([m, x]) => `${m} – ${x}`).join(' · ')}.` }) : null);
 }
@@ -179,7 +179,7 @@ function draw() {
         !st.task && st.cells && Object.keys(st.cells).length ? el('div', { className: 'guide-nets' },
           el('figure', { className: 'guide-fig guide-cells' }, Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks({}, prev), frame, { size: 170 }) }), el('figcaption', { textContent: 'před krokem' })),
           el('span', { className: 'guide-arrow', textContent: '→' }),
-          el('figure', { className: 'guide-fig guide-cells' }, Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks(st.cells, prev), frame, { size: 170 }) }), el('figcaption', { textContent: 'po kroku (nové s rámečkem)' }))) : null,
+          el('figure', { className: 'guide-fig guide-cells' }, Object.assign(el('div', { className: 'cell-net' }), { innerHTML: cellsNetSvg(cellLooks(freshCells(st.cells, prev), prev), frame, { size: 170 }) }), el('figcaption', { textContent: 'po kroku (nové s rámečkem)' }))) : null,
         t.changes.length ? el('div', { className: 'guide-teach' }, el('b', { textContent: 'Co se na kostce změní' }), ul(t.changes)) : null,
         el('div', { className: 'guide-teach' }, el('b', { textContent: 'Jak na to' }), ul(t.how), t.keep ? el('p', { className: 'hint', textContent: t.keep }) : null),
         st.text?.trim() ? el('div', { className: 'guide-note' }, el('b', { textContent: 'Poznámka' }), richText(st.text)) : null,

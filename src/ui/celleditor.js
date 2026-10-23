@@ -85,6 +85,11 @@ export function cellsSummary(cells) {
     painted && `${n(painted, 'dílek', 'dílky', 'dílků')} s barvami`, group && `${n(group, 'místo', 'místa', 'míst')} s kterýmkoli dílkem`].filter(Boolean).join(', ');
 }
 
+/** Buňky kroku, které něco mění proti stavu před krokem (bez opakování dřívějších). */
+export function freshCells(cells, before = {}) {
+  return Object.fromEntries(Object.entries(cells ?? {}).filter(([n, c]) => JSON.stringify(before?.[n] ?? null) !== JSON.stringify(c)));
+}
+
 /**
  * Vzhled políček: co na kterém políčku po kroku musí být (pro síť i náhledy).
  * Hotové z dřívějších kroků se kreslí normálně (kostka pokračuje z minulého kroku),

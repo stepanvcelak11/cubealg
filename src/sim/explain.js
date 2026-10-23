@@ -249,6 +249,9 @@ export function explainStep({ steps, i, frame, cfg = {}, solveBy = 'intuitive', 
   const keep = prior.length ? `Nerozbij, co už máš (${joinTitles(prior.map((x) => x.title || `Krok ${steps.indexOf(x) + 1}`))}) – cestou to smíš dočasně rozhodit, ale na konci kroku musí všechno zase sedět.` : '';
   const how = [];
   const side = cfg.free && cfg.free !== 'fixed';
+  // volnost: místo kroku na obrázku je jen příklad
+  if (side && pat.id === 'pair') pat.text += ' Slot může být kterýkoli volný – na obrázku je jen příklad.';
+  else if (side && changes && Object.keys(changes).length) pat.text += ' Krok smí skončit i jinde, než ukazuje obrázek (volnost kroku).';
   if (solveBy === 'intuitive') {
     how.push('Dělá se intuitivně – bez algoritmů. Přemýšlíš, kam který dílek dostat, a hledáš co nejkratší cestu.');
     if (pat.id === 'cross') how.push('Postup: najdi hrany, které do kříže patří. Každou dostaň nad místo, kam má jít, a otoč ji dolů (dvojitým tahem, např. F2), nebo ji vlož z boku tak, aby barva mířila dolů. Pokročilí si celý kříž naplánují během 15 s prohlídky před složením.');
