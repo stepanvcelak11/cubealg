@@ -44,7 +44,13 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   míst), 4. čím krok skládáš (sada algoritmů, co když v ní případ chybí, tahy,
   natočení vrstev, pomocné algoritmy) a nepovinně podrobnosti pro test a obrázek
   z Labu. Nastavení se ukládá přímo ke krokům metody (`src/ui/builder.js`,
-  `st.sim`). **Co je po kroku hotové se zadává políčko po políčku** (`src/core/cells.js`,
+  `st.sim`). Karta kroku má tři otázky: **1. Co má být po kroku hotové** (ťukání na
+  dílky kostky přepíná hotovo / jen orientace / jen pozice / nic; volnost „smí se složit
+  i jinde“), **2. Jak se krok řeší** (intuitivně / algoritmy – vygenerovat: test najde
+  řešení případů a uloží je jako sadu kroku / algoritmy – moje sada, chybějící doplní),
+  **3. Omezení** (povolené tahy, nejvýš tahů, podle čeho vybírat). Tlačítko
+  **Vyzkoušet krok** složí náhodné zamíchání kroky 1…i a ukáže řešení i varování;
+  ostatní je pod „Pokročilé“. Pokročilé zadání (`src/core/cells.js`,
   editor `src/ui/celleditor.js`): rozložená kostka, klepnutím se vybírají místa (i víc
   najednou nebo celé vrstvy) a ke každému místu dvě otázky – *co tu musí být* (nic /
   jeho vlastní dílek / některý z vybraných dílků, např. všechny s bílou nebo žlutou)
@@ -76,7 +82,8 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   případ vyřeší – i s natočením horní, případně i spodní vrstvy před a po a s pomocným
   algoritmem jako oprava parity M2 U2 M2), „jen sada“ (případ bez algoritmu se počítá
   jako chybějící) nebo jen hledání (jako v Labu podle tvých vah), podle čeho vybírat
-  (rychlost / efektivita / všestranné), čas hledání a čas rozpoznání. Krok jde vypnout –
+  (rychlost / efektivita / všestranné), čas hledání a čas rozpoznání. Posuvník
+  **Realismus odhadu** (počítač ↔ člověk) mění, jak moc odhad počítá s lidskými tahy a tempem. Krok jde vypnout –
   složí se najednou s dalším (vyplatí se kroky spojit?). **Volnost kroku** – kde smí
   být jeho dílky: pevně, kterýkoli bok (pár do kteréhokoli slotu, blok na kterékoli
   straně), dvě protilehlé barvy, kterákoli strana a barva, nebo **vybrané barvy** dole

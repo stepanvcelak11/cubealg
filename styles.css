@@ -1140,6 +1140,14 @@ body.timing .round-panel { visibility: hidden; }
 .bld-more summary { cursor: pointer; font-weight: 750; font-size: 0.86rem; }
 .bld-more[open] { display: grid; gap: 8px; }
 .bld-step-tools { justify-content: flex-end; }
+.bld-check { display: grid; gap: 6px; }
+.sim-realism input[type=range] { width: 100%; accent-color: var(--accent); }
+.sim-realism-out { color: var(--muted); font-weight: 700; }
+.bld-check:empty { display: none; }
+.bld-check p { margin: 0; font-size: 0.86rem; }
+.bld-check code { font-family: var(--mono); font-size: 0.84rem; overflow-wrap: anywhere; }
+.bld-check-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 0.84rem; }
+.bld-free-row .small-select { max-width: none; }
 .bld-algs { display: grid; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--accent-soft); }
 .bld-algs small { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
 .bld-algs button { justify-self: start; }
@@ -1154,6 +1162,10 @@ body.timing .round-panel { visibility: hidden; }
 .cell-net svg { width: min(100%, 360px); touch-action: manipulation; }
 .cell-net .cell-hit { cursor: pointer; }
 .cell-legend { margin: 0; font-size: 0.74rem; }
+.cell-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 0.82rem; font-weight: 700; }
+.cell-key { display: inline-flex; align-items: center; gap: 6px; }
+.cell-key-sw { line-height: 0; }
+.cell-adv { justify-self: start; font-size: 0.82rem; text-align: left; }
 .cell-quick { justify-content: center; }
 .cell-panel { display: grid; gap: 6px; padding: 10px 12px; border-radius: 16px; background: var(--panel-2); }
 .cell-panel-title { font-size: 0.92rem; }

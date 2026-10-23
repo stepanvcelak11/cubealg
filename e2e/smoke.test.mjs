@@ -485,12 +485,13 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   await p.locator('.bld-base textarea').fill('Moje metoda: nejdřív roh, pak zbytek.');
   await p.locator('.bld-add').selectOption('empty');
   await p.locator('input[aria-label="Název kroku 1"]').fill('Vložení rohu');
+  await p.locator('.bld-more summary', { hasText: 'Pokročilé' }).tap();
   await p.locator('textarea[aria-label="Popis kroku 1"]').fill('Roh nad slotem vložíš trojicí tahů.\nDívej se na bílou nálepku.');
-  await p.locator('.bld-more summary', { hasText: 'Obrázek a ukázka' }).tap();
   await p.locator('.bld-step button', { hasText: 'Vzít z Labu' }).tap();
   assert.equal(await p.locator('.bld-step .guide-fig').count(), 2);
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'Algoritmy – moje sada' }).tap();
   await p.locator('select[aria-label="Sada algoritmů – krok 1"]').selectOption('default');
-  assert.match(await p.locator('.bld-step').innerText(), /Když na případ v sadě nemám algoritmus/);
+  assert.match(await p.locator('.bld-step').innerText(), /Když na případ nemám algoritmus/);
   await p.locator('.mp-head button', { hasText: 'Průvodce' }).tap();
   await p.waitForSelector('.guide-dialog[open]');
   assert.match(await p.locator('.guide-step h3').innerText(), /Vložení rohu/);
@@ -593,7 +594,7 @@ test('vlastní metoda: části bez Labu (předvolba), nácvik z průvodce a zast
   // druhý krok: pravý blok na kterémkoli boku
   await p.locator('.bld-step-toggle').nth(1).tap();
   await p.locator('.bld-step.open').last().locator('select[aria-label="Přidat předvolbu"]').selectOption('roux2');
-  await p.locator('.bld-step.open').last().locator('.bld-free-opt').nth(1).tap();
+  await p.locator('.bld-step.open').last().locator('select[aria-label="Kde smí být – krok 2"]').selectOption('side');
   assert.match(await p.locator('.bld-step.open').last().locator('.bld-places').innerText(), /možných míst \(4\)/);
   const sim = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')).mr.steps[1].sim);
   assert.equal(sim.free, 'side');
@@ -988,7 +989,7 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   // nastavení kroků je v Sestavit: volnost „jen vybrané barvy“ (bílá nebo žlutá dole) a vlastní tahy
   await p.locator('.sim-section-head button', { hasText: 'Upravit kroky' }).tap();
   await p.locator('.bld-step-toggle').first().tap();
-  await p.locator('.bld-step.open .bld-free-opt', { hasText: 'Jen s vybranými barvami' }).tap();
+  await p.locator('.bld-step.open select[aria-label="Kde smí být – krok 1"]').selectOption('colors');
   assert.equal(await p.locator('.bld-step.open .sim-colors').first().locator('input:checked').count(), 2);
   assert.match(await p.locator('.bld-step.open .bld-places').innerText(), /možných míst \(8\)/);
   await p.locator('.bld-step.open select[aria-label="Tahy – krok 1"]').selectOption('custom');
@@ -1098,7 +1099,22 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.options': opts, 'ergocube.method.sub': 'build' });
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.bld-step-toggle').nth(1).tap();
-  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Algoritmy pro tento krok/);
+  // ťukání na dílek přepíná stav: hotovo → jen orientace → jen pozice → nic
+  const tap = () => p.locator('.bld-step.open .cell-net [data-slot="URF"]').first().tap();
+  await tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh jeho vlastní dílek, správně natočený/);
+  await tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh kterýkoli roh, správně natočený/);
+  await tap();
+  assert.match(await p.locator('.bld-step.open .cell-overview').innerText(), /1× roh jeho vlastní dílek, natočený jakkoli/);
+  await tap();
+  assert.doesNotMatch(await p.locator('.bld-step.open .cell-overview').innerText(), /roh/);
+  // okamžitá kontrola: krok vyzkoušený na náhodném zamíchání
+  await p.locator('.bld-step.open button', { hasText: 'Vyzkoušet krok' }).tap();
+  await p.waitForFunction(() => /Funguje: kroky 1–2/.test(document.querySelector('.bld-step.open .bld-check')?.textContent ?? ''), null, { timeout: 60000 });
+  assert.match(await p.locator('.bld-step.open .bld-check').innerText(), /Zamíchání:[\s\S]*Hrana vpravo:/);
+  await p.locator('.bld-step.open .rule-opt', { hasText: 'Algoritmy – vygenerovat' }).tap();
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Algoritmy zatím nejsou/);
   await p.locator('.bld-step.open .bld-make-algs').tap();
   // test se sám spustí a na konci uloží řešení kroku 2 do nové sady
   await p.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('ergocube.guides'))).at(-1).steps[1].set, null, { timeout: 120000 });
@@ -1112,7 +1128,7 @@ test('algoritmy kroku z testu: „Vytvořit algoritmy pro tento krok“ spustí 
   assert.equal(saved.alg.task.colorsA.length, 54);
   // v Sestavit je vidět sada kroku
   await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap(); // krok 2 zůstal otevřený
-  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Sada „Hrana vpravo“: \d+ algoritm/);
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /Vygenerováno: \d+ algoritm/);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

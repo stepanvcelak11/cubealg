@@ -23,6 +23,10 @@ const LAYOUT = {
 };
 
 const selections = new Map(); // id kroku → Set vybraných míst (přežije překreslení)
+const modes = new Map(); // id kroku → 'tap' (ťukání přepíná stav) | 'select' (výběr míst, pokročilé)
+// ťukání: nic → hotovo → jen orientace → jen pozice → nic
+const TAP = [null, 'solved', 'oriented', 'place'];
+const tapState = (c) => (!c ? null : c.own === 'solved' ? 'solved' : c.own === 'any' ? 'place' : c.ori === 'correct' && c.pieces?.length >= 8 ? 'oriented' : 'custom');
 
 // předvolby „některý z dílků“ v pohledu metody (dole = D)
 const typeOf = (n) => (n.length === 3 ? 'corner' : 'edge');
@@ -142,12 +146,21 @@ export function cellEditor(step, before, frame, onChange) {
   // --- síť ------------------------------------------------------------------------------------
   const net = el('div', { className: 'cell-net' });
   net.innerHTML = cellsNetSvg(cellLooks(cells, before), frame, { sel, interactive: true });
+  const mode = modes.get(step.id) ?? (Object.values(cells).some((c) => tapState(c) === 'custom') ? 'select' : 'tap');
+  modes.set(step.id, mode); // zvolený režim zůstane i po úpravách
   net.onclick = (e) => {
     const name = e.target?.dataset?.slot;
     if (!name) return;
-    if (sel.has(name)) sel.delete(name); else sel.add(name);
+    if (mode === 'tap') {
+      const cur = tapState(cells[name]);
+      const nextState = cur === 'custom' ? null : TAP[(TAP.indexOf(cur) + 1) % TAP.length];
+      const type = slotByName(name).type;
+      if (!nextState) delete cells[name];
+      else cells[name] = nextState === 'solved' ? { own: 'solved' } : nextState === 'place' ? { own: 'any' } : { pieces: piecesWithColors(type), ori: 'correct' };
+    } else if (sel.has(name)) sel.delete(name); else sel.add(name);
     commit();
   };
+  const switchMode = (m) => { modes.set(step.id, m); if (m === 'tap') sel.clear(); commit(); };
   const pick = (label, names) => {
     const r = real(names);
     const on = r.length && r.every((n) => sel.has(n));
@@ -280,6 +293,7 @@ export function cellEditor(step, before, frame, onChange) {
     const add = g ? g.cells() : p ? Object.fromEntries(Object.keys(p.parts).map((n) => [n, { own: 'solved' }])) : null;
     if (!add) return;
     Object.assign(cells, remapCells(add, map));
+    if (g) modes.set(step.id, 'select'); // skupina dílků = pokročilé zadání
     sel.clear();
     Object.keys(remapCells(add, map)).forEach((n) => sel.add(n));
     commit();
@@ -287,8 +301,26 @@ export function cellEditor(step, before, frame, onChange) {
   const clear = el('button', { type: 'button', className: 'secondary small', textContent: 'Vymazat vše', disabled: !Object.keys(cells).length,
     onclick: () => { if (confirm('Vymazat celé zadání kroku?')) { for (const k of Object.keys(cells)) delete cells[k]; sel.clear(); commit(); } } });
 
+  if (mode === 'tap') {
+    // základ: ťukání na dílky přepíná stav; legenda vypadá jako políčka na kostce
+    const key = (look, label, hint) => el('span', { className: 'cell-key', title: hint }, Object.assign(el('span', { className: 'cell-key-sw' }), { innerHTML: look }), label);
+    const sw = (inner) => `<svg viewBox="0 0 1 1" width="16" height="16">${inner}</svg>`;
+    return el('div', { className: 'cell-editor' },
+      el('div', { className: 'row-btns cell-tools' }, preset, clear),
+      el('p', { className: 'hint cell-hint', textContent: 'Ťukej na dílky kostky – každé ťuknutí přepne stav:' }),
+      el('div', { className: 'cell-keys' },
+        key(sw('<rect width="1" height="1" rx="0.15" fill="#22b455"/>'), 'hotovo', 'Správné místo i natočení (barvy jako ve složené kostce)'),
+        key(sw('<rect width="1" height="1" rx="0.15" fill="#8a8f9c"/><circle cx="0.5" cy="0.5" r="0.18" fill="#fff"/>'), 'jen orientace', 'Kterýkoli dílek, ale správně natočený (EO, OLL)'),
+        key(sw('<rect x="0.05" y="0.05" width="0.9" height="0.9" rx="0.15" fill="#22b455" opacity="0.55" stroke="#14151c" stroke-width="0.08" stroke-dasharray="0.16 0.1"/>'), 'jen pozice', 'Vlastní dílek na svém místě, natočení nevadí'),
+        key(sw('<rect width="1" height="1" rx="0.15" fill="#d6d8de"/>'), 'nezajímá mě', 'Na dílku po kroku nezáleží')),
+      net,
+      el('p', { className: 'hint cell-legend', textContent: 'Bledé = hotové z dřívějších kroků (zůstane zachované samo).' }),
+      el('button', { type: 'button', className: 'link-btn cell-adv', textContent: 'Pokročilé: kterýkoli dílek ze skupiny (např. kříž z bílých i žlutých hran) →', onclick: () => switchMode('select') }),
+      overview ? el('b', { className: 'bld-sub', textContent: 'Celé zadání kroku' }) : null, overview);
+  }
   return el('div', { className: 'cell-editor' },
     el('div', { className: 'row-btns cell-tools' }, preset, clear),
+    el('button', { type: 'button', className: 'link-btn cell-adv', textContent: '← Zpět na jednoduché ťukání', onclick: () => switchMode('tap') }),
     net,
     el('p', { className: 'hint cell-legend' }, 'Barevné políčko = tahle barva tam musí být (víc barev = kterákoli z nich) · tmavě šedé = na dílku záleží, ale ne na barvě tohoto políčka (bílá tečka = správně natočený) · světlé = nezáleží · bledé = hotové z dřívějších kroků'),
     quick, panel,

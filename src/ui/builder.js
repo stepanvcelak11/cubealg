@@ -11,7 +11,12 @@ import { el } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algSets, algs } from './store.js';
 import { frameEditor, partsBefore, stepParts, describeParts, PRESETS, presetParts, remapParts, validFrame, DEFAULT_FRAME, frameMap } from './parts.js';
-import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount } from '../sim/plan.js';
+import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount, buildPlan } from '../sim/plan.js';
+import { practiceState } from '../timer/practice.js';
+import { solve as twoPhase } from '../timer/twophase.js';
+import { toFacelets } from '../core/cube.js';
+import { netSvg } from './netsvg.js';
+import { holdFromFaces } from '../core/hold.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
@@ -35,6 +40,55 @@ const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n < 5 ? few : many
 let deps = { onTest: () => {}, practice: null, train: null, labTask: () => null };
 let host = null;
 const open = new Set();
+
+const invert = (m) => (m.endsWith("'") ? m.slice(0, -1) : m.endsWith('2') ? m : `${m}'`);
+
+/**
+ * Okamžitá kontrola kroku i: náhodné zamíchání se složí podle kroků 1…i (worker
+ * simulátoru, kratší hledání) a ukáže se zamíchání, řešení kroků a stav kostky po kroku;
+ * když se krok složit nepodaří, varování.
+ */
+async function tryStep(guide, i, host) {
+  host.replaceChildren(el('p', { className: 'hint', textContent: 'Zkouším na náhodném zamíchání…' }));
+  const method = methods.active();
+  const steps = guide.steps.slice(0, i + 1);
+  const config = Object.fromEntries(steps.map((st) => { const c = stepConfig(method, st); return [st.id, { ...c, time: Math.min(Number(c.time) || 3, 1.5) }]; }));
+  let plan, planSteps;
+  try {
+    ({ plan, steps: planSteps } = buildPlan({ guide: { ...guide, steps }, config, setAlgs: (id) => algs.list().filter((a) => a.set === id) }));
+  } catch (e) { host.replaceChildren(el('p', { className: 'ko', textContent: `Krok nejde připravit: ${e.message}` })); return; }
+  if (!planSteps.length) { host.replaceChildren(el('p', { className: 'ko', textContent: 'Nejdřív v bodě 1 vyber, co má být po kroku hotové.' })); return; }
+  const start = practiceState({});
+  const w = new Worker(new URL('../sim/sim-worker.js', import.meta.url), { type: 'module' });
+  const res = await new Promise((resolve) => {
+    w.onmessage = ({ data }) => resolve(data);
+    w.onerror = (e) => resolve({ type: 'error', message: e.message });
+    w.postMessage({ type: 'plan', plan });
+    w.postMessage({ type: 'solve', id: 1, start: Array.from(start) });
+  });
+  w.terminate();
+  if (res.type !== 'solved') { host.replaceChildren(el('p', { className: 'ko', textContent: `Chyba: ${res.message ?? 'neznámá'}` })); return; }
+  const sol = res.solve;
+  let scramble = '';
+  try { scramble = (twoPhase(toFacelets(start), { timeLimit: 800 }) ?? '').split(' ').filter(Boolean).reverse().map(invert).join(' '); } catch { /* bez zápisu */ }
+  const failedAt = sol.ok ? -1 : sol.steps.length - 1;
+  const total = sol.steps.reduce((a, x) => a + (x.length ?? 0), 0);
+  const frame = validFrame(guide.frame) ? guide.frame : DEFAULT_FRAME;
+  const map = frameMap(frame);
+  const stickers = [...(sol.end ?? '')].map((c) => ({ color: c }));
+  host.replaceChildren(...[
+    sol.ok ? el('p', { className: 'ok', textContent: `Funguje: kroky 1–${i + 1} složené za ${total} tahů.` })
+      : el('p', { className: 'ko', textContent: `Krok „${planSteps[failedAt]?.st.title || `Krok ${failedAt + 1}`}“ se nepodařilo složit. Zkontroluj povolené tahy (nesmí rozbít, co je hotové z dřívějška) a co má být po kroku hotové.` }),
+    scramble ? el('p', {}, el('small', { textContent: 'Zamíchání: ' }), el('code', { textContent: scramble })) : null,
+    el('ol', { className: 'bld-check-steps' }, ...sol.steps.map((x, j) => el('li', {},
+      el('b', { textContent: `${planSteps[j]?.st.title || `Krok ${j + 1}`}: ` }),
+      x.source === 'skip' ? el('em', { textContent: 'už hotové (přeskočeno)' }) : x.source === 'none' || x.source === 'missing' ? el('em', { className: 'ko', textContent: x.source === 'missing' ? 'v sadě chybí algoritmus' : 'nenalezeno' })
+        : el('code', { textContent: `${x.rotation ? `(${x.rotation}) ` : ''}${x.display ?? ''}` }),
+      x.length ? el('small', { textContent: ` · ${x.length} tahů${x.source === 'set' ? ' · ze sady' : ''}` }) : null))),
+    stickers.length === 54 ? el('div', { className: 'cell-net' }, Object.assign(el('div', {}), { innerHTML: netSvg(stickers, holdFromFaces(map.U, map.F), 200) })) : null,
+    stickers.length === 54 ? el('p', { className: 'hint cell-legend', textContent: 'Kostka po kroku (nahoře horní strana, dole spodní).' }) : null,
+  ].filter(Boolean));
+}
 
 /** @param {HTMLElement} root @param {{onTest, practice, train, labTask}} d */
 export function initBuilder(root, d) {
@@ -132,11 +186,6 @@ export function renderBuilder() {
 
     // 3. kde to smí být
     const free = FREE_TEXT[cfg.free] ? cfg.free : 'fixed';
-    const freeList = el('div', { className: 'bld-free', role: 'radiogroup', ariaLabel: `Kde smí být – krok ${k}` }, ...Object.entries(FREE_TEXT).map(([id, [label, hint]]) => {
-      const r = Object.assign(el('input', { type: 'radio', name: `free-${st.id}`, value: id }), { checked: free === id });
-      r.onchange = () => patch(id === 'colors' && !cfg.downs?.length ? { free: id, downs: [frame.down, OPPOSITE[frame.down]] } : { free: id });
-      return el('label', { className: `bld-free-opt${free === id ? ' on' : ''}` }, r, el('span', {}, el('b', { textContent: label }), el('small', { textContent: hint })));
-    }));
     const colorPick = (key, label, hint) => el('div', { className: 'sim-colors', role: 'group', ariaLabel: `${label} – krok ${k}`, title: hint },
       el('span', { textContent: label }),
       ...Object.entries(COLORS).map(([f, cname]) => {
@@ -148,7 +197,14 @@ export function renderBuilder() {
       : places > 1 ? `Krok je hotový na kterémkoli z možných míst (${places}). Test u každého zamíchání vybere to nejvýhodnější a další kroky pokračují odtamtud.`
         : free === 'fixed' ? 'Krok je hotový jen tehdy, když jsou hotové přesně vybrané dílky.' : 'Tyhle dílky jsou ve všech povolených polohách na stejném místě – volnost tu nic nemění.';
 
-    // 4. čím krok skládáš
+    // 2. jak se krok řeší: intuitivně / algoritmy vygenerovat / vlastní algoritmy
+    // výchozí: se sadou „moje sada“, krok s naučenými algoritmy (OLL, PLL…) „vygenerovat“, jinak intuitivně
+    const solveBy = cfg.solveBy ?? (st.set ? 'own' : cfg.kind === 'alg' ? 'generate' : 'intuitive');
+    const how = (id, label, hint) => {
+      const r = Object.assign(el('input', { type: 'radio', name: `how-${st.id}`, value: id }), { checked: solveBy === id });
+      r.onchange = () => patch(id === 'intuitive' ? { solveBy: id, mode: 'search', kind: cfg.kind === 'blocks' ? 'blocks' : 'intuitive' } : { solveBy: id, mode: 'auto', kind: 'alg' });
+      return el('label', { className: `rule-opt${solveBy === id ? ' on' : ''}` }, r, el('span', {}, el('b', { textContent: label }), el('small', { textContent: hint })));
+    };
     const setSel = select(setOpts(), st.set ?? '', `Sada algoritmů – krok ${k}`, (v) => {
       if (v === '+new') {
         const n = prompt('Název nové sady algoritmů:', st.title || `Krok ${k}`)?.trim();
@@ -156,46 +212,60 @@ export function renderBuilder() {
       } else st.set = v || undefined;
       redraw();
     });
+    const algWord = (n) => `${n} ${n === 1 ? 'algoritmus' : n < 5 ? 'algoritmy' : 'algoritmů'}`;
+    const makeAlgs = (label) => Object.assign(el('button', { type: 'button', className: 'primary small bld-make-algs' }), {
+      textContent: label, onclick: () => deps.onTest({ harvest: st.id }),
+    });
+    const howBody = solveBy === 'generate' ? el('div', { className: 'bld-algs' },
+      el('b', { textContent: nSet ? `Vygenerováno: ${algWord(nSet)} (sada „${set.name}“)` : 'Algoritmy zatím nejsou' }),
+      el('small', { textContent: nSet
+        ? 'Test krok skládá těmito algoritmy. Na případy, které ještě chybí, je dohledá – „Doplnit“ je přidá do sady.'
+        : 'Klepni níž: test složí náhodná zamíchání, u tohoto kroku najde na každý případ dobrý algoritmus a uloží je do sady kroku. Delší test (Délka v Otestovat) = víc případů.' }),
+      el('div', { className: 'row-btns' }, makeAlgs(nSet ? 'Doplnit chybějící algoritmy' : 'Vygenerovat algoritmy'),
+        nSet && deps.train ? btn('trainer', 'Učit se je (Trenažér)', () => deps.train(set.id), 'secondary small') : null))
+      : solveBy === 'own' ? el('div', { className: 'bld-algs' },
+        el('div', { className: 'grid-fields' },
+          field('Moje sada', setSel, 'Sada s tvými algoritmy (sady spravuješ v Trenažéru, nové algoritmy přidáš z Labu)'),
+          nSet ? field('Když na případ nemám algoritmus', select(MODE_TEXT, cfg.mode === 'set' ? 'set' : 'auto', `Chybějící případ – krok ${k}`, (v) => patch({ mode: v })), 'V testu: najde se hledáním, nebo se počítá jako chybějící') : null),
+        el('small', { textContent: nSet ? `${algWord(nSet)} v sadě. Chybějící případy test označí – tlačítkem je doplníš vygenerovanými.` : 'Vyber sadu, nebo založ novou (+ Nová sada…).' }),
+        el('div', { className: 'row-btns' }, nSet ? makeAlgs('Doplnit chybějící vygenerovanými') : null,
+          nSet && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null))
+      : el('small', { className: 'hint', textContent: 'Test u každého zamíchání najde nejlepší řešení kroku (jako bys ho vymýšlel). Odhad času počítá s tím, že člověk udělá víc tahů než počítač.' });
+
+    // 3. omezení: tahy, nejvýš tahů, podle čeho vybírat
     const moves = select({ ...STEP_MOVES, custom: { label: 'Vlastní výběr…' } }, cfg.moves, `Tahy – krok ${k}`, (v) => patch(v === 'custom' && !cfg.custom?.length ? { moves: v, custom: [...STEP_MOVES.faces.bases] } : { moves: v }));
     const chips = cfg.moves === 'custom' ? el('div', { className: 'sim-chips', role: 'group', ariaLabel: `Vlastní tahy – krok ${k}` }, ...MOVE_BASES.map((b) => {
       const box = Object.assign(el('input', { type: 'checkbox' }), { checked: (cfg.custom ?? []).includes(b) });
       box.onchange = () => patch({ custom: MOVE_BASES.filter((x) => (x === b ? box.checked : (cfg.custom ?? []).includes(x))) }, false);
       return el('label', {}, box, b);
     })) : null;
+    const limits = el('div', { className: 'grid-fields' },
+      field('Povolené tahy', moves, 'Tahy, kterými krok skládáš'),
+      field('Nejvýš tahů', num(cfg.maxLen ?? 0, `Nejvýš tahů – krok ${k}`, 0, 40, 1, (v) => patch({ maxLen: v }, false)), '0 = bez omezení. Delší řešení test nepoužije.'),
+      field('Vybírat řešení podle', select(Object.fromEntries(Object.entries(VIEWS).map(([id, v]) => [id, `${v.icon} ${v.label}`])), cfg.view, `Vybírat podle – krok ${k}`, (v) => patch({ view: v }, false)),
+        'Rychlost = pohodlné tahy (bez přehmatů, málo B a D), Efektivita = co nejméně tahů'));
+
+    // okamžitá kontrola: krok vyzkoušený na náhodném zamíchání
+    const check = el('div', { className: 'bld-check' });
+    const tryBtn = btn('play', 'Vyzkoušet krok na náhodném zamíchání', () => tryStep(guide, i, check), 'secondary small');
+
+    // pokročilé
     const helpers = el('input', { value: cfg.helpers ?? '', placeholder: 'např. M2 U2 M2', spellcheck: false, ariaLabel: `Pomocné algoritmy – krok ${k}` });
     helpers.onchange = () => patch({ helpers: helpers.value }, false);
-    const useSet = nSet > 0;
-    const solve = el('div', { className: 'grid-fields' },
-      field('Sada algoritmů', setSel, 'Algoritmy, kterými krok skládáš (sady spravuješ v Trenažéru, nové přidáš z Labu)'),
-      useSet ? field('Když na případ v sadě nemám algoritmus', select(MODE_TEXT, cfg.mode === 'set' ? 'set' : 'auto', `Chybějící případ – krok ${k}`, (v) => patch({ mode: v })), 'V testu: najde se hledáním, nebo se počítá jako chybějící') : null,
-      field('Tahy', moves, 'Tahy, kterými krok skládáš (hledání i hodnocení). Vkládat z boku = přidej F, B, L…'),
-      useSet ? field('Natočení vrstev k algoritmu', select(ADJUST, cfg.adjust, `Natočení vrstev – krok ${k}`, (v) => patch({ adjust: v }, false)), 'AUF/ADF před algoritmem a po něm (počítá se do tahů)') : null,
-      useSet ? field('Pomocné algoritmy', helpers, 'Smíš je udělat před algoritmem ze sady (např. oprava parity); víc oddělených čárkou') : null);
-    // algoritmy kroku: test najde řešení případů a uloží je do sady kroku
-    const setNote = el('div', { className: 'bld-algs' },
-      el('b', { textContent: nSet ? `Sada „${set.name}“: ${nSet} ${nSet === 1 ? 'algoritmus' : nSet < 5 ? 'algoritmy' : 'algoritmů'}` : 'Algoritmy pro tento krok' }),
-      el('small', { textContent: nSet
-        ? 'Test bude krok skládat těmito algoritmy (chybějící případy dohledá). Další klepnutí přidá algoritmy na případy, které v sadě ještě chybí.'
-        : 'Chceš krok skládat naučenými algoritmy? Klepni níž: test složí náhodná zamíchání, u tohoto kroku najde na každý případ dobrý algoritmus a uloží je jako sadu kroku. Pak test spusť znovu – už je bude používat.' }),
-      Object.assign(el('button', { type: 'button', className: 'primary small bld-make-algs' }), {
-        textContent: nSet ? 'Doplnit algoritmy testem' : 'Vytvořit algoritmy pro tento krok',
-        onclick: () => deps.onTest({ harvest: st.id }),
-      }),
-      nSet && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null);
-
-    // 5. nepovinné: test, obrázek, nácvik
-    const testOpts = el('details', { className: 'bld-more' }, el('summary', { textContent: 'Podrobnosti pro test (nepovinné)' }),
-      el('div', { className: 'grid-fields' },
-        field('Vybírat řešení podle', select(Object.fromEntries(Object.entries(VIEWS).map(([id, v]) => [id, `${v.icon} ${v.label}`])), cfg.view, `Vybírat podle – krok ${k}`, (v) => patch({ view: v }, false)), 'Které z nalezených řešení test použije'),
-        field('Čas hledání (s)', num(cfg.time, `Čas hledání – krok ${k}`, 0.5, 120, 0.5, (v) => patch({ time: v }, false)), 'Delší = blíž nejlepšímu možnému řešení, test trvá déle'),
-        field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => patch({ recog: v }, false)), 'Kolik ti trvá krok rozpoznat (odhad času)'),
-        field('Druh kroku', select({ alg: 'Naučený algoritmus', intuitive: 'Intuitivní (kříž, páry…)', blocks: 'Stavění bloků (plánuji dopředu)' }, cfg.kind ?? 'intuitive', `Druh kroku – krok ${k}`, (v) => patch({ kind: v }, false)),
-          'Pro odhad času: naučený algoritmus jde rychle a s tolika tahy jako v simulaci, intuitivní krok o něco pomaleji, bloky člověk staví s víc tahy a pomaleji')),
-      el('label', { className: 'check-row' }, Object.assign(el('input', { type: 'checkbox' }), { checked: cfg.on === false, onchange: (e) => patch({ on: !e.target.checked }, false) }),
-        'V testu spojit s dalším krokem (vyplatilo by se je dělat najednou?)'));
     const alg = el('input', { className: 'guide-input', value: st.task?.alg ?? '', placeholder: 'Ukázkový algoritmus (např. R U R\' U\')', disabled: !st.task, ariaLabel: `Ukázkový algoritmus – krok ${k}` });
     alg.onchange = () => { if (st.task) { st.task.alg = alg.value.trim() || undefined; redraw(); } };
-    const picture = el('details', { className: 'bld-more', open: !!st.task }, el('summary', { textContent: 'Obrázek a ukázka z Labu (nepovinné)' }),
+    const advanced = el('details', { className: 'bld-more' }, el('summary', { textContent: 'Pokročilé (nepovinné)' }),
+      el('label', { className: 'field' }, 'Popis kroku', text),
+      el('div', { className: 'grid-fields' },
+        nSet ? field('Natočení vrstev k algoritmu', select(ADJUST, cfg.adjust, `Natočení vrstev – krok ${k}`, (v) => patch({ adjust: v }, false)), 'AUF/ADF před algoritmem a po něm (počítá se do tahů)') : null,
+        nSet ? field('Pomocné algoritmy', helpers, 'Smíš je udělat před algoritmem ze sady (např. oprava parity M2 U2 M2); víc oddělených čárkou') : null,
+        field('Druh kroku (odhad času)', select({ alg: 'Naučený algoritmus', intuitive: 'Intuitivní (kříž, páry…)', blocks: 'Stavění bloků (plánuji dopředu)' }, cfg.kind ?? 'intuitive', `Druh kroku – krok ${k}`, (v) => patch({ kind: v }, false)),
+          'Naučený algoritmus jde rychle, intuitivní krok o něco pomaleji, bloky člověk staví s víc tahy a pomaleji'),
+        field('Rozpoznání (s)', num(cfg.recog, `Rozpoznání – krok ${k}`, 0, 5, 0.1, (v) => patch({ recog: v }, false)), 'Kolik ti trvá krok rozpoznat (odhad času)'),
+        field('Čas hledání (s)', num(cfg.time, `Čas hledání – krok ${k}`, 0.5, 120, 0.5, (v) => patch({ time: v }, false)), 'Delší = blíž nejlepšímu možnému řešení, test trvá déle')),
+      el('label', { className: 'check-row' }, Object.assign(el('input', { type: 'checkbox' }), { checked: cfg.on === false, onchange: (e) => patch({ on: !e.target.checked }, false) }),
+        'V testu spojit s dalším krokem (vyplatilo by se je dělat najednou?)'),
+      el('b', { className: 'bld-sub', textContent: 'Obrázek a ukázka z Labu' }),
       el('p', { className: 'hint', textContent: 'V Labu nastav výchozí stav a cíl (případně vyber řešení v přehrávači) a tady klepni na „Vzít z Labu“.' }),
       illustration(st.task), examplePlayer(st.task), alg,
       el('div', { className: 'row-btns' },
@@ -203,21 +273,28 @@ export function renderBuilder() {
         st.task ? btn('close', 'Odebrat obrázek', () => { delete st.task; redraw(); }, 'secondary small') : null));
 
     return el('section', { className: 'bld-card bld-step open' }, head,
-      q('1', 'Název a popis'), title, text,
-      q('2', 'Co je po kroku hotové?', 'Klepni na políčko kostky (nebo vyber víc míst) a řekni, co tam po kroku musí být. Bledé je hotové z dřívějších kroků.'),
+      field('Název kroku', title),
+      q('1', 'Co má být po kroku hotové?', 'Co je hotové z dřívějších kroků, zůstane zachované samo.'),
       cellEditor(st, cellsBefore(guide.steps, i), frame, redraw),
-      q('3', 'Smí se celý krok složit i jinde?', 'Bod 2 říká, co kde musí být. Tady jde o celý krok otočený: např. pár do kteréhokoli slotu = „Na kterémkoli boku“, kříž s bílou i žlutou dole = „Dvě barvy dole“.'),
-      freeList,
+      el('div', { className: 'bld-free-row' }, field('Smí se krok složit i jinde?', select(Object.fromEntries(Object.entries(FREE_TEXT).map(([id, [l]]) => [id, l])), free, `Kde smí být – krok ${k}`,
+        (v) => patch(v === 'colors' && !cfg.downs?.length ? { free: v, downs: [frame.down, OPPOSITE[frame.down]] } : { free: v })),
+      'Např. pár do kteréhokoli slotu = „Na kterémkoli boku“, kříž bílý nebo žlutý = „Dvě protilehlé barvy dole“')),
       free === 'colors' ? el('div', { className: 'sim-colors-box' },
         colorPick('downs', 'Dole smí být', 'Barvy, které smí být po kroku dole'),
         colorPick('fronts', 'Vpředu smí být', 'Nic nezaškrtnuté = vpředu kterákoli barva')) : null,
       el('p', { className: `bld-places${places > 1 ? ' many' : ''}`, textContent: placesNote }),
-      q('4', 'Čím krok skládáš?', 'Sadou algoritmů, nebo bez ní (test najde řešení sám). Tahy říkají, jakými tahy krok děláš.'),
-      solve, chips, setNote,
-      testOpts, picture,
+      q('2', 'Jak se krok řeší?'),
+      el('div', { className: 'rule-opts' },
+        how('intuitive', 'Intuitivně', 'Řešení se pokaždé vymýšlí (kříž, páry, bloky).'),
+        how('generate', 'Algoritmy – vygenerovat', 'Aplikace najde algoritmy na případy kroku a uloží je jako sadu.'),
+        how('own', 'Algoritmy – moje sada', 'Tvoje algoritmy; chybějící případy doplní vygenerované.')),
+      howBody,
+      q('3', 'Omezení'),
+      limits, chips,
+      el('div', { className: 'row-btns' }, tryBtn), check,
+      advanced,
       el('div', { className: 'row-btns bld-step-tools' },
         deps.practice ? btn('timer', 'Nacvičit v timeru', () => deps.practice(st.id), 'secondary small') : null,
-        set && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null,
         btn('check', 'Hotovo', () => { open.delete(st.id); renderBuilder(); }, 'secondary small')));
   });
 

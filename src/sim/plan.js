@@ -242,6 +242,6 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   });
   // kolik různých míst kroku volnost nabízí (z výchozí orientace) – pro odhad délky hledání
   const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => constraintsKey(variants[j].steps[i].parts))).size);
-  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0 }));
+  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0, maxLen: Number(x.cfg.maxLen) || 0 }));
   return { plan: { lambda, ergonomics, variants, stepOpts, rotation, choices }, steps };
 }

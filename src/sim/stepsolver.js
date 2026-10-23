@@ -69,11 +69,11 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     try {
       const full = prepare({ puzzle: P, constraints, moves, targets: [target], nearLimit, cache });
       if (quick) {
-        const res = engineSearch(full, state, { maxLength: 20, extraDepth: 0, maxResults: 1, timeLimit: 20000 * timeScale });
+        const res = engineSearch(full, state, { maxLength: opts.maxLen || 20, extraDepth: 0, maxResults: 1, timeLimit: 20000 * timeScale });
         for (const alg of res.solutions) handlers.onSolution(alg);
       } else explore({
         P, start: state, target, constraints, moves, held, auf: null,
-        options: { lambda: plan.lambda ?? 0.5, maxLength: 20, extraDepth: 1, maxResults: 800, timeLimit: (opts.time ?? 3000) * timeScale, nearLimit, library: (step.candidates ?? []).map((c) => c.model) },
+        options: { lambda: plan.lambda ?? 0.5, maxLength: opts.maxLen || 20, extraDepth: 1, maxResults: 800, timeLimit: (opts.time ?? 3000) * timeScale, nearLimit, library: (step.candidates ?? []).map((c) => c.model) },
         config, handlers, tracker, scoreOf, onTable: () => {}, t0: clock.now(), full, cache,
       });
     } finally {
@@ -81,7 +81,7 @@ export function makeStepSolver(plan, { nearLimit = Math.floor(NEAR_LIMIT * 0.4),
     }
     // jen řešení, která cíl opravdu splní (etapy a bloky znají jen část cíle)
     const reaches = compileGoal(constraints).test;
-    const list = [...seen].filter(([model]) => { try { return reaches(P.applyAlg(state, model)); } catch { return false; } })
+    const list = [...seen].filter(([model]) => { try { return (!opts.maxLen || model.split(' ').length <= opts.maxLen) && reaches(P.applyAlg(state, model)); } catch { return false; } })
       .map(([model, score]) => ({ model, score, m: styleMetrics(score, true) }));
     if (!list.length) return null;
     const best = rankResults(list, opts.view ?? 'speed', { lambda: plan.lambda ?? 0.5 })[0];

@@ -195,20 +195,23 @@ export const HUMAN = {
 };
 const kindOf = (kind) => (HUMAN.moves[kind] ? kind : 'intuitive');
 
+// realismus 0…1: 0 = jak to složí počítač (tahy simulace, plné tempo), 1 = model člověka
+const mix = (f, realism = 1) => 1 + (f - 1) * Math.max(0, Math.min(1, realism));
+
 /** Kolik tahů na krok udělá člověk. */
-export const humanMoves = (moves, kind) => moves * HUMAN.moves[kindOf(kind)];
+export const humanMoves = (moves, kind, realism = 1) => moves * mix(HUMAN.moves[kindOf(kind)], realism);
 
 /** Tempo člověka v kroku (tahů za sekundu) při celkové rychlosti tps. */
-export const humanTps = (tps, kind) => tps * HUMAN.tps[kindOf(kind)];
+export const humanTps = (tps, kind, realism = 1) => tps * mix(HUMAN.tps[kindOf(kind)], realism);
 
 /**
  * Odhad času kroku: rozpoznání + provedení (čas z trenažéru, jinak tahy člověka / jeho
  * tempo v kroku). Přeskočený krok nestojí nic.
  */
-export function stepTime(item, { tps = 4, recog = 0, kind = 'alg' } = {}) {
+export function stepTime(item, { tps = 4, recog = 0, kind = 'alg', realism = 1 } = {}) {
   if (!item || item.source === 'skip') return 0;
   if (Number.isFinite(item.time)) return recog + item.time / 1000 + (item.extra ?? 0) / tps;
-  return recog + humanMoves(item.length, kind) / humanTps(tps, kind);
+  return recog + humanMoves(item.length, kind, realism) / humanTps(tps, kind, realism);
 }
 
 /**
@@ -221,14 +224,14 @@ export function stepTime(item, { tps = 4, recog = 0, kind = 'alg' } = {}) {
 export function summarize(solves, stepCount, timing = {}) {
   const done = solves.filter((s) => s.ok);
   const tps = timing.tps ?? 4;
-  const times = done.map((s) => s.steps.map((x, i) => stepTime(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i] })));
+  const times = done.map((s) => s.steps.map((x, i) => stepTime(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1 })));
   const steps = Array.from({ length: stepCount }, (_, i) => {
     const items = done.map((s) => s.steps[i]).filter(Boolean);
     const lens = items.map((x) => x.length);
     const by = (src) => items.filter((x) => x.source === src).length;
     const needed = items.filter((x) => x.source !== 'skip').length;
     return {
-      moves: mean(lens), human: humanMoves(mean(lens), timing.kinds?.[i]), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
+      moves: mean(lens), human: humanMoves(mean(lens), timing.kinds?.[i], timing.realism ?? 1), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
       score: mean(items.map((x) => x.score)),
       time: mean(times.map((t) => t[i] ?? 0)),
       skipped: items.length ? by('skip') / items.length : 0,

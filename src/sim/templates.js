@@ -52,6 +52,18 @@ export const TEMPLATES = [
     ],
   },
   {
+    id: 'petrus', name: 'Petrus',
+    intro: 'Blok 2×2×2, rozšíření na 2×2×3 vlevo, natočení hran (EO), dokončení prvních dvou vrstev tahy R U, OLL a PLL.',
+    steps: [
+      { title: 'Blok 2×2×2', cells: own(['DBL', 'DB', 'DL', 'BL']), sim: { recog: 0, kind: 'blocks' } },
+      { title: 'Blok 2×2×3', cells: own(['DLF', 'DF', 'FL']), sim: { recog: 0.3, kind: 'blocks' } },
+      { title: 'EO', cells: oriented(['DR', 'FR', 'BR', ...UE]), sim: { recog: 0.4 } },
+      { title: 'F2L', cells: own(['DFR', 'DRB', 'DR', 'FR', 'BR']), sim: { moves: 'RU', recog: 0.3, kind: 'blocks' } },
+      { title: 'OLL', cells: oriented([...UE, ...UC]), sim: { recog: 0.5, kind: 'alg' } },
+      { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' } },
+    ],
+  },
+  {
     id: 'separation', name: 'Separační metoda',
     intro: 'Kříž z kterýchkoli hran barvy dole a nahoře (tou barvou dolů), páry s kterýmkoli takovým rohem, natočení horní vrstvy (OLL), oddělení hran a rohů podle barvy, permutace rohů a nakonec parita (M2 U2 M2) a EPBL.',
     steps: [

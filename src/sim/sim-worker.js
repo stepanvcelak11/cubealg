@@ -42,7 +42,7 @@ self.onmessage = async ({ data }) => {
       state = after;
       return out;
     });
-    self.postMessage({ type: 'solved', id: data.id, solve: { ...solve, start: Array.from(solve.start), steps } });
+    self.postMessage({ type: 'solved', id: data.id, solve: { ...solve, start: Array.from(solve.start), steps, end: colors(state) } });
   } catch (e) {
     self.postMessage({ type: 'error', id: data.id, message: e.message });
   }

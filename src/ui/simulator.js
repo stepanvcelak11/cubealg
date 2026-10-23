@@ -171,6 +171,15 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
   const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
   const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); });
+  // realismus odhadu: 0 % = jak to složí počítač, 100 % = model člověka (víc tahů a pomaleji u intuitivních kroků)
+  const realism = Object.assign(el('input', { type: 'range', min: '0', max: '100', step: '10', value: String(saved.realism ?? 100), ariaLabel: 'Realismus odhadu' }), {
+    oninput: () => { realismOut.textContent = realismText(); },
+    onchange: () => { remember(); if (last) renderResults(last.solves, last.meta); renderCompare(); },
+  });
+  const realismText = () => { const v = Number(realism.value); return v === 0 ? 'počítač (optimum)' : v === 100 ? 'člověk' : `${v} % člověk`; };
+  const realismOut = el('small', { className: 'sim-realism-out', textContent: '' });
+  const R = () => Number(realism.value) / 100;
+  realismOut.textContent = realismText();
   const go = el('button', { type: 'button', className: 'primary', textContent: 'Spustit simulaci' });
   const more = el('button', { type: 'button', className: 'secondary', textContent: 'Přidat zamíchání', hidden: true, title: 'Pokračuje dalšími zamícháními (stejné semínko) a výsledky doplní' });
   const stop = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
@@ -192,7 +201,8 @@ function mountSimulator(host, lab, { onEdit } = {}) {
       field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
       field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
       field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'),
-      field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)')),
+      field('Tahy za sekundu', tps, 'Rychlost provedení pro odhad času (u algoritmů s časem z trenažéru se použije ten)'),
+      el('label', { className: 'field sim-realism', title: 'Počítač najde u intuitivních kroků skoro nejlepší řešení; člověk dělá víc tahů a pomaleji. Posuň k „člověk“ pro reálnější odhad.' }, 'Realismus odhadu', realism, realismOut)),
     el('div', { className: 'row-btns' }, go, more, stop), track, status, results, compare, history);
 
   let sigNow = '';
@@ -200,7 +210,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   let last = null; // { solves, meta, next }
   function remember() {
     const all = storage.get(OPTS) ?? {};
-    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value) });
+    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), realism: Number(realism.value) });
   }
   function changed() {
     remember();
@@ -372,7 +382,7 @@ function mountSimulator(host, lab, { onEdit } = {}) {
 
   // --- výsledky -------------------------------------------------------------------------------
   function renderResults(solves, meta) {
-    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive') };
+    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), realism: R() };
     const sum = summarize(solves, meta.stepTitles.length, timing);
     if (!sum.count) { results.replaceChildren(); return sum; }
     const maxMoves = Math.max(...sum.steps.map((s) => s.moves), 1);
@@ -484,11 +494,11 @@ function mountSimulator(host, lab, { onEdit } = {}) {
   }
   /** Odhad času stejným vzorcem pro obě strany: rozpoznání + tahy / TPS. */
   // stejný model člověka jako u výsledků (sim/simulate.js): intuitivní kroky víc tahů a pomaleji
-  const humanOf = (src) => src.steps.reduce((a, st) => a + humanMoves(st.moves, st.kind ?? 'intuitive'), 0);
+  const humanOf = (src) => src.steps.reduce((a, st) => a + humanMoves(st.moves, st.kind ?? 'intuitive', R()), 0);
   const estTime = (src) => src.steps.reduce((a, st) => {
     const t = Number(tps.value) || 4;
     const kind = st.kind ?? 'intuitive';
-    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind) / humanTps(t, kind);
+    return a + (st.moves > 0 ? (st.recog ?? 0) : 0) + humanMoves(st.moves, kind, R()) / humanTps(t, kind, R());
   }, 0);
   function renderCompare() {
     const list = sources();
