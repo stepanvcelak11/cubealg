@@ -1245,3 +1245,30 @@ test('trenažér: hromadně kopírovat a přesouvat mezi sadami, kopírovat text
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('Tahy a váhy: porovnání dvojic doladí váhy, nové váhy se uloží', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.locator('.segmented button[data-sub="moves"]').tap();
+  await p.selectOption('#ergo-compare-count', '10');
+  await p.locator('#ergo-compare').tap();
+  await p.waitForSelector('.cmp-dialog[open]');
+  assert.match(await p.locator('.cmp-progress').innerText(), /Porovnání 1 z 10/);
+  // vybírá vždy algoritmus s méně tahy L (jako někdo, komu L nesedí)
+  for (let i = 0; i < 10; i++) {
+    const algsNow = await p.locator('.cmp-card .cmp-alg').allInnerTexts();
+    const ls = algsNow.map((a) => (a.match(/L/g) ?? []).length);
+    await p.locator('.cmp-card').nth(ls[0] <= ls[1] ? 0 : 1).tap();
+  }
+  await p.waitForSelector('.cmp-result');
+  assert.match(await p.locator('.cmp-result').innerText(), /souhlasí s \d+ z \d+/);
+  await p.locator('.cmp-dialog button', { hasText: 'Zavřít' }).tap();
+  assert.match(await p.locator('#ergo-compare-info').innerText(), /Uloženo 10 porovnání/);
+  const saved = await p.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith('ergocube.ergo'));
+    return { ergo: key ? JSON.parse(localStorage.getItem(key)) : null, prefs: JSON.parse(localStorage.getItem('ergocube.prefs')).length };
+  });
+  assert.equal(saved.prefs, 10);
+  assert.ok(saved.ergo?.prefBase, 'váhy uložené i se základem pro další doladění');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

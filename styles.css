@@ -1488,3 +1488,32 @@ details.sim-card > summary small { color: var(--muted); font-size: 0.78rem; font
 .sim-used-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: top; }
 .sim-used-table code { font-family: var(--mono); font-size: 0.78rem; overflow-wrap: anywhere; }
 .sim-used-table small { color: var(--muted); }
+
+/* --- Porovnání dvojic (Tahy a váhy → Doladit podle mých rukou) ------------------------------- */
+.ergo-compare-row { align-items: flex-end; }
+.ergo-compare-row .field { min-width: 180px; }
+.cmp-dialog { width: min(560px, calc(100vw - 32px)); }
+.cmp-progress { margin: 4px 0 6px; font-weight: 700; font-size: 0.85rem; color: var(--muted); }
+.cmp-case { margin: 14px 0 8px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cmp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .cmp-pair { grid-template-columns: 1fr; } }
+.cmp-card {
+  display: grid; gap: 8px; justify-items: start; text-align: left; padding: 14px; min-height: 0;
+  border-radius: 18px; background: var(--panel-2); color: var(--text); box-shadow: none; border: 2px solid transparent;
+}
+.cmp-card:hover:not(:disabled) { filter: none; border-color: var(--accent); }
+.cmp-card small { color: var(--muted); font-weight: 600; }
+.cmp-letter { font-family: var(--display); font-weight: 800; font-size: 1.1rem; color: var(--accent); }
+.cmp-alg { font-family: var(--mono, monospace); font-size: 1.05rem; line-height: 1.5; word-spacing: 0.15em; overflow-wrap: anywhere; }
+.cmp-tests { margin: 10px 0 4px; }
+.cmp-actions { margin-top: 8px; }
+.cmp-result { font-weight: 700; margin: 14px 0 6px; }
+.cmp-changes { margin: 0 0 10px; padding-left: 20px; display: grid; gap: 4px; font-size: 0.9rem; }
+
+/* styly výsledků: nejlepší z každé skupiny tahů */
+.search-styles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 10px; }
+.styles-head { font-size: 0.78rem; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.style-chip { display: grid; gap: 1px; padding: 6px 10px; min-height: 0; border-radius: 12px; background: var(--panel-2); color: var(--text); box-shadow: none; text-align: left; }
+.style-chip b { font-size: 0.82rem; }
+.style-chip small { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.style-chip.on { box-shadow: inset 0 0 0 2px var(--accent); }

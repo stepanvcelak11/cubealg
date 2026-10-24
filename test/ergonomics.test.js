@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreAlg, rankAlgs } from '../src/ergonomics/score.js';
 import { findTriggers, buildTriggers } from '../src/ergonomics/triggers.js';
+import { DEFAULT_CONFIG } from '../src/ergonomics/weights.js';
 
 test('triggery se najdou včetně zrcadel a delší mají přednost', () => {
   const t = findTriggers("F R U R' U' F' R U R' U' L' U' L U");
@@ -34,12 +35,12 @@ test('trigger snižuje skóre oproti stejným tahům bez bonusu', () => {
 });
 
 test('přehmat zápěstí při opakovaném R jedním směrem', () => {
-  assert.equal(scoreAlg("R U R U R").breakdown.regrips, 1.5);
+  assert.equal(scoreAlg("R U R U R").breakdown.regrips, DEFAULT_CONFIG.regripPenalty);
   assert.equal(scoreAlg("R U R' U R").breakdown.regrips, 0);
 });
 
 test('změna úchopu mezi F a D', () => {
-  assert.equal(scoreAlg("F D").breakdown.gripChanges, 0.6);
+  assert.equal(scoreAlg("F D").breakdown.gripChanges, DEFAULT_CONFIG.gripChangePenalty);
   assert.equal(scoreAlg("F R D").breakdown.gripChanges, 0);
 });
 

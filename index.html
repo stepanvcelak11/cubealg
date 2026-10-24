@@ -297,6 +297,23 @@
           <div id="amounts" class="chips"></div>
           <label id="sq1-shape-row" class="check-row" hidden><input type="checkbox" id="sq1-shape"> Cíl: tvar i prostřední vrstva musí být jako v cíli</label>
         </article>
+        <article class="panel ergo-compare" id="ergo-compare-box">
+          <h2>Doladit podle mých rukou</h2>
+          <p class="hint">Aplikace ti ukáže dva algoritmy pro stejný případ, oba si zatočíš a vybereš, který se ti točí líp. Dvojice vybírá tak, aby postupně vyzkoušela všechny druhy tahů a míst (L, F, D, M, dvojité tahy, přehmaty, stejný prst, střídání rukou) a hlavně ty, kde si hodnocení není jisté. Z odpovědí spočítá váhy. Víc porovnání = přesnější váhy; odpovědi se ukládají a sčítají i přes víc sezení.</p>
+          <div class="row-btns ergo-compare-row">
+            <label class="field">Kolik porovnání
+              <select id="ergo-compare-count">
+                <option value="10">10 (asi 3 minuty)</option>
+                <option value="20">20 (asi 6 minut)</option>
+                <option value="40">40 (přesnější)</option>
+                <option value="80">80 (nejpřesnější)</option>
+              </select>
+            </label>
+            <button type="button" id="ergo-compare" class="primary">Porovnat algoritmy</button>
+          </div>
+          <p id="ergo-compare-info" class="hint" aria-live="polite"></p>
+          <button type="button" id="ergo-compare-clear" class="link-btn small" hidden>Smazat moje porovnání a začít znovu</button>
+        </article>
         <article class="panel">
           <h2>Ergonomie – váhy</h2>
           <p class="hint">Nižší číslo = pohodlnější. Změny se hned promítnou do hodnocení řešení.</p>
@@ -307,7 +324,7 @@
           <div id="ergo-moves" class="ergo-moves"></div>
           <div class="actions">
             <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů, přehmatů a návaznosti podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>
-            <button type="button" id="ergo-prefs" class="secondary small" title="Upraví váhy podle toho, které algoritmy sis v generátoru sad vybral místo nabídnutých"><span>Podle mých voleb</span></button>
+            <button type="button" id="ergo-prefs" class="secondary small" title="Upraví váhy podle tvých porovnání a podle toho, které algoritmy sis v generátoru sad vybral místo nabídnutých"><span>Podle mých voleb</span></button>
             <button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button>
           </div>
           <p id="ergo-calibration" class="hint" aria-live="polite"></p>
@@ -357,6 +374,7 @@
             <div id="style-filter" class="segmented style-filter" role="group" aria-label="Pohled na výsledky" hidden></div>
             <p id="view-hint" class="hint view-hint"></p>
             <label id="lambda-row" class="lambda-row" hidden><span>Kratší</span><input type="range" id="lambda" min="0" max="1" step="0.05" value="0.5" aria-label="Poměr vyváženého pohledu: kratší nebo rychlejší"><span>Rychlejší</span></label>
+            <div id="search-styles" class="search-styles" hidden></div>
             <details id="pareto-box" class="pareto-box" hidden>
               <summary>Graf: délka × pohodlí</summary>
               <div id="pareto" class="pareto"></div>

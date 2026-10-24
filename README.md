@@ -220,6 +220,27 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     se stejným zadáním) – dokázané případy se už nehledají.
   - **Tahy a váhy:** povolené tahy, ergonomické váhy a jejich kalibrace podle
     časů z trenažéru (váhy tahů i cena přehmatu, změny úchopu a návaznosti).
+    **Doladit podle mých rukou** (porovnání dvojic, `ui/compare.js`): dva algoritmy pro
+    stejný případ ze sbírky (`ergonomics/corpus.js` – 47 případů PLL / OLL / F2L,
+    oblíbený algoritmus skladačů a alternativy z hledání, vygenerováno `bench/corpus.mjs`,
+    každá ověřená), zatočíš si oba a vybereš pohodlnější (nebo „stejně“). Počet porovnání
+    si zvolíš (10–80). Další dvojici vybírá `ergonomics/compare.js`: liší se v druzích
+    tahů a míst, které dosavadní odpovědi zkoušely nejmíň, a dnešní hodnocení je u ní
+    nejisté – časem se tak vyzkouší všechno. Váhy z odpovědí počítá `learnPreferences`
+    (Bradley–Terry: pravděpodobnost volby = logistická funkce rozdílu hodnocení
+    nepohodlnost + čas tahů, „stejně“ táhne rozdíl k nule, prior drží váhy u základu, takže
+    víc odpovědí = přesnější váhy). Odpovědi se ukládají a sčítají přes sezení (i s volbami
+    z generátoru); základ (`prefBase`) jsou váhy před prvním doladěním, ať se stejnými
+    odpověďmi váhy neposouvají dál.
+    **Výchozí váhy** jsou doladěné stejným výpočtem na sbírce (`bench/fit.mjs`: oblíbený
+    algoritmus má vycházet líp než alternativy – předtím 77 % dvojic, teď 92 %, na
+    případech mimo ladění 71 → 84 %), každá váha nejvýš o třetinu dolů / polovinu nahoru;
+    ladí se i násobič bonusů za triggery. Uložené váhy, které sis neměnil, přejdou na nové.
+    Oblíbené algoritmy sbírky zkouší hledání jako knihovnu (s nastavením a dokončením),
+    pohodlné menší sady tahů (jen R U, R U s M…) prohledává i tehdy, když už má kratší
+    řešení s celou sadou, a dvojice tahů jedné osy, které jsou dohromady jeden tah
+    (`M' r'` = `R'`), přeskakuje. Ve výsledcích **Podle stylu**: nejlepší řešení z každé
+    skupiny tahů (jen R U, R U + F, R U + M…).
     Hodnocení bere v úvahu i **návaznost tahů** (prstoklad v home grip): kterým
     prstem se tah udělá podle polohy zápěstí, stejný prst dvakrát po sobě, dva
     prstové tahy jednou rukou, bonus za střídání rukou. Volba **levák** hodnotí

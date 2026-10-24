@@ -22,7 +22,9 @@ import { VIEWS, styleMetrics, rankResults, ranksOf, paretoFront, speedValue, DEF
 import { SearchClient } from '../search/client.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
-import { algs, algSets, defaultSetId, preferencesOf } from './store.js';
+import { algs, algSets, defaultSetId, preferencesOf, clearPreferences } from './store.js';
+import { openCompare, compareCount } from './compare.js';
+import { CORPUS } from '../ergonomics/corpus.js';
 import { setOptions, pickSet } from './sets.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
@@ -53,6 +55,9 @@ const SQ1_PRESETS = {
 };
 
 const storageKey = (id) => (id === '333' ? 'ergocube.v3' : `ergocube.lab.${id}`);
+// výchozí hodnoty před doladěním podle sbírky (převod uloženého nastavení, viz initState)
+const OLD_ERGO = { regripPenalty: 1.5, gripChangePenalty: 0.6, triggerBonusScale: 1, reuse: 0.6, sameHand: 0.3, alternate: 0.12 };
+const OLD_MOVE_WEIGHTS = { R: [1, 1, 1.4], U: [1, 1, 1.4], r: [1.2, 1.2, 1.7], M: [1.7, 1.4, 2], L: [1.5, 1.4, 2], D: [1.5, 1.4, 2.2], F: [1.7, 1.8, 2.4], B: [3, 3, 3.6] };
 const ergoKey = (id) => (id === '333' ? 'ergocube.ergo' : `ergocube.ergo.${id}`);
 
 let model = labModel(PUZZLES.some((p) => p.id === storage.get('ergocube.lab.puzzle')) ? storage.get('ergocube.lab.puzzle') : '333');
@@ -127,6 +132,13 @@ function load() {
   const e = storage.get(ergoKey(model.id));
   // staré výchozí ceny přehmatu a rotace (uložené s ostatním nastavením) → nové výchozí
   if (e && !e.v2) { if (e.regripPenalty === 2.5) delete e.regripPenalty; if (e.rotationPenalty === 10) delete e.rotationPenalty; e.v2 = true; }
+  // výchozí váhy doladěné podle oblíbených algoritmů (bench/fit.mjs): hodnoty, které sis
+  // neměnil (rovné starým výchozím), přejdou na nové; tvoje úpravy zůstanou
+  if (e && !e.v3 && P().ergonomics === 'cube') {
+    for (const [k, v] of Object.entries(OLD_ERGO)) if (e[k] === v) delete e[k];
+    for (const [b, w] of Object.entries(OLD_MOVE_WEIGHTS)) if (e.moveWeights?.[b] && e.moveWeights[b].every((x, i) => x === w[i])) delete e.moveWeights[b];
+    e.v3 = true;
+  }
   const def = defaultErgo(P());
   ui.ergo = P().ergonomics === 'cube'
     ? { ...DEFAULT_CONFIG, ...e, moveWeights: { ...DEFAULT_MOVE_WEIGHTS, ...(e?.moveWeights ?? {}) } }
@@ -821,12 +833,26 @@ function numberInput(value, step, onValue, ariaLabel) {
   return input;
 }
 
+/** Porovnání dvojic: jen 3×3 (sbírka algoritmů je pro 3×3), kolik odpovědí už je. */
+function renderCompare() {
+  const on = model.id === '333';
+  $('ergo-compare-box').hidden = !on;
+  if (!on) return;
+  const all = preferencesOf(model.id);
+  const mine = all.filter((p) => p.source === 'compare').length;
+  $('ergo-compare-info').textContent = all.length
+    ? `Uloženo ${mine} porovnání${all.length > mine ? ` a ${all.length - mine} voleb z generátoru` : ''} – další je zpřesní.`
+    : 'Zatím žádné porovnání.';
+  $('ergo-compare-clear').hidden = !all.length;
+}
+
 function renderErgo() {
+  renderCompare();
   const kind = P().ergonomics;
   $('ergo-left-row').hidden = kind !== 'cube';
   $('ergo-left').checked = !!ui.ergo.leftHanded;
   $('ergo-main').replaceChildren(...ERGO_FIELDS[kind].map(([key, label, step]) =>
-    el('label', { className: 'field' }, label, numberInput(ui.ergo[key], step, (v) => { ui.ergo[key] = v; ergoChanged(); }))));
+    el('label', { className: 'field' }, label, numberInput(ui.ergo[key], step, (v) => { ui.ergo[key] = v; ergoEdited(); }))));
   const head = $('ergo-moves-head');
   if (kind === 'cube') {
     head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti / dvojitě' }));
@@ -836,7 +862,7 @@ function renderErgo() {
         const w = [...ui.ergo.moveWeights[b]];
         w[i] = v;
         ui.ergo.moveWeights = { ...ui.ergo.moveWeights, [b]: w };
-        ergoChanged();
+        ergoEdited();
       }, `${b} ${['po směru', 'proti', 'dvojitě'][i]}`)))));
   } else if (kind === 'simple') {
     head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti' }));
@@ -845,7 +871,7 @@ function renderErgo() {
         const w = [...ui.ergo.weights[b]];
         w[i] = v;
         ui.ergo.weights = { ...ui.ergo.weights, [b]: w };
-        ergoChanged();
+        ergoEdited();
       }, `${b} ${['po směru', 'proti'][i]}`)))));
   } else {
     head.replaceChildren('Otočení vrstvy ', el('small', { textContent: 'o 1–6 dvanáctin' }));
@@ -854,9 +880,31 @@ function renderErgo() {
         const t = [...ui.ergo.turn];
         t[n] = v;
         ui.ergo.turn = t;
-        ergoChanged();
+        ergoEdited();
       }, `Otočení o ${n}`))));
   }
+}
+
+/** Ruční změna vah: ta je nový základ pro doladění podle voleb. */
+function ergoEdited() {
+  delete ui.ergo.prefBase;
+  ergoChanged();
+}
+
+/**
+ * Základ pro doladění podle voleb: váhy před prvním doladěním (jinak by každé další
+ * doladění posouvalo váhy dál stejnými odpověďmi), s dnešním nastavením leváka.
+ */
+function prefConfig() {
+  const { prefBase, ...cur } = ui.ergo;
+  return prefBase ? { ...prefBase, leftHanded: cur.leftHanded } : cur;
+}
+function applyPrefs(res, base) {
+  ui.ergo = { ...res.config, prefBase: base };
+  renderErgo();
+  ergoChanged();
+  $('ergo-calibration').textContent = `Podle ${res.used} porovnání a voleb (hodnocení souhlasí s ${res.agree} z ${res.decided}, předtím s ${res.before}): `
+    + (res.changes.length ? res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ') : 'váhy sedí, nic se nezměnilo.');
 }
 
 function ergoChanged() {
@@ -1092,7 +1140,7 @@ function searchPhaseText(p) {
   if (p.task === 'subset') return `Zlepšuji: prohledávám tahy ${p.label} do ${p.depth} ${unit()}`;
   if (p.task === 'comfort') return `Zlepšuji rychlost: hledám rychlejší řešení na ${p.depth} ${unit()}`;
   if (p.task === 'blocks') return `Zlepšuji pohodlí: skládám z triggerů a bloků (${p.depth} kroků)`;
-  if (p.task === 'library') return 'Zkouším tvoje uložené algoritmy s nastavením';
+  if (p.task === 'library') return 'Zkouším tvoje uložené a známé algoritmy s nastavením';
   if (p.task === 'staged') return p.stage
     ? `Hledám první řešení po částech: hotovo ${p.stage.done}/${p.stage.total} dílků (${p.stage.length} ${unit()})`
     : 'Hledám první řešení po částech…';
@@ -1124,6 +1172,36 @@ function renderBests() {
     b.onclick = () => choose(top.alg, true);
     return b;
   }));
+}
+
+/**
+ * Styly: nejlepší řešení (podle zvoleného pohledu) z každé skupiny podle tahů, které
+ * používá – jen R a U, s M, s F, s D, s L… Místo několika skoro stejných variant si
+ * vybereš, co ti sedí do ruky.
+ */
+const groupOf = (alg) => {
+  let bases;
+  try { bases = new Set(model.steps(alg).map((m) => m.base ?? String(m))); } catch { return null; }
+  const rest = [...bases].filter((b) => b !== 'U' && b !== 'R').sort();
+  return rest.length ? `R U + ${rest.join(' ')}` : bases.has('R') ? 'jen R U' : [...bases].sort().join(' ');
+};
+function renderGroups() {
+  const box = $('search-styles');
+  const list = model.id !== 'sq1' ? sortedResults() : [];
+  const groups = new Map();
+  for (const x of list) {
+    const st = groupOf(x.alg);
+    if (st && !groups.has(st)) groups.set(st, x);
+  }
+  box.hidden = groups.size < 2;
+  if (box.hidden) { box.replaceChildren(); return; }
+  box.replaceChildren(el('span', { className: 'styles-head', textContent: `Podle stylu (${VIEWS[view].label.toLowerCase()}):` }),
+    ...[...groups].slice(0, 8).map(([st, x]) => {
+      const b = el('button', { type: 'button', className: `style-chip${x.alg === ui.chosen ? ' on' : ''}`, title: x.alg },
+        el('b', { textContent: st }), el('small', { textContent: `${x.m.length} ${unit()} · ${x.score.total.toFixed(1)}` }));
+      b.onclick = () => choose(x.alg, true);
+      return b;
+    }));
 }
 
 /** Přepínač pohledu nad výsledky. */
@@ -1263,6 +1341,7 @@ function renderResults() {
   ranked = null;
   renderStyleFilter();
   renderBests();
+  renderGroups();
   renderPareto();
   const list = sortedResults();
   const shown = num('opt-results', 1, 500);
@@ -1619,6 +1698,7 @@ export function initLab({ onSub, openSet } = {}) {
     const res = calibrate(P(), ui.ergo, mine);
     if (!res.ok) { $('ergo-calibration').textContent = res.reason; return; }
     ui.ergo = res.config;
+    delete ui.ergo.prefBase;
     renderErgo();
     ergoChanged();
     $('ergo-calibration').textContent = res.changes.length
@@ -1627,13 +1707,22 @@ export function initLab({ onSub, openSet } = {}) {
       : `Podle ${res.used} algoritmů váhy sedí, nic se nezměnilo.`;
   };
   $('ergo-prefs').onclick = () => {
-    const res = learnPreferences(P(), ui.ergo, preferencesOf(model.id));
+    const base = prefConfig();
+    const res = learnPreferences(P(), base, preferencesOf(model.id));
     if (!res.ok) { $('ergo-calibration').textContent = res.reason; return; }
-    ui.ergo = res.config;
-    renderErgo();
-    ergoChanged();
-    $('ergo-calibration').textContent = `Podle ${res.used} voleb (nové hodnocení souhlasí s ${res.agree}): `
-      + (res.changes.length ? res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ') : 'váhy sedí, nic se nezměnilo.');
+    applyPrefs(res, base);
+  };
+  $('ergo-compare-count').value = String(compareCount());
+  $('ergo-compare-count').onchange = () => compareCount(Number($('ergo-compare-count').value));
+  $('ergo-compare').onclick = () => {
+    const base = prefConfig();
+    openCompare({ puzzle: P(), config: () => base, count: Number($('ergo-compare-count').value) || 20, onApply: (res) => applyPrefs(res, base) })
+      .addEventListener('close', renderCompare);
+  };
+  $('ergo-compare-clear').onclick = () => {
+    if (!confirm('Smazat všechna porovnání a volby z generátoru? Váhy zůstanou, jak jsou (vrátíš je tlačítkem Výchozí hodnoty).')) return;
+    clearPreferences(model.id);
+    renderCompare();
   };
   $('ergo-reset').onclick = () => {
     $('ergo-calibration').textContent = '';
@@ -1742,6 +1831,9 @@ function libraryAlgs() {
     try { out.push(toModel(a.alg.replace(/[()]/g, ' ').trim())); } catch { /* jiný zápis */ }
     if (out.length >= 150) break;
   }
+  // a známé oblíbené algoritmy skladačů (PLL, OLL, F2L ze sbírky): standardní algoritmus
+  // případu se najde hned, i když je delší, než kam hledání dojde
+  if (model.id === '333') for (const c of CORPUS) { try { out.push(toModel(c.ref)); } catch { /* jiný zápis */ } }
   return out;
 }
 

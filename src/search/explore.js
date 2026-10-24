@@ -225,6 +225,16 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   tasks.push({ label: 'úseky', refine: true });
   const fullTask = { label: null, moves, problem: full, full: true, shard, ...(proof.cleared > 1 ? { resume: proof.cleared } : {}) };
   tasks.push(fullTask);
+  // pohodlné menší sady (jen R U, R U F, R U s M…) i když už řešení je: pohodlné algoritmy
+  // bývají delší než nejkratší řešení s celou sadou (Ub-perm: 7 tahů s M, ale oblíbený
+  // má 11 tahů jen z R a U) a úplná sada do takové délky nedojde
+  if (!hard && P.ergonomics === 'cube' && bases.length >= 3) {
+    subsetsOf(bases).slice(0, 4).forEach((sub, i) => {
+      if (!mine(i)) return;
+      const set = new Set(sub);
+      tasks.push({ label: sub.join(' '), moves: moves.filter((m) => set.has(m.base)), problem: null });
+    });
+  }
   const comfort = P.ergonomics === 'cube' && options.comfort !== false ? { label: 'pohodlí', comfort: true, rounds: 0, doneLengths: new Set(resume.comfortDone ?? []), cur: null } : null;
   if (comfort) tasks.push(comfort);
   const costs = comfort ? costModel(held, config) : null;

@@ -3,20 +3,24 @@ import { FLOW_DEFAULTS } from './flow.js';
 // Výchozí parametry ergonomické funkce. Vše je laditelné – hodnoty jsou
 // výchozí odhad pro pravou ruku v home gripu (palec vpředu, ukazováček nahoře).
 
-// Váha tahu podle otočení: [po směru, proti směru, o 180°].
+// Váha tahu podle otočení: [po směru, proti směru, o 180°]. Tahy R U r M L D F B, přehmaty,
+// triggery a návaznost doladěné podle sbírky oblíbených algoritmů skladačů (bench/fit.mjs,
+// corpus.js): oblíbený algoritmus má v pohledu Nejrychlejší vycházet líp než alternativy pro
+// stejný případ – předtím u 77 % dvojic, teď u 92 % (na případech, které ladění nevidělo,
+// 71 → 84 %); každá váha se smí posunout nejvýš o třetinu dolů a o polovinu nahoru.
 export const DEFAULT_MOVE_WEIGHTS = {
-  R: [1.0, 1.0, 1.4],
-  U: [1.0, 1.0, 1.4],
-  r: [1.2, 1.2, 1.7],
-  M: [1.7, 1.4, 2.0],
-  L: [1.5, 1.4, 2.0],
-  D: [1.5, 1.4, 2.2],
-  F: [1.7, 1.8, 2.4],
+  R: [0.7, 0.7, 0.9],
+  U: [0.8, 0.7, 1.9],
+  r: [1.8, 1.6, 1.8],
+  M: [2.5, 1.8, 2.4],
+  L: [2.3, 2.1, 2.0],
+  D: [1.6, 1.5, 2.2],
+  F: [1.7, 1.8, 2.7],
   l: [1.8, 1.7, 2.4],
   u: [2.4, 2.4, 3.2],
   f: [2.4, 2.6, 3.2],
   d: [2.8, 2.8, 3.6],
-  B: [3.0, 3.0, 3.6],
+  B: [2.6, 2.6, 2.9],
   S: [3.0, 3.0, 3.6],
   E: [3.2, 3.2, 3.8],
   b: [3.6, 3.6, 4.2],
@@ -44,14 +48,14 @@ export const DEFAULT_CONFIG = {
   rotationPenalty: 4,
   // Zápěstí: kolik čtvrtotáček jedním směrem zvládne bez přehmatu.
   maxWristTurn: 2,
-  // Přehmat stojí zhruba jako tah a půl (ověřeno na známých rychlých PLL/OLL).
-  regripPenalty: 1.5,
-  gripChangePenalty: 0.6,
+  // Přehmat stojí zhruba jako tah a půl běžného tahu (doladěno, bench/fit.mjs).
+  regripPenalty: 1.0,
+  gripChangePenalty: 0.7,
   // Natočení horní vrstvy před algoritmem a po něm (AUF): cena tahu U × tento
   // násobič (AUF se z části překrývá s rozpoznáním a dotočením; 0 = nepočítat).
   aufScale: 0.5,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
-  triggerBonusScale: 1,
+  triggerBonusScale: 1.5,
   // Levák: hodnotí se zrcadlový algoritmus (R ↔ L', …).
   leftHanded: false,
   // Návaznost tahů – prstoklad (viz flow.js).
