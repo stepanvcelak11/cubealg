@@ -177,6 +177,10 @@ export function openGenerator(ctx) {
     if (todo.length > cards.length) list.append(el('p', { className: 'hint', textContent: `… a dalších ${todo.length - cards.length} (zobrazeno prvních ${cards.length})` }));
   }
 
+  /** Hledání se nespustilo: proč (bez internetu = aplikace není v zařízení uložená celá). */
+  const failText = (msg) => (navigator.onLine === false
+    ? 'Hledání se nespustilo: bez internetu chybí část aplikace – otevři ji jednou s internetem (Nastavení → Bez internetu ukáže, jestli je uložená celá)'
+    : `Hledání se nespustilo: ${msg}`);
   /** Najde algoritmus pro jeden případ (Promise → { alg, pre, post, display } | null). */
   let resolveCurrent = null; // zastavení ukončí i probíhající hledání
   // vrací { found: Map, optimal: dokázaně nejpohodlnější }; seeds = dosavadní řešení (navázání)
@@ -203,7 +207,7 @@ export function openGenerator(ctx) {
     }), {
       onSolutions: (items) => { for (const it of items) add(it); onFound?.(found); },
       onDone: (d) => { if (found.size) remember(d); resolve({ found, optimal: !!d.speedOptimal }); },
-      onError: () => resolve({ found, optimal: false }),
+      onError: (e) => resolve({ found, optimal: false, error: e?.message || 'hledání se nespustilo' }),
     });
   });
   const learned = []; // algoritmy nalezené v tomto běhu – knihovna pro další případy
@@ -331,7 +335,9 @@ export function openGenerator(ctx) {
       if (!running) break;
       x.tried = true;
       if (res.found.size) applyResult(x, res);
-      if (x.state) renderChoices(x); else x.out.replaceChildren(el('span', { className: 'ko', textContent: 'nenalezeno' }));
+      if (x.state) renderChoices(x); else x.out.replaceChildren(el('span', { className: 'ko', textContent: res.error ? failText(res.error) : 'nenalezeno' }));
+      // hledání se vůbec nespustilo (chybí soubory bez internetu…): dál nemá smysl
+      if (res.error && !res.found.size) { status.textContent = failText(res.error); break; }
       markSeg(x);
       updateSave();
       showTitle();

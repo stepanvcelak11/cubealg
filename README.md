@@ -263,8 +263,17 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     tři „nejlepší zatím“, které se během hledání mění; klepnutím se otevřou.
     Odhad vzdálenosti zesiluje tabulka všech stavů do ~5 tahů od cíle.
 
-Aplikace funguje i offline a jde nainstalovat na plochu (PWA). Data se ukládají
-v prohlížeči (localStorage); zálohu jde stáhnout a obnovit v nastavení.
+Aplikace funguje i offline a jde nainstalovat na plochu (PWA) – celá, včetně hledání
+algoritmů, generátoru sad a testu metody (všechno počítá prohlížeč: WebAssembly ve
+workerech, žádný server), se stejnými výsledky jako online. `sw.js`: instalace uloží
+všechny soubory verze ze seznamu `precache.json` (každý zvlášť, s opakováním) a starou
+verzi smaže, až když je nová celá (značka `__complete__`) – nepovedená aktualizace na
+slabém signálu tak offline režim nerozbije. Soubory se pak berou z uložené verze (žádné
+čekání na síť), nová verze se projeví při dalším otevření. Nastavení → Bez internetu
+ukáže, jestli je aplikace uložená celá. Data se ukládají v prohlížeči (localStorage,
+s žádostí o trvalé úložiště); zálohu jde stáhnout a obnovit v nastavení. Testy:
+`e2e/offline.test.mjs` (Lab, generátor, test metody, timer bez sítě) a
+`e2e/offline-update.test.mjs` (aktualizace přerušená výpadkem).
 
 ## Hlavolamy v Labu
 

@@ -44,12 +44,35 @@ function download() {
 
 let installPrompt = null;
 
+/** Je aplikace uložená pro použití bez internetu? (service worker, sw.js) */
+async function offlineStatus() {
+  const out = $('set-offline');
+  const sw = navigator.serviceWorker;
+  if (!sw || !location.protocol.startsWith('http')) { out.textContent = 'Tenhle prohlížeč (nebo otevření ze souboru) offline režim neumí.'; return; }
+  out.textContent = 'Zjišťuji…';
+  const reg = await Promise.race([sw.ready, new Promise((r) => setTimeout(() => r(null), 8000))]);
+  if (!reg) { out.textContent = 'Offline režim se ještě nezapnul – otevři aplikaci jednou s internetem.'; return; }
+  const answer = new Promise((resolve) => {
+    const on = ({ data }) => { if (data?.type === 'offline-status') { sw.removeEventListener('message', on); resolve(data); } };
+    sw.addEventListener('message', on);
+    setTimeout(() => resolve(null), 60000);
+  });
+  (sw.controller ?? reg.active)?.postMessage({ type: 'offline-status' });
+  const s = await answer;
+  const persisted = await navigator.storage?.persisted?.().catch(() => false);
+  out.textContent = !s ? 'Stav se nepodařilo zjistit – zkus to znovu.'
+    : s.dev ? 'Vývojová verze: soubory se ukládají průběžně, jak je aplikace načítá.'
+    : s.ready ? `✓ Připraveno: celá aplikace je uložená v zařízení (${s.files} souborů), takže hledání algoritmů, test metody, trenažér i timer fungují i bez internetu – stejně jako online.${persisted ? '' : ' Prohlížeč ale může data při nedostatku místa smazat – aplikaci si raději přidej na plochu.'}`
+    : 'Ještě se neuložila celá (chybí připojení při stahování) – nech aplikaci chvíli otevřenou online.';
+}
+
 export function initSettings() {
   const dialog = $('settings-dialog');
   $('settings-btn').onclick = () => {
     $('set-voice').checked = timerOptions().voice;
     $('set-smart-paint').checked = storage.get('ergocube.lab.smartPaint') === true;
     $('set-status').textContent = '';
+    offlineStatus();
     dialog.showModal();
   };
   $('set-voice').onchange = () => timerOptions({ voice: $('set-voice').checked });

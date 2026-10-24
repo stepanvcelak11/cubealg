@@ -116,4 +116,6 @@ window.addEventListener('hashchange', receiveShared);
 // Offline režim (jen přes http/https, ne z file://).
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* bez offline režimu */ });
+  // data (metody, algoritmy, časy) ať prohlížeč při nedostatku místa nesmaže
+  navigator.storage?.persist?.().catch(() => {});
 }

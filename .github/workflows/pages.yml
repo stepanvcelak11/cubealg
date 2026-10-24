@@ -48,7 +48,7 @@ jobs:
       - name: Připravit soubory
         run: |
           mkdir _site
-          cp -r index.html styles.css src icons manifest.webmanifest sw.js _site/
+          cp -r index.html styles.css src icons fonts manifest.webmanifest sw.js _site/
           sed -i "s/__VERSION__/${GITHUB_SHA::12}/" _site/sw.js
           (cd _site && find . -type f ! -name sw.js ! -name precache.json | sed 's|^\./||' | sort \
             | python3 -c 'import json,sys; print(json.dumps(["./"] + [l.strip() for l in sys.stdin]))' > precache.json)
