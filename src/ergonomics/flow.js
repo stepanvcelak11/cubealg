@@ -17,7 +17,7 @@ const WRIST_SIGN = { R: 1, r: 1, L: -1, l: -1 };
 export const FLOW_DEFAULTS = {
   flowScale: 1.5,     // násobič celé složky (0 = vypnuto)
   reuse: 0.4,         // stejný prst dvakrát po sobě
-  sameHand: 0.2,      // dva prstové tahy po sobě jednou rukou
+  sameHand: 0.4,      // dva prstové tahy po sobě jednou rukou
   alternate: 0,       // bonus za střídání rukou (podle oblíbených algoritmů nic nepřidá, bench/fit.mjs)
 };
 

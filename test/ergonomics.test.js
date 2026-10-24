@@ -31,7 +31,8 @@ test('trigger snižuje skóre oproti stejným tahům bez bonusu', () => {
   const withBonus = scoreAlg("R U R' U'");
   const without = scoreAlg("R U R' U'", { triggerBonusScale: 0 });
   assert.ok(withBonus.total < without.total);
-  assert.equal(withBonus.breakdown.triggerBonus, -1.2);
+  // bonus sexy move 1,2 × výchozí násobič bonusů
+  assert.equal(withBonus.breakdown.triggerBonus, -Math.round(1.2 * DEFAULT_CONFIG.triggerBonusScale * 100) / 100);
 });
 
 test('přehmat zápěstí při opakovaném R jedním směrem', () => {

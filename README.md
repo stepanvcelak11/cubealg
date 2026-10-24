@@ -233,8 +233,8 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     z generátoru); základ (`prefBase`) jsou váhy před prvním doladěním, ať se stejnými
     odpověďmi váhy neposouvají dál.
     **Výchozí váhy** jsou doladěné stejným výpočtem na sbírce (`bench/fit.mjs`: oblíbený
-    algoritmus má vycházet líp než alternativy – předtím 77 % dvojic, teď 92 %, na
-    případech mimo ladění 71 → 84 %), každá váha nejvýš o třetinu dolů / polovinu nahoru;
+    algoritmus má vycházet líp než alternativy – předtím 77 % dvojic, teď 93 %, na
+    případech mimo ladění 71 → 83 %; navíc tvůj případ: 7 tahů před 15 obalenými F), každá váha nejvýš o třetinu dolů / polovinu nahoru;
     ladí se i násobič bonusů za triggery. Uložené váhy, které sis neměnil, přejdou na nové.
     Oblíbené algoritmy sbírky zkouší hledání jako knihovnu (s nastavením a dokončením),
     pohodlné menší sady tahů (jen R U, R U s M…) prohledává i tehdy, když už má kratší

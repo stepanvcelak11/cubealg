@@ -6,21 +6,21 @@ import { FLOW_DEFAULTS } from './flow.js';
 // Váha tahu podle otočení: [po směru, proti směru, o 180°]. Tahy R U r M L D F B, přehmaty,
 // triggery a návaznost doladěné podle sbírky oblíbených algoritmů skladačů (bench/fit.mjs,
 // corpus.js): oblíbený algoritmus má v pohledu Nejrychlejší vycházet líp než alternativy pro
-// stejný případ – předtím u 77 % dvojic, teď u 92 % (na případech, které ladění nevidělo,
-// 71 → 84 %); každá váha se smí posunout nejvýš o třetinu dolů a o polovinu nahoru.
+// stejný případ – předtím u 77 % dvojic, teď u 93 % (na případech, které ladění nevidělo,
+// 71 → 83 %); každá váha se smí posunout nejvýš o třetinu dolů a o polovinu nahoru.
 export const DEFAULT_MOVE_WEIGHTS = {
-  R: [0.7, 0.7, 0.9],
-  U: [0.8, 0.7, 1.9],
-  r: [1.8, 1.6, 1.8],
-  M: [2.5, 1.8, 2.4],
+  R: [0.7, 0.8, 0.9],
+  U: [0.8, 0.7, 1.8],
+  r: [1.8, 1.8, 1.9],
+  M: [2.6, 1.8, 2.4],
   L: [2.3, 2.1, 2.0],
   D: [1.6, 1.5, 2.2],
-  F: [1.7, 1.8, 2.7],
+  F: [1.7, 1.9, 2.2],
   l: [1.8, 1.7, 2.4],
   u: [2.4, 2.4, 3.2],
   f: [2.4, 2.6, 3.2],
   d: [2.8, 2.8, 3.6],
-  B: [2.6, 2.6, 2.9],
+  B: [2.7, 2.7, 2.7],
   S: [3.0, 3.0, 3.6],
   E: [3.2, 3.2, 3.8],
   b: [3.6, 3.6, 4.2],
@@ -55,7 +55,7 @@ export const DEFAULT_CONFIG = {
   // násobič (AUF se z části překrývá s rozpoznáním a dotočením; 0 = nepočítat).
   aufScale: 0.5,
   // Násobič bonusů za rozpoznané triggery (0 = vypnuto).
-  triggerBonusScale: 1.5,
+  triggerBonusScale: 1.2,
   // Levák: hodnotí se zrcadlový algoritmus (R ↔ L', …).
   leftHanded: false,
   // Návaznost tahů – prstoklad (viz flow.js).

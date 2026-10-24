@@ -16,7 +16,8 @@ const prior = Number(process.argv[2] ?? 0.6);
 const config = { triggers: buildTriggers() };
 // a pár rozhodnutí skladačů navíc (tvůj případ: dva rohy prohozené mezi vrstvami)
 const VERDICTS = [{ better: 'U F2 U2 R2 U R2 F2', worse: "U' F' U' R U R' U' R U R' U' R U R' F" }];
-const pairsOf = (cases) => [...cases.flatMap((c) => c.alts.map((a) => ({ better: c.ref, worse: a }))), ...VERDICTS];
+// (rozhodnutí skladače váží jako 20 dvojic ze sbírky – jinak by ho sbírka přehlasovala)
+const pairsOf = (cases) => [...cases.flatMap((c) => c.alts.map((a) => ({ better: c.ref, worse: a }))), ...VERDICTS.flatMap((v) => Array(20).fill(v))];
 // jako pohled Nejrychlejší: nepohodlnost + základní čas tahu
 const value = (alg, cfg) => scoreAlg(alg, cfg).total + MOVE_TIME * alg.split(' ').length;
 const agree = (cfg, pairs) => pairs.filter((p) => value(p.better, cfg) < value(p.worse, cfg)).length;
@@ -25,7 +26,8 @@ const train = CORPUS.filter((_, i) => i % 2 === 0), test = CORPUS.filter((_, i) 
 for (const [label, fitOn, check] of [['polovina → kontrola na druhé', train, test], ['všechny', CORPUS, CORPUS]]) {
   const res = learnPreferences(P, config, pairsOf(fitOn), { prior, trust: [0.67, 1.5] });
   const cfg = { ...res.config, triggers: config.triggers };
-  const pc = pairsOf(check);
+  const pc = check.flatMap((c) => c.alts.map((a) => ({ better: c.ref, worse: a })));
+  console.log(`  tvůj případ (7 tahů před 15): ${VERDICTS.every((v) => value(v.better, cfg) < value(v.worse, cfg)) ? 'ano' : 'NE'}`);
   console.log(`\n${label}: oblíbený vychází lépe ${agree(config, pc)}/${pc.length} → ${agree(cfg, pc)}/${pc.length}`);
   if (fitOn === CORPUS) {
     for (const c of res.changes.sort((a, b) => Math.abs(b.to - b.from) - Math.abs(a.to - a.from))) console.log(`  ${featureLabel(c.key).padEnd(22)} ${c.from} → ${c.to}`);
