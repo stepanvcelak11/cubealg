@@ -132,7 +132,7 @@ export function costModel(held, config, discount = []) {
  * těchto slev a snížená cena je dolní mez skutečného hodnocení.
  */
 export function lowerCosts(costs, config) {
-  const scale = config.triggerBonusScale ?? 1;
+  const scale = fullConfig(config).triggerBonusScale;
   const keys = costs.moves.map((m) => `${m.base}${m.amount}`);
   const allowed = new Set(keys);
   const usable = (config.triggers ?? []).filter((t) => t.moves.every((k) => allowed.has(k)));
@@ -320,7 +320,7 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
       const bmoves = [...moves, ...blocks.list.map((b) => ({ base: '#', amount: 1, seq: b.seq.map((i) => moves[i]) }))];
       blocks.problem = prepare({ puzzle: bp, constraints, moves: bmoves, targets, nearLimit: Math.floor(nearLimit / 4), onTable });
       blocks.costs = costModel([...held, ...blocks.list.map((b) => b.seq.map((i) => held[i]))], config,
-        [...held.map(() => 0), ...blocks.list.map((b) => b.bonus * (config.triggerBonusScale ?? 1))]);
+        [...held.map(() => 0), ...blocks.list.map((b) => b.bonus * fullConfig(config).triggerBonusScale)]);
     }
     const best = tracker.best('speed');
     const bound = totalOf(best) + 1e-6;
