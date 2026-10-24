@@ -74,29 +74,71 @@ function keyOf(loc, refs) {
 }
 
 /**
- * Sloučí tahy se stejným základem, i když jsou mezi nimi tahy, se kterými
- * komutují (R R → R2, L R' L' → R'). Vrací null, když vznikne nepovolený tah.
+ * Sloučí tahy, které jsou dohromady jeden tah, i když jsou mezi nimi tahy, se kterými
+ * komutují: stejný základ (R R → R2, L R' L' → R') i různé vrstvy jedné osy
+ * (M' r' → R', r R' → M'). mergeOf(a, b) = index výsledného tahu, -2 = zruší se,
+ * -1 = nesloučí se, -3 = vznikne nepovolený tah (pak null).
  */
-function normalize(seq, moves, indexOf, orderOf, commutes) {
+function normalize(seq, mergeOf, commutes) {
   const out = [];
-  for (const m of seq) {
-    const cur = moves[m];
-    // hledá stejný základ pozpátku přes komutující tahy
+  const push = (m) => {
     let j = out.length - 1;
-    while (j >= 0 && moves[out[j]].base !== cur.base && commutes(out[j], m)) j--;
-    if (j >= 0 && moves[out[j]].base === cur.base) {
-      const order = orderOf(cur.base);
-      let amount = (((moves[out[j]].amount + cur.amount) % order) + order) % order;
-      out.splice(j, 1);
-      if (amount === 0) continue;
-      if (order === 4 && amount === 3) amount = -1;
-      if (order === 3 && amount === 2) amount = -1;
-      const idx = indexOf.get(`${cur.base}${amount}`);
-      if (idx === undefined) return null;
-      out.splice(j, 0, idx);
-    } else out.push(m);
-  }
+    while (j >= 0 && mergeOf(out[j], m) === -1 && commutes(out[j], m)) j--;
+    const r = j >= 0 ? mergeOf(out[j], m) : -1;
+    if (r === -3) return false;
+    if (r === -1) { out.push(m); return true; }
+    // sloučený tah na místo prvního; ten se může sloučit i s tahy před ním
+    const tail = out.splice(j);
+    tail.shift();
+    if (r !== -2 && !push(r)) return false;
+    for (const t of tail) if (!push(t)) return false;
+    return true;
+  };
+  for (const m of seq) if (!push(m)) return null;
   return out;
+}
+
+const SIMPLIFY = new WeakMap();
+/** Komutace a slučování tahů sady (jednou pro sadu tahů). */
+function mergeContext(puzzle, moves) {
+  let ctx = SIMPLIFY.get(moves);
+  if (ctx) return ctx;
+  const indexOf = new Map(moves.map((m, i) => [`${m.base}${m.amount}`, i]));
+  const perms = moves.map((m) => puzzle.perm(m));
+  const n = puzzle.size;
+  const keyOfPerm = (p) => p.join(',');
+  const singles = new Map(perms.map((p, i) => [keyOfPerm(p), i]));
+  const identity = keyOfPerm(Array.from({ length: n }, (_, k) => k));
+  const memo = new Map(), merges = new Map();
+  const commutes = (a, b) => {
+    const key = a * 1024 + b;
+    if (!memo.has(key)) { const p = perms[a], q = perms[b]; let same = true; for (let k = 0; k < n && same; k++) same = q[p[k]] === p[q[k]]; memo.set(key, same); }
+    return memo.get(key);
+  };
+  const mergeOf = (a, b) => {
+    const key = a * 1024 + b;
+    if (!merges.has(key)) {
+      const x = moves[a], y = moves[b];
+      let r = -1;
+      if (x.base === y.base) {
+        const order = puzzle.orderOf(x.base);
+        let amount = (((x.amount + y.amount) % order) + order) % order;
+        if (order === 4 && amount === 3) amount = -1;
+        if (order === 3 && amount === 2) amount = -1;
+        r = amount === 0 ? -2 : indexOf.get(`${x.base}${amount}`) ?? -3;
+      } else if (commutes(a, b)) {
+        // různé vrstvy jedné osy: dohromady jeden povolený tah, nebo nic
+        const p = perms[a], q = perms[b];
+        const c = keyOfPerm(Array.from(p, (_, k) => q[p[k]]));
+        r = c === identity ? -2 : singles.get(c) ?? -1;
+      }
+      merges.set(key, r);
+    }
+    return merges.get(key);
+  };
+  ctx = { commutes, mergeOf };
+  SIMPLIFY.set(moves, ctx);
+  return ctx;
 }
 
 /**
@@ -106,26 +148,13 @@ function normalize(seq, moves, indexOf, orderOf, commutes) {
  * @param {{base:string, amount:number}[]} moves povolené tahy
  * @param {string} alg
  */
-const SIMPLIFY = new WeakMap();
 export function simplify(puzzle, moves, alg) {
   if (!alg) return '';
   const indexOf = new Map(moves.map((m, i) => [`${m.base}${m.amount}`, i]));
   const seq = puzzle.parseAlg(alg).map((m) => indexOf.get(`${m.base}${m.amount}`));
   if (seq.some((i) => i === undefined)) return null;
-  let ctx = SIMPLIFY.get(moves);
-  if (!ctx) {
-    const perms = moves.map((m) => puzzle.perm(m));
-    const n = puzzle.size;
-    const memo = new Map();
-    ctx = (a, b) => {
-      const key = a * 1024 + b;
-      if (!memo.has(key)) { const p = perms[a], q = perms[b]; let same = true; for (let k = 0; k < n && same; k++) same = q[p[k]] === p[q[k]]; memo.set(key, same); }
-      return memo.get(key);
-    };
-    SIMPLIFY.set(moves, ctx);
-  }
-  const commutes = ctx;
-  const out = normalize(seq, moves, indexOf, (base) => puzzle.orderOf(base), commutes);
+  const { commutes, mergeOf } = mergeContext(puzzle, moves);
+  const out = normalize(seq, mergeOf, commutes);
   if (!out) return null;
   // komutující sousedy do kanonického pořadí (U2 D' i D' U2 je totéž)
   for (let swapped = true; swapped;) {
@@ -173,18 +202,7 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
   const maxW = Math.min(maxWindow ?? 2 * table.depth + 2, 2 * table.depth + 2);
   const winLoc = new Uint8Array(n);
   const target = new Uint8Array(n);
-  const comm = new Map();
-  const commutes = (a, b) => {
-    const key = a * 1024 + b;
-    if (!comm.has(key)) {
-      const p = perms[a], q = perms[b];
-      let same = true;
-      for (let k = 0; k < n && same; k++) same = q[p[k]] === p[q[k]];
-      comm.set(key, same);
-    }
-    return comm.get(key);
-  };
-  const orderOf = (base) => puzzle.orderOf(base);
+  const { commutes, mergeOf } = mergeContext(puzzle, moves);
 
   /** Projde náhrady okna cur[i … i+len) a pro každou zavolá visit(seq, text); true = konec. */
   const replacements = (i, len, visit, from = 0) => {
@@ -201,7 +219,7 @@ export function improve(table, alg, value, { deadline, onImproved, maxWindow, ki
         let same = true;
         for (let r = 0; r < refs.length && same; r++) same = b.loc[refs[r]] === target[refs[r]];
         if (!same) continue;
-        const seq = normalize([...prefix, ...a.seq, ...b.seq, ...suffix], moves, indexOf, orderOf, commutes);
+        const seq = normalize([...prefix, ...a.seq, ...b.seq, ...suffix], mergeOf, commutes);
         if (!seq || !seq.length) continue;
         if (visit(seq, toString(seq))) return true;
       }

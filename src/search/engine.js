@@ -124,9 +124,18 @@ export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(),
   const classTables = (constraints['#classes'] ?? []).map((c) => classTable(puzzle, c, pieces, moves, invTrans, cache));
 
   // Kanonické pořadí tahů a jejich zápis.
+  // Navíc dvojice, která je dohromady jen jeden povolený tah (nebo nic): M' r' = R', r R' = M'
+  // – zbytečně dlouhý zápis, a hodnocení by ho mohlo vzít za pohodlnější.
   const redundant = new Uint8Array(moveCount * moveCount);
+  const solvedState = puzzle.solved();
+  const key = (st) => st.join(',');
+  // (bloky – víc tahů jako jeden krok – stav po sobě nemají, ty se neporovnávají)
+  const apply = (st, m) => { try { return puzzle.applyAlg(st, [m]); } catch { return null; } };
+  const after = moves.map((m) => apply(solvedState, m));
+  const single = new Set([key(solvedState), ...after.filter(Boolean).map(key)]);
   for (let a = 0; a < moveCount; a++) for (let b = 0; b < moveCount; b++) {
-    redundant[a * moveCount + b] = puzzle.redundant(moves[a], moves[b]) ? 1 : 0;
+    const both = after[a] && after[b] && apply(after[a], moves[b]);
+    redundant[a * moveCount + b] = puzzle.redundant(moves[a], moves[b]) || (both && single.has(key(both))) ? 1 : 0;
   }
 
   return {
