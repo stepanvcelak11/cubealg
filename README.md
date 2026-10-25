@@ -284,6 +284,25 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
     tři „nejlepší zatím“, které se během hledání mění; klepnutím se otevřou.
     Odhad vzdálenosti zesiluje tabulka všech stavů do ~5 tahů od cíle.
 
+## Chytrá kostka (Bluetooth)
+
+Nastavení → **Chytrá kostka**: GAN Gen2/3/4 (GAN 356 i Carry, i3, 12 ui, 14 ui, Mini ui…) a
+MoYu AI 2023 přes Web Bluetooth (Chrome na Androidu a počítači, na iPhonu prohlížeč Bluefy).
+`src/smartcube/`: `aes.js` (AES-128, ověřený testovacími vektory FIPS-197), `gan.js`
+(protokoly podle knihovny gan-web-bluetooth, MIT – přepsané bez závislostí a porovnané s ní
+na stejných zprávách), `index.js` (připojení, MAC adresa z reklamy nebo zadaná, stav kostky,
+události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kostku pro testy),
+`recon.js` (dvojité tahy z čtvrttahů, plynulé úseky, rozbor po krocích).
+- **Timer:** pozná, že je kostka zamíchaná podle zamíchání, první tah spustí čas (s inspekcí
+  ji spustí zamíchání), složení ho zastaví – čas podle hodin kostky; tahy se uloží ke složení.
+- **Rozbor složení** po krocích aktivní metody (stejně jako test metody): pauza před krokem
+  (rozpoznání), točení, tahy, tempo, nejpomalejší krok; u posledního složení v timeru, průměr
+  v Statistikách („Kde ztrácím čas“) a u každého složení v seznamu.
+- **Trenažér:** pozná nastavený případ (až kostka po nastavení chvíli stojí), první tah spustí
+  čas, vyřešení ho zastaví, ověří, jestli šel přesně algoritmus.
+- **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
+  změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
+
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA) – celá, včetně hledání
 algoritmů, generátoru sad a testu metody (všechno počítá prohlížeč: WebAssembly ve
 workerech, žádný server), se stejnými výsledky jako online. `sw.js`: instalace uloží

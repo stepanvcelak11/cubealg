@@ -1272,3 +1272,47 @@ test('Tahy a váhy: porovnání dvojic doladí váhy, nové váhy se uloží', a
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('chytrá kostka (napodobená): timer se spustí a zastaví sám, rozbor po krocích; trenažér pozná a změří případ', async () => {
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
+  ] } };
+  const { p, ctx, errors } = await open('timer', { 'ergocube.timer': { event: '333', inspection: false, groups: {} }, 'ergocube.guides': guides });
+  await p.waitForFunction(() => /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent) && !document.querySelector('#t-scramble').classList.contains('loading'), null, { timeout: 40000 });
+  const scramble = (await p.locator('#t-scramble').innerText()).trim();
+  await p.evaluate(() => window.__smartCube.simulate());
+  assert.equal(await p.locator('#cube-chip').isVisible(), true);
+  assert.match(await p.locator('#t-hint').innerText(), /zamíchej podle zamíchání/);
+  await p.evaluate((s) => window.__smartCube.feed(s, 40), scramble);
+  assert.match(await p.locator('#t-hint').innerText(), /Zamícháno ✓/);
+  const solve = await p.evaluate(async (s) => (await import('./src/ui/models.js')).labModel('333').invertAlg(s), scramble);
+  await p.evaluate((s) => window.__smartCube.feed(s, 100), solve);
+  await p.waitForFunction(() => (JSON.parse(localStorage.getItem('ergocube.solves'))?.['333'] ?? []).length === 1);
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.solves'))['333'][0]);
+  assert.ok(saved.r?.m && saved.r.t.length >= 10, JSON.stringify(saved.r));
+  assert.ok(saved.t > 500 && saved.t < 60000, String(saved.t));
+  assert.match(await p.locator('#t-recon').innerText(), /Rozbor složení[\s\S]*Hrana vpředu[\s\S]*Hrana vpravo/);
+  // trenažér: případ (roh) – nastavení na kostce, algoritmus změří a ověří
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    const { algs } = await import('./src/ui/store.js');
+    const m = labModel('333');
+    const names = ['URF', 'U', 'F', 'R'];
+    const home = m.home(names);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, names.includes(n) ? 'solved' : 'ignore']));
+    algs.add({ alg: "R U R' U' R U R'", task: { puzzle: '333', constraints, colorsA: m.applyMoves(home, "R U' R' U R U' R'"), colorsB: home }, name: 'Roh' });
+  });
+  await p.locator('.tabbar [data-tab="trainer"]').tap();
+  assert.match(await p.locator('#tr-hint').innerText(), /nastav případ/);
+  await p.evaluate(() => window.__smartCube.feed("R U' R' U R U' R'", 300));
+  // nastavený, až když kostka chvíli stojí
+  await p.waitForFunction(() => /Případ nastavený ✓/.test(document.querySelector('#tr-hint').textContent), null, { timeout: 3000 });
+  await p.evaluate(() => window.__smartCube.feed("R U R' U' R U R'", 120));
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('ergocube.algs')).find((a) => a.name === 'Roh')?.times?.length === 1);
+  assert.match(await p.locator('.toast').last().innerText(), /Přesně podle algoritmu/);
+  // plynulé úseky pro ergonomii (trenažér)
+  assert.ok(await p.evaluate(() => (JSON.parse(localStorage.getItem('ergocube.smart.segments')) ?? []).length >= 1));
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

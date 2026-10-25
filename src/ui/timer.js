@@ -13,6 +13,10 @@ import { renderPreview } from './preview.js';
 import { partsBefore, describeParts } from './parts.js';
 import { showGuide } from './methods.js';
 import { activeRound, recordAttempt, roundPenalty, renderRound, openRoundSetup, initRounds, endRound } from './compround.js';
+import { smartCube } from '../smartcube/index.js';
+import { mergeQuarters, packMoves } from '../smartcube/recon.js';
+import { applyAlg, solved as solvedCube } from '../core/cube.js';
+import { reconOf, reconView, recordAlgSteps } from './recon.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
@@ -159,6 +163,7 @@ async function newScramble() {
   box.textContent = res.error ? `Chyba: ${res.error}` : current;
   box.dataset.size = current.length > 300 ? 'xs' : current.length > 120 ? 's' : 'm';
   updatePreview();
+  if (stopwatch) cubeReset();
 }
 
 function updatePreview() {
@@ -179,7 +184,7 @@ function render() {
 
   const last = list[list.length - 1];
   const box = $('t-last');
-  if (!last) { box.replaceChildren(); return; }
+  if (!last) { box.replaceChildren(); $('t-recon').replaceChildren(); return; }
   const idx = list.length - 1;
   const penalty = (p, text) => {
     const b = el('button', { type: 'button', className: `chip${last.p === p ? ' on' : ''}`, textContent: text });
@@ -199,6 +204,8 @@ function render() {
       },
     }),
     iconButton(icon('trash', { size: 18 }), { label: 'Smazat poslední složení', className: 'chip', onClick: () => solves.remove(key(), idx) }));
+  // rozbor posledního složení z chytré kostky (po krocích metody)
+  $('t-recon').replaceChildren(...[last.r ? reconView(reconOf(last)) : null].filter(Boolean));
 }
 
 function syncMode() {
@@ -214,6 +221,55 @@ function syncMode() {
 }
 
 let stopwatch;
+
+// --- chytrá kostka: timer se spustí a zastaví sám --------------------------------------------
+// zamíchej podle zamíchání (aplikace pozná, že sedí), první tah spustí čas (s inspekcí ji
+// spustí už zamíchání), složení ho zastaví; čas podle hodin kostky, tahy se uloží
+const cube = { phase: 'off', moves: [], recon: null };
+const cubeEvents = () => ['333', '333oh'].includes(settings.event) && !timerPractice() && isActiveFn();
+const same = (a, b) => a.every((v, i) => v === b[i]);
+function cubeHint() {
+  if (!smartCube.connected || !['333', '333oh'].includes(settings.event)) return;
+  const text = { scramble: 'Chytrá kostka: zamíchej podle zamíchání nahoře', ready: 'Zamícháno ✓ – první tah spustí čas', solving: '' }[cube.phase];
+  if (text !== undefined && stopwatch.state !== 'running') $('t-hint').textContent = text;
+}
+function cubeReset() {
+  cube.phase = smartCube.connected ? 'scramble' : 'off';
+  cube.moves = [];
+  checkScrambled();
+  cubeHint();
+}
+function checkScrambled() {
+  if (!smartCube.connected || cube.phase !== 'scramble' || !current) return;
+  let target;
+  try { target = applyAlg(solvedCube(), current); } catch { return; }
+  if (same(smartCube.state, target)) {
+    cube.phase = 'ready';
+    if (settings.inspection && stopwatch.state === 'idle') stopwatch.startInspection();
+  }
+}
+function initCubeTimer() {
+  smartCube.on('status', cubeReset);
+  smartCube.on('state', () => { if (cube.phase === 'scramble') { checkScrambled(); cubeHint(); } });
+  smartCube.on('move', ({ move, t, state }) => {
+    if (!cubeEvents()) return;
+    if (cube.phase === 'scramble') { checkScrambled(); cubeHint(); return; }
+    if (cube.phase === 'ready') {
+      cube.phase = 'solving';
+      cube.moves = [];
+      stopwatch.startAt(t);
+    }
+    if (cube.phase !== 'solving') return;
+    cube.moves.push({ move, t });
+    if (same(state, solvedCube())) {
+      const merged = mergeQuarters(cube.moves);
+      cube.recon = packMoves(merged);
+      cube.phase = 'scramble';
+      stopwatch.stopAt(t);
+    }
+  });
+  cubeReset();
+}
 
 export function initTimer({ isActive }) {
   isActiveFn = isActive;
@@ -320,7 +376,11 @@ export function initTimer({ isActive }) {
       }
       const d = Date.now();
       const comp = activeRound(key());
-      solves.add(key(), { t: ms, p: comp ? roundPenalty(ms, p) : p, s: current, d });
+      // chytrá kostka: tahy složení s časy (rozbor po krocích metody)
+      const r = cube.recon;
+      cube.recon = null;
+      solves.add(key(), { t: ms, p: comp ? roundPenalty(ms, p) : p, s: current, d, ...(r ? { r } : {}) });
+      if (r) recordAlgSteps({ s: current, r, d });
       if (comp) recordAttempt(key(), d);
       newScramble();
     },
@@ -329,6 +389,7 @@ export function initTimer({ isActive }) {
         idle: 'Podrž mezerník nebo prst, pusť pro start',
         holding: 'Drž…', ready: 'Pusť!', inspecting: 'Inspekce – podrž pro start', running: '',
       }[s];
+      if (s === 'idle' || s === 'inspecting') cubeHint();
     },
   });
 
@@ -365,6 +426,7 @@ export function initTimer({ isActive }) {
     newScramble();
   };
 
+  initCubeTimer();
   solves.subscribe(() => { groupOptions($('t-group'), settings.event, timerGroup()); render(); });
   syncMode();
   render();

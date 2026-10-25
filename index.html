@@ -23,11 +23,23 @@
       <span class="method-label">Metoda</span>
       <select id="method" aria-label="Metoda skládání"></select>
     </label>
+    <button type="button" id="cube-chip" class="cube-chip" hidden title="Chytrá kostka – připojená (klepni pro nastavení)"></button>
     <button type="button" id="settings-btn" class="icon-btn ghost" data-icon="settings" title="Nastavení a data" aria-label="Nastavení a data"></button>
   </header>
 
   <dialog id="settings-dialog" class="help-dialog settings-dialog">
     <h2>Nastavení a data</h2>
+    <section id="set-cube">
+      <h3>Chytrá kostka</h3>
+      <p class="hint">Bluetooth kostka (GAN Gen2/3/4, MoYu AI 2023) posílá každý tah s časem: timer se spustí a zastaví sám, trenažér pozná případ a ověří algoritmus, složení se rozebere po krocích tvé metody a z tvého točení se spočítají váhy ergonomie.</p>
+      <div class="row-btns">
+        <button type="button" id="cube-connect" class="primary small">Připojit kostku</button>
+        <button type="button" id="cube-solved" class="secondary small" hidden title="Kostka v ruce je teď složená – nastaví to i v aplikaci">Kostka je složená</button>
+        <button type="button" id="cube-disconnect" class="secondary small" hidden>Odpojit</button>
+      </div>
+      <p id="cube-status" class="hint" aria-live="polite"></p>
+      <div id="cube-live" class="cube-live" hidden></div>
+    </section>
     <section>
       <h3>Timer</h3>
       <label class="check-row"><input type="checkbox" id="set-voice"> Hlásit 8 a 12 s v inspekci (hlasem)</label>
@@ -92,6 +104,7 @@
         </form>
       </div>
       <div id="t-last" class="last-actions"></div>
+      <div id="t-recon" class="t-recon"></div>
       <div id="t-mini" class="mini-stats"></div>
     </section>
 
@@ -105,6 +118,11 @@
       </div>
       <div id="s-range" class="segmented range" role="group" aria-label="Období"></div>
       <div id="s-tiles" class="tiles"></div>
+      <article class="panel" id="s-recon-box" hidden>
+        <h2>Kde ztrácím čas</h2>
+        <p class="hint">Složení z chytré kostky rozebraná po krocích tvé metody: pauza před krokem (rozpoznání, rozhodování) a točení. Klepnutím na složení v seznamu uvidíš jeho rozbor.</p>
+        <div id="s-recon"></div>
+      </article>
       <article class="panel">
         <h2>Vývoj</h2>
         <div id="s-chart" class="chart"></div>
@@ -324,6 +342,7 @@
           <div id="ergo-moves" class="ergo-moves"></div>
           <div class="actions">
             <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů, přehmatů a návaznosti podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>
+            <button type="button" id="ergo-smart" class="secondary small" title="Upraví váhy podle toho, jak rychle točíš jednotlivé tahy a jejich návaznost – změřeno chytrou kostkou (plynulé úseky z trenažéru a z kroků algoritmů v timeru)"><span>Podle mé chytré kostky</span></button>
             <button type="button" id="ergo-prefs" class="secondary small" title="Upraví váhy podle tvých porovnání a podle toho, které algoritmy sis v generátoru sad vybral místo nabídnutých"><span>Podle mých voleb</span></button>
             <button type="button" id="ergo-reset" class="secondary small">Výchozí hodnoty</button>
           </div>

@@ -25,6 +25,7 @@ import { icon } from './icons.js';
 import { algs, algSets, defaultSetId, preferencesOf, clearPreferences } from './store.js';
 import { openCompare, compareCount } from './compare.js';
 import { CORPUS } from '../ergonomics/corpus.js';
+import { segmentItems, segmentCount } from './smartdata.js';
 import { setOptions, pickSet } from './sets.js';
 import { Cube3D } from './cube3d.js';
 import { NetView } from './netview.js';
@@ -837,6 +838,7 @@ function numberInput(value, step, onValue, ariaLabel) {
 function renderCompare() {
   const on = model.id === '333';
   $('ergo-compare-box').hidden = !on;
+  $('ergo-smart').hidden = !on;
   if (!on) return;
   const all = preferencesOf(model.id);
   const mine = all.filter((p) => p.source === 'compare').length;
@@ -1705,6 +1707,23 @@ export function initLab({ onSub, openSet } = {}) {
       ? `Podle ${res.used} algoritmů (≈ ${res.secondsPerUnit.toFixed(2)} s na jednotku váhy): `
         + res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ')
       : `Podle ${res.used} algoritmů váhy sedí, nic se nezměnilo.`;
+  };
+  $('ergo-smart').onclick = () => {
+    const items = segmentItems();
+    // úseky z chytré kostky: každý úsek je změřený „algoritmus“ (stačí jedno měření)
+    const res = calibrate(P(), ui.ergo, items, { minTimes: 1, minAlgs: 20, lambda: 6 });
+    if (!res.ok) {
+      $('ergo-calibration').textContent = segmentCount()
+        ? `Z chytré kostky zatím ${segmentCount()} plynulých úseků – potřebuju aspoň 20 různých (trénuj s připojenou kostkou v trenažéru nebo skládej v timeru). ${res.reason}`
+        : 'Zatím žádná měření z chytré kostky. Připoj kostku (Nastavení → Chytrá kostka) a trénuj v trenažéru nebo skládej v timeru.';
+      return;
+    }
+    ui.ergo = res.config;
+    delete ui.ergo.prefBase;
+    renderErgo();
+    ergoChanged();
+    $('ergo-calibration').textContent = `Podle ${res.used} úseků z chytré kostky (≈ ${res.secondsPerUnit.toFixed(2)} s na jednotku váhy): `
+      + (res.changes.length ? res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ') : 'váhy sedí, nic se nezměnilo.');
   };
   $('ergo-prefs').onclick = () => {
     const base = prefConfig();

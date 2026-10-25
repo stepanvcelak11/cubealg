@@ -16,6 +16,9 @@ import { sendLink, algsPayload, toast } from './share.js';
 import { recogStats, recordRecog, pickRecog, optionsFor } from './recog.js';
 import { holdFor } from './holds.js';
 import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from './srs.js';
+import { smartCube } from '../smartcube/index.js';
+import { mergeQuarters } from '../smartcube/recon.js';
+import { recordSegments } from './smartdata.js';
 
 // Trénovaná sada ('all' = všechny).
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
@@ -98,6 +101,7 @@ function showCase() {
   drawCase(a);
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';
   renderReveal(a);
+  if (smart.id !== a.id || smart.phase === 'off') smartPrepare();
 }
 
 let showSetup = false;
@@ -381,6 +385,85 @@ function closeSheet() { $('tr-sheet').hidden = true; selecting = false; selected
 
 let stopwatch;
 
+// --- chytrá kostka: trenažér pozná nastavený případ, změří a ověří provedení ---------------
+// Případ je nastavený, když z dnešního stavu kostky algoritmus (i s natočením U před a po)
+// splní cíl případu. První tah spustí čas, splnění cíle ho zastaví (podle hodin kostky).
+const smart = { phase: 'off', moves: [], goal: null, id: null, note: '' };
+function smartCase(a) {
+  if (!a || (a.task.puzzle ?? '333') !== '333') return null;
+  const model = labModel('333');
+  const side = model.deserialize(a.task.colorsA), sideB = model.deserialize(a.task.colorsB);
+  const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints, a.task.marks) : null;
+  if (!built?.loc) return null;
+  const held = a.task.hold ? holdFor(model, a.task.hold) : null;
+  const toModel = (alg) => (held ? held.toModelString(alg) : alg);
+  const aufs = ['', 'U', "U'", 'U2'].map((x) => (x ? toModel(x) : ''));
+  let alg;
+  try { alg = toModel(a.alg.replace(/[()]/g, ' ').trim()); } catch { return null; }
+  return { goal: model.goal(built.constraints, built.target).test, alg, aufs, model, held };
+}
+function smartPrepare() {
+  const a = currentId && algs.get(currentId);
+  const c = smartCube.connected && mode === 'time' ? smartCase(a) : null;
+  smart.case = c;
+  smart.id = a?.id ?? null;
+  smart.phase = c ? 'wait' : 'off';
+  smart.moves = [];
+  smartCheck();
+}
+/** Je na kostce nastavený případ (algoritmus s natočením U před a po splní cíl)? */
+function caseFits(st) {
+  const c = smart.case;
+  if (!c || c.goal(st)) return false;
+  return c.aufs.some((pre) => c.aufs.some((post) => {
+    try { return c.goal(c.model.applySteps(st, c.model.steps([pre, c.alg, post].filter(Boolean).join(' ')))); } catch { return false; }
+  }));
+}
+// případ je nastavený, až když kostka po nastavení chvíli stojí (cestou může „sedět“ i mezistav)
+const SETTLE = 500;
+function smartCheck() {
+  clearTimeout(smart.settle);
+  if (!smart.case || smart.phase !== 'wait') return smartHint();
+  smart.settle = setTimeout(() => {
+    if (smart.phase === 'wait' && caseFits(smartCube.state)) smart.phase = 'ready';
+    smartHint();
+  }, SETTLE);
+  smartHint();
+}
+function smartHint() {
+  if (!smartCube.connected || mode !== 'time' || stopwatch?.state === 'running') return;
+  const text = smart.phase === 'wait' ? `Chytrá kostka: nastav případ (Nastavení ukáže tahy)${smart.note ? ` · ${smart.note}` : ''}`
+    : smart.phase === 'ready' ? 'Případ nastavený ✓ – první tah spustí čas' : '';
+  if (text) $('tr-hint').textContent = text;
+}
+function initSmartTrainer() {
+  smartCube.on('status', smartPrepare);
+  smartCube.on('state', smartCheck);
+  smartCube.on('move', ({ move, t, state }) => {
+    if (!isActiveFn() || mode !== 'time' || !smart.case) return;
+    if (smart.id !== currentId) smartPrepare();
+    if (smart.phase === 'wait') { smartCheck(); return; }
+    // dokud případ sedí (dotáčení nastavení, natočení U), čas se nespouští
+    if (smart.phase === 'ready') { if (caseFits(state)) return; smart.phase = 'solving'; smart.moves = []; stopwatch.startAt(t); }
+    if (smart.phase !== 'solving') return;
+    smart.moves.push({ move, t });
+    if (!smart.case.goal(state)) return;
+    // hotovo: ověření provedení (v držení algoritmu, bez natočení U na krajích)
+    const merged = mergeQuarters(smart.moves);
+    const hold = algs.get(currentId)?.task.hold ?? '';
+    recordSegments(merged, 'trainer', hold);
+    let done = merged.map((x) => x.move).join(' ');
+    try { if (smart.case.held) done = smart.case.held.toHeldString(done); } catch { /* jak je */ }
+    const core = (x) => x.replace(/[()]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    const strip = (list) => { while (list.length && /^U/.test(list[0])) list.shift(); while (list.length && /^U/.test(list.at(-1))) list.pop(); return list.join(' '); };
+    const want = strip(core(algs.get(currentId)?.alg ?? '')), got = strip(core(done));
+    smart.note = want === got ? 'provedeno přesně podle algoritmu ✓' : `provedeno jinak: ${done}`;
+    smart.phase = 'wait';
+    stopwatch.stopAt(t);
+    toast(want === got ? 'Přesně podle algoritmu ✓' : `Jiným postupem: ${done}`);
+  });
+}
+
 export function initTrainer({ isActive }) {
   isActiveFn = isActive;
   cube = new Cube3D($('tr-cube'), { label: 'Případ', fill: true });
@@ -403,6 +486,7 @@ export function initTrainer({ isActive }) {
     },
     onState: (s) => {
       $('tr-hint').textContent = { idle: 'Podrž mezerník nebo prst, pusť pro start', holding: 'Drž…', ready: 'Pusť!', running: '' }[s] ?? '';
+      if (s === 'idle') smartHint();
     },
   });
   $('tr-next').onclick = () => { if (mode === 'recog') nextRecog(); else next(); $('tr-next').blur(); };
@@ -451,6 +535,7 @@ export function initTrainer({ isActive }) {
   });
   currentId = pickNext();
   setMode(mode);
+  initSmartTrainer();
 }
 
 /** Přepne trénovanou sadu (z průvodce metodou). */

@@ -112,13 +112,13 @@ function solve(A, b) {
  * @param {{alg:string, times:{t:number}[]}[]} items uložené algoritmy tohoto hlavolamu
  * @returns {{ok:false, reason:string} | {ok:true, config:object, changes:{key:string, from:number, to:number}[], used:number, secondsPerUnit:number}}
  */
-export function calibrate(puzzle, config, items, { lambda = 3 } = {}) {
-  const data = items.filter((a) => a.times.length >= MIN_TIMES).map((a) => ({
+export function calibrate(puzzle, config, items, { lambda = 3, minTimes = MIN_TIMES, minAlgs = MIN_ALGS } = {}) {
+  const data = items.filter((a) => a.times.length >= minTimes).map((a) => ({
     y: median(a.times.slice(-12).map((x) => x.t)) / 1000,
     x: features(puzzle, a.alg, config),
   })).filter((d) => d.x.size);
-  if (data.length < MIN_ALGS) {
-    return { ok: false, reason: `Potřebuju aspoň ${MIN_ALGS} algoritmů tohoto hlavolamu, každý změřený aspoň ${MIN_TIMES}×. Teď jich je ${data.length}.` };
+  if (data.length < minAlgs) {
+    return { ok: false, reason: `Potřebuju aspoň ${minAlgs} algoritmů tohoto hlavolamu, každý změřený aspoň ${minTimes}×. Teď jich je ${data.length}.` };
   }
   const keys = [...new Set(data.flatMap((d) => [...d.x.keys()]))];
   const w0 = keys.map((k) => weightOf(puzzle, config, k));

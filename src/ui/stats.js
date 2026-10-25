@@ -1,5 +1,6 @@
 // Stránka Statistiky: souhrn, graf vývoje a seznam složení.
 
+import { averageView, reconView, reconOf } from './recon.js';
 import { EVENT_BY_ID } from '../timer/events.js';
 import { summary, value, currentAverage, formatValue, formatSolve, recordHistory, compareRows, DNF } from '../timer/stats.js';
 import { solvesToCsv } from '../timer/csv.js';
@@ -237,6 +238,10 @@ function render() {
   roundList(ev.result);
   compare(list, ev.result);
   histogram(list, ev.result);
+  // chytrá kostka: průměrný rozbor po krocích metody
+  const avg = averageView(list);
+  $('s-recon-box').hidden = !avg;
+  $('s-recon').replaceChildren(...(avg ? [avg] : []));
   const date = (d) => new Date(d).toLocaleString('cs', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   // nejlepší složení období (bez DNF) se zvýrazní
   const value = (x) => (x.p === -1 ? Infinity : x.t + (x.p > 0 ? x.p : 0));
@@ -251,6 +256,9 @@ function render() {
       const text = prompt('Poznámka ke složení:', solve.n ?? '');
       if (text !== null) solves.update(key(), i, { n: text.trim() || undefined });
     };
+    // složení z chytré kostky: rozbor po krocích (klepnutím)
+    const recon = solve.r ? el('details', { className: 'solve-recon' }, el('summary', { textContent: 'Rozbor' }), el('div', {})) : null;
+    if (recon) recon.ontoggle = () => { if (recon.open && !recon.lastChild.firstChild) recon.lastChild.append(reconView(reconOf(solve)) ?? el('p', { className: 'hint', textContent: 'Rozbor podle metody se nepovedl.' })); };
     return el('li', { className: `solve${best?.i === i ? ' best' : ''}` },
       el('span', { className: 'solve-n', textContent: `${n + 1}.` }),
       el('b', { className: 'solve-time', textContent: formatSolve(solve, ev.result) }),
@@ -261,7 +269,8 @@ function render() {
       el('span', { className: 'solve-actions' },
         ev.result === 'time' ? penalty(2000, '+2') : null,
         penalty(-1, 'DNF'),
-        iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(key(), i) })));
+        iconButton(icon('trash', { size: 16 }), { label: 'Smazat', className: 'chip', onClick: () => solves.remove(key(), i) })),
+      recon);
   }).reverse();
   // dlouhý seznam po částech
   const more = rows.length > listLimit

@@ -1,5 +1,6 @@
 // ErgoCube Lab – navigace mezi sekcemi Timer / Statistiky / Trenažér / Lab / Metoda.
 
+import { initSmartCubeUi } from './smartcube.js';
 import { hydrateIcons } from './icons.js';
 import { storage } from './dom.js';
 import { initTimer, practiceStep } from './timer.js';
@@ -61,6 +62,7 @@ initStats();
 initTrainer({ isActive: () => page === 'trainer' });
 initLab({ onSub: () => updateLock(), openSet: (id) => { trainSetTo(id); showPage('trainer'); } });
 initSettings();
+initSmartCubeUi();
 initMethodPage({
   lab: () => labErgo(), labTask, isActive: () => page === 'method',
   train: (id) => { trainSetTo(id); showPage('trainer'); },

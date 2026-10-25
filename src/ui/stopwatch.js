@@ -103,6 +103,7 @@ export class Stopwatch {
     if (this.state === 'idle') this.display.textContent = formatTime(this.last ?? 0);
   }
 
+  /** Spustí inspekci (chytrá kostka: když je kostka zamíchaná). */
   startInspection() {
     this.inspectStart = performance.now();
     this.setState('inspecting');
@@ -140,8 +141,19 @@ export class Stopwatch {
     tick();
   }
 
-  stop() {
-    const ms = Math.floor(performance.now() - this.t0);
+  /** Start v daný okamžik (chytrá kostka: čas prvního tahu podle hodin kostky). */
+  startAt(t) {
+    this.start();
+    this.t0 = t;
+  }
+
+  /** Konec v daný okamžik (chytrá kostka: poslední tah). */
+  stopAt(t) {
+    this.stop(t);
+  }
+
+  stop(at = performance.now()) {
+    const ms = Math.floor(at - this.t0);
     cancelAnimationFrame(this.raf);
     this.last = ms;
     this.display.textContent = formatTime(ms);
