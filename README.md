@@ -303,6 +303,15 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Vizuální metronom
+
+Timer → **Metronom** (`ui/metronome.js`, logika `timer/metronome.js`): telefon pod kostkou,
+celá obrazovka bliká v tempu – na každé bliknutí jeden tah, bez zastavení. Tempo (tahů/s),
+zrychlování (stálé / každých N s o krok / „když stíhám“ – s chytrou kostkou: aspoň 80 % tahů
+na bliknutí = rychleji, pod 60 % = pomaleji), strop, barva bliknutí, volitelně cvaknutí.
+Tah počítá jako „na bliknutí“, když padne do čtvrtiny periody od úderu. Dosažené tempo se
+zapamatuje jako výchozí pro příště. Displej nezhasne (Wake Lock), klepnutí = pauza.
+
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA) – celá, včetně hledání
 algoritmů, generátoru sad a testu metody (všechno počítá prohlížeč: WebAssembly ve
 workerech, žádný server), se stejnými výsledky jako online. `sw.js`: instalace uloží

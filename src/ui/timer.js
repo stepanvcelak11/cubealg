@@ -17,6 +17,7 @@ import { smartCube } from '../smartcube/index.js';
 import { mergeQuarters, packMoves } from '../smartcube/recon.js';
 import { applyAlg, solved as solvedCube } from '../core/cube.js';
 import { reconOf, reconView, recordAlgSteps } from './recon.js';
+import { openMetronome } from './metronome.js';
 
 const settings = storage.get('ergocube.timer') ?? { event: '333', inspection: false };
 settings.groups ??= {};
@@ -351,6 +352,7 @@ export function initTimer({ isActive }) {
     insp.blur();
   };
   $('t-new').onclick = () => { newScramble(); $('t-new').blur(); };
+  $('t-metronome').onclick = () => { $('t-metronome').blur(); openMetronome(); };
   initRounds({ changed: render, again: () => openRoundSetup(settings.event, key()) });
   $('t-comp').onclick = () => {
     $('t-comp').blur();

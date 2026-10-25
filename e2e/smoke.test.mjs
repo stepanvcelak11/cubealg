@@ -1316,3 +1316,25 @@ test('chytrá kostka (napodobená): timer se spustí a zastaví sám, rozbor po 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('metronom: bliká v tempu, s chytrou kostkou počítá tahy na bliknutí', async () => {
+  const { p, ctx, errors } = await open('timer', { 'ergocube.metronome': { tps: 4, ramp: 'fixed' } });
+  await p.evaluate(() => window.__smartCube.simulate());
+  await p.locator('#t-metronome').tap();
+  await p.waitForSelector('.met-dialog[open]');
+  await p.locator('.met-setup button', { hasText: 'Spustit' }).tap();
+  await p.waitForFunction(() => /\d+ bliknutí/.test(document.querySelector('.met-info').textContent), null, { timeout: 5000 });
+  assert.match(await p.locator('.met-tps').innerText(), /4,00 tahů\/s/);
+  // tahy kostky: každý hned po bliknutí
+  await p.evaluate(() => new Promise((resolve) => {
+    let n = 0;
+    const flash = document.querySelector('.met-flash');
+    const obs = new MutationObserver(() => { if (flash.classList.contains('on')) { window.__smartCube.feed('R', 0); if (++n >= 6) { obs.disconnect(); resolve(); } } });
+    obs.observe(flash, { attributes: true });
+  }));
+  assert.match(await p.locator('.met-info').innerText(), /na bliknutí \d+ % z \d+ tahů/);
+  await p.locator('.met-stop').tap();
+  assert.match(await p.locator('.met-last').innerText(), /Naposledy: \d+ bliknutí/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

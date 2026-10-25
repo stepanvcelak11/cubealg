@@ -1539,3 +1539,22 @@ details.sim-card > summary small { color: var(--muted); font-size: 0.78rem; font
 i.recog { background: var(--sun, #f5b400); }
 i.exec { background: var(--accent); }
 .solve-recon { grid-column: 1 / -1; font-size: 0.8rem; } .solve-recon summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+
+/* --- Vizuální metronom ----------------------------------------------------------------------- */
+.met-dialog { border: 0; padding: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; background: var(--panel); color: var(--text); }
+.met-dialog::backdrop { background: #000; }
+.met-setup { max-width: 560px; margin: 0 auto; padding: 22px 16px; }
+.met-unit { display: flex; align-items: center; gap: 4px; }
+.met-unit input { width: 6em; }
+.met-run { position: fixed; inset: 0; background: #000; color: #fff; display: grid; place-items: center; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.met-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.met-flash.on { animation: met-flash 120ms ease-out; }
+@keyframes met-flash { from { opacity: 1; } to { opacity: 0; } }
+.met-dialog[data-color="yellow"] .met-flash { background: #ffd60a; }
+.met-dialog[data-color="green"] .met-flash { background: #22b455; }
+.met-dialog[data-color="red"] .met-flash { background: #e5383b; }
+.met-hud { position: relative; display: grid; gap: 6px; text-align: center; mix-blend-mode: difference; }
+.met-tps { font-family: var(--display); font-size: clamp(2rem, 9vw, 4.5rem); font-weight: 800; }
+.met-info { font-size: 0.95rem; opacity: 0.8; }
+.met-stop { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; }
+@media (prefers-reduced-motion: reduce) { .met-flash.on { animation-duration: 60ms; } }
