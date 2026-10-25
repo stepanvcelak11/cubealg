@@ -303,6 +303,15 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Sdílení metody odkazem
+
+Metoda → **Sdílet** → Odkaz (`shareMethodLink` v `ui/guide.js`): celá metoda – kroky,
+nastavení kroků, sady s algoritmy (i s případy) a výsledek posledního testu – zabalená
+v odkazu (`#s=`, deflate + base64url, bez serveru). Kdo odkaz otevře, uvidí náhled (kroky,
+počet algoritmů, test autora) a přidá si ji jako novou metodu; výsledek autora se přidá
+do Metoda → Porovnat („… (test autora)“), takže ji hned porovná se svými. Pro hodně
+velké metody je pořád i soubor.
+
 ## Objevitel metod
 
 Metoda → **Vylepšit** (`ui/discover.js`, návrhy `sim/discover.js`): z tvé metody navrhne úpravy –

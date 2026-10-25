@@ -3,7 +3,8 @@
 // poslat jako soubor a druhý ji naimportuje. Metoda se sestavuje v sekci Metoda
 // (builder.js) – „Upravit“ vede tam.
 
-import { el } from './dom.js';
+import { el, storage } from './dom.js';
+import { shareUrl, sendLink, packTask, toast } from './share.js';
 import { icon } from './icons.js';
 import { methods, guides, algSets, algs, exportMethod } from './store.js';
 import { labModel } from './models.js';
@@ -207,6 +208,42 @@ function draw() {
     guide.steps.length ? exampleBox(method, guide) : null].filter(Boolean));
 }
 
+/**
+ * Pošle aktivní metodu odkazem (bez serveru – celá metoda je zabalená v odkazu): kroky,
+ * nastavení, sady s algoritmy a výsledek posledního testu. Kdo odkaz otevře, metodu si
+ * přidá a v Metoda → Porovnat ji porovná se svými.
+ */
+export async function shareMethodLink() {
+  const data = exportMethod();
+  const method = methods.active();
+  const run = (storage.get('ergocube.sim.history') ?? []).find((h) => h.method === method && h.steps?.length);
+  const payload = {
+    v: 1, kind: 'method',
+    data: { ...data, algs: data.algs.map((a) => ({ ...a, task: packTask(a.task) })) },
+    ...(run ? { result: { time: run.time, moves: run.moves, ci: run.ci, n: run.n, median: run.median, score: run.score, label: run.label, at: run.at, steps: run.steps } } : {}),
+  };
+  const url = await shareUrl(payload);
+  if (url.length > 60000) toast('Metoda je velká – odkaz je dlouhý; když ho aplikace nepřenese, pošli raději soubor');
+  return sendLink(payload, `Metoda ${data.method.name}`);
+}
+
+/** Sdílení metody: odkazem, nebo souborem. */
+export function shareMethodMenu() {
+  const dlg = el('dialog', { className: 'help-dialog share-dialog' },
+    el('h2', { textContent: 'Sdílet metodu' }),
+    el('p', { className: 'hint', textContent: 'Odkaz: celá metoda (kroky, nastavení, algoritmy i výsledek testu) je přímo v odkazu – kdo ho otevře, přidá si ji a porovná se svými. Soubor: totéž jako soubor (pro hodně velké metody).' }),
+    el('form', { method: 'dialog', className: 'row-btns share-actions' },
+      el('button', { className: 'secondary', value: 'file', textContent: 'Soubor' }),
+      el('button', { className: 'primary', value: 'link', textContent: 'Odkaz' })));
+  document.body.append(dlg);
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue === 'link') shareMethodLink();
+    else if (dlg.returnValue === 'file') shareMethod();
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+
 /** Pošle (nebo stáhne) aktivní metodu i s algoritmy jako soubor. */
 export async function shareMethod() {
   const data = exportMethod();
@@ -246,7 +283,7 @@ export function openGuide(opts = {}) {
       el('div', { className: 'guide-body' }));
     close.onclick = () => dialog.close();
     edit.onclick = () => { dialog.close(); deps.build?.(); };
-    shareBtn.onclick = shareMethod;
+    shareBtn.onclick = shareMethodMenu;
     simBtn.onclick = () => { dialog.close(); deps.simulate?.(); };
     printBtn.onclick = () => {
       document.body.classList.add('printing-guide');

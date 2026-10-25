@@ -3,9 +3,9 @@
 
 import { $, el } from './dom.js';
 import { methods, importMethod } from './store.js';
-import { openGuide, shareMethod } from './guide.js';
+import { openGuide, shareMethod, shareMethodMenu } from './guide.js';
 
-export { shareMethod };
+export { shareMethod, shareMethodMenu };
 
 let guideDeps = {};
 

@@ -11,7 +11,7 @@ import { initMethodPage, showMethodPage } from './methodpage.js';
 import { initSettings } from './settings.js';
 import { initMethods } from './methods.js';
 import { takeShared, unpackTask, toast } from './share.js';
-import { algs, algSets } from './store.js';
+import { algs, algSets, methods, importMethod } from './store.js';
 import { openTask } from './lab.js';
 import { el } from './dom.js';
 
@@ -86,6 +86,7 @@ async function receiveShared() {
     toast('Sdílený případ je otevřený v Labu (Zpět vrátí původní zadání)');
     return;
   }
+  if (data.kind === 'method' && data.data?.method) { receiveMethod(data); return; }
   if (data.kind !== 'algs' || !Array.isArray(data.algs) || !data.algs.length) return;
   const list = data.algs.filter((a) => a && typeof a.alg === 'string' && a.task);
   const NEW = '__new__';
@@ -112,6 +113,37 @@ async function receiveShared() {
   });
   dlg.showModal();
 }
+/** Sdílená metoda z odkazu: náhled (kroky, algoritmy, výsledek autora) a přidání. */
+function receiveMethod({ data, result }) {
+  const steps = data.guide?.steps ?? [];
+  const sec = (v) => `${Number(v).toFixed(2).replace('.', ',')} s`;
+  const add = el('button', { className: 'primary', value: 'add', textContent: 'Přidat do mých metod' });
+  const dlg = el('dialog', { className: 'help-dialog share-dialog' },
+    el('h2', { textContent: `Sdílená metoda „${data.method.name}“` }),
+    el('ol', { className: 'share-list' }, ...steps.slice(0, 12).map((st) => el('li', { textContent: st.title || 'Krok' }))),
+    el('p', { className: 'hint', textContent: `${steps.length} kroků · ${(data.algs ?? []).length} algoritmů${result ? ` · test autora: ${sec(result.time)}, ${Number(result.moves).toFixed(1).replace('.', ',')} tahů (${result.n} zamíchání)` : ''}` }),
+    el('p', { className: 'hint', textContent: 'Přidá se jako nová metoda (tvoje metody zůstanou). V Metoda → Porovnat ji pak porovnáš se svými – i s výsledkem autora.' }),
+    el('form', { method: 'dialog', className: 'row-btns share-actions' }, el('button', { className: 'secondary', value: 'cancel', textContent: 'Zrušit' }), add));
+  document.body.append(dlg);
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue === 'add') {
+      try {
+        const id = importMethod({ ...data, algs: (data.algs ?? []).map((a) => ({ ...a, task: unpackTask(a.task) })) });
+        // výsledek autora do porovnání (Metoda → Porovnat)
+        if (result?.steps?.length) {
+          const list = storage.get('ergocube.sim.history') ?? [];
+          list.unshift({ ...result, method: id, name: `${methods.get(id).name} (test autora)`, sig: `shared:${id}`, at: result.at ?? Date.now() });
+          storage.set('ergocube.sim.history', list.slice(0, 40));
+        }
+        showPage('method');
+        toast(`Metoda „${methods.get(id).name}“ přidaná – je teď aktivní`);
+      } catch (e) { toast(e.message); }
+    }
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+
 receiveShared();
 window.addEventListener('hashchange', receiveShared);
 

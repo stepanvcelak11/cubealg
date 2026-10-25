@@ -521,7 +521,8 @@ test('průvodce metodou: kroky s textem a obrázkem z Labu, sdílení a import',
   assert.match(await p.locator('.guide-set', { hasText: 'Algoritmy' }).innerText(), /Moje algoritmy \(1\)/);
   await p.waitForFunction(() => document.querySelectorAll('.guide-step .sticker3d').length === 108);
   // sdílení: soubor s průvodcem a algoritmy
-  const [download] = await Promise.all([p.waitForEvent('download'), p.locator('.guide-share').tap()]);
+  await p.locator('.guide-share').tap();
+  const [download] = await Promise.all([p.waitForEvent('download'), p.locator('.share-dialog button', { hasText: 'Soubor' }).tap()]);
   const shared = Buffer.concat(await (await download.createReadStream()).toArray());
   const data = JSON.parse(shared.toString());
   assert.equal(data.format, 'ergocube-method');
@@ -1355,6 +1356,38 @@ test('objevitel metod: návrhy úprav otestované na stejných zamícháních, p
   await p.locator('.disc-row').filter({ hasText: 'Spojit' }).filter({ hasNotText: ' + ' }).locator('button').tap();
   const on = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')).default.steps[0].sim?.on);
   assert.equal(on, false);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('sdílení metody odkazem: kroky, algoritmy a výsledek testu; příjemce si ji přidá a porovná', async () => {
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
+  ] } };
+  const history = [{ method: 'default', name: 'Základní', sig: 'x1', at: Date.now(), n: 10, moves: 9.5, ci: 1, time: 3.2, score: 10, median: 9, label: '', steps: [{ id: 'k1', title: 'Hrana vpředu', moves: 4, median: 4, time: 1.5, recog: 0, kind: 'intuitive' }, { id: 'k2', title: 'Hrana vpravo', moves: 5.5, median: 5, time: 1.7, recog: 0, kind: 'intuitive' }] }];
+  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.sim.history': history });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await p.evaluate(() => { navigator.share = undefined; });
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-head button', { hasText: 'Sdílet' }).tap();
+  await p.locator('.share-dialog button', { hasText: 'Odkaz' }).tap();
+  await p.waitForFunction(async () => (await navigator.clipboard.readText()).includes('#s='));
+  const url = await p.evaluate(() => navigator.clipboard.readText());
+  // příjemce: jiný prohlížeč (prázdná data)
+  const other = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
+  const q = await other.newPage();
+  const errs2 = [];
+  q.on('pageerror', (e) => errs2.push(e.message));
+  await q.goto(url);
+  await q.waitForSelector('.share-dialog[open]');
+  assert.match(await q.locator('.share-dialog').innerText(), /Sdílená metoda „Základní“[\s\S]*Hrana vpředu[\s\S]*test autora: 3,20 s/);
+  await q.locator('.share-dialog button', { hasText: 'Přidat do mých metod' }).tap();
+  await q.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem('ergocube.guides') ?? '{}')).some((g) => g.steps?.[0]?.title === 'Hrana vpředu'));
+  const h = await q.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));
+  assert.match(h[0].name, /test autora/);
+  assert.deepEqual(errs2, []);
+  await other.close();
   assert.deepEqual(errors, []);
   await ctx.close();
 });

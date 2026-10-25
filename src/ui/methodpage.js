@@ -9,7 +9,7 @@ import { methods, guides } from './store.js';
 import { initBuilder, renderBuilder, openBuilderStep } from './builder.js';
 import { initSimulator, showSimulator, harvestStep } from './simulator.js';
 import { downloadLearning } from './learnexport.js';
-import { showGuide, shareMethod } from './methods.js';
+import { showGuide, shareMethodMenu } from './methods.js';
 import { mountDiscover } from './discover.js';
 
 const SUB = 'ergocube.method.sub';
@@ -42,7 +42,7 @@ export function initMethodPage(deps) {
       el('div', { className: 'row-btns' },
         action('book', 'Průvodce', 'Celá metoda na čtení (s obrázky a ukázkami)', () => showGuide()),
         action('download', 'Učebnice', 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, výsledek testu); jde vytisknout i znovu importovat', () => downloadLearning()),
-        action('share', 'Sdílet', 'Poslat metodu i s algoritmy jako soubor', () => shareMethod()))),
+        action('share', 'Sdílet', 'Poslat metodu i s algoritmy a výsledkem testu – odkazem nebo souborem', () => shareMethodMenu()))),
     tabs, build, test, cmp, disc);
   initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask, openLab: deps.openLab });
   initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
