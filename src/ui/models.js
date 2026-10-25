@@ -131,6 +131,11 @@ function scanSpecOf(P) {
     pyram: {
       faces: ['F', 'L', 'R', 'D'], ...pyraminxInfo(),
     },
+    444: {
+      faces: CUBE_FACES, hold: (f) => CUBE_HOLD(f, false),
+      note: '4×4 nemá pevné středy – drž kostku pořád stejně (bílá nahoře, zelená vpředu) a jen ji otáčej.',
+    },
+    555: { faces: CUBE_FACES, hold: (f) => CUBE_HOLD(f, true), detect: (grid) => grid[12] },
   }[P.id];
   if (!info || !P.net) return null;
   const polys = P.net.polys.map(parsePoly);

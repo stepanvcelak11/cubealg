@@ -57,7 +57,7 @@ export function toPalette(letter, colors) {
  *   colors: {face:string, label:string, css:string}[],
  *   onFace: (face:string, grid:string[]) => void}} opts
  */
-export function openScan({ spec, colors, onFace }) {
+export function openScan({ spec, colors, onFace, onDone }) {
   const cssOf = Object.fromEntries(colors.map((c) => [c.face, c.css]));
   const order = colors.map((c) => c.face);
   const FACES = spec.faces;
@@ -210,7 +210,7 @@ export function openScan({ spec, colors, onFace }) {
     img.src = url;
   };
   close.onclick = () => dialog.close();
-  dialog.addEventListener('close', () => { stopCamera(); dialog.remove(); });
+  dialog.addEventListener('close', () => { stopCamera(); dialog.remove(); onDone?.(); });
 
   renderChips();
   renderResult();

@@ -36,8 +36,29 @@ function makeOps(P) {
   const { slots, SLOT_OF, ORI_AT, stickerFace: FACE } = P;
   const N = P.size;
   const signature = (type, faces) => `${type}:${[...faces].sort().join('')}`;
-  const SIGNATURE = new Map(slots.map((s) => [signature(s.type, s.facelets.map((f) => FACE[f])), s]));
+  // podpis (typ + barvy) → dílky; víc dílků se stejnými barvami mají jen velké kostky
+  // (dvě křídla hrany, středy stejné barvy)
+  const SIGNATURES = new Map();
+  for (const s of slots) {
+    const key = signature(s.type, s.facelets.map((f) => FACE[f]));
+    if (!SIGNATURES.has(key)) SIGNATURES.set(key, []);
+    SIGNATURES.get(key).push(s);
+  }
   const slotByName = (name) => P.slotByName(name);
+
+  // kam se tahy může dostat referenční nálepka dílku (rozliší dílky se stejnými barvami,
+  // např. dvě křídla hrany 4×4 – každé má jen „svou“ polovinu poloh)
+  const REACH = new Map();
+  function reachOf(piece) {
+    if (!REACH.has(piece.id)) {
+      const perms = Object.keys(P.moves ?? {}).length ? P.bases.map((b) => P.perm({ base: b, amount: 1 })) : [];
+      const seen = new Set([piece.facelets[0]]);
+      const queue = [piece.facelets[0]];
+      while (queue.length) { const q = queue.pop(); for (const to of perms) if (!seen.has(to[q])) { seen.add(to[q]); queue.push(to[q]); } }
+      REACH.set(piece.id, seen);
+    }
+    return REACH.get(piece.id);
+  }
 
   /** Prázdné vybarvení (jen 'X'). */
   const blankColors = () => new Array(N).fill(EMPTY);
@@ -80,17 +101,29 @@ function makeOps(P) {
         else errors.push(`Dílek na pozici ${where} není vybarvený celý`);
         continue;
       }
-      const piece = SIGNATURE.get(signature(slot.type, cs));
-      if (!piece) { errors.push(`Na pozici ${where} je dílek s barvami ${cs.join('')}, takový neexistuje`); continue; }
-      const n = piece.facelets.length;
-      const shift = cs.indexOf(FACE[piece.facelets[0]]);
-      const loc = piece.facelets.map((k) => slot.facelets[cs.indexOf(FACE[k])]);
-      if (loc.some((at, i) => ORI_AT[at] !== (shift + i) % n)) {
-        errors.push(`Dílek ${piece.name} na pozici ${where} je natočený nemožně (zrcadlově)`);
+      const candidates = SIGNATURES.get(signature(slot.type, cs));
+      if (!candidates) { errors.push(`Na pozici ${where} je dílek s barvami ${cs.join('')}, takový neexistuje`); continue; }
+      // dílek, který sem pasuje natočením (ne zrcadlově), může se sem tahy dostat a ještě
+      // není použitý
+      let found = null, mirrored = null, taken = null;
+      for (const piece of candidates) {
+        if (candidates.length > 1) {
+          const at = slot.facelets[cs.indexOf(FACE[piece.facelets[0]])];
+          if (!reachOf(piece).has(at)) { mirrored ??= piece; continue; }
+        }
+        const n = piece.facelets.length;
+        const shift = cs.indexOf(FACE[piece.facelets[0]]);
+        const loc = piece.facelets.map((k) => slot.facelets[cs.indexOf(FACE[k])]);
+        if (loc.some((at, i) => ORI_AT[at] !== (shift + i) % n)) { mirrored ??= piece; continue; }
+        if (pieces.has(piece.name)) { taken ??= piece; continue; }
+        found = { piece, loc };
+        break;
+      }
+      if (!found) {
+        errors.push(taken ? `Dílek ${taken.name} je vybarvený víckrát` : `Dílek ${mirrored.name} na pozici ${where} je natočený nemožně (zrcadlově)`);
         continue;
       }
-      if (pieces.has(piece.name)) { errors.push(`Dílek ${piece.name} je vybarvený víckrát`); continue; }
-      pieces.set(piece.name, { slot: slot.id, loc });
+      pieces.set(found.piece.name, { slot: slot.id, loc: found.loc });
     }
     return { pieces, errors, partials };
   }

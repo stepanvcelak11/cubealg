@@ -34,6 +34,12 @@ import { labModel } from './models.js';
 import { holdList, holdFor } from './holds.js';
 import { sendLink, algsPayload, packTask, toast } from './share.js';
 import { openGenerator } from './generator.js';
+import { smartCube } from '../smartcube/index.js';
+import { toFacelets, fromFacelets } from '../core/cube.js';
+import { solve as twoPhase } from '../timer/twophase.js';
+import { methods, guides } from './store.js';
+import { buildPlan } from '../sim/plan.js';
+import { stepConfig } from './stepcfg.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -504,11 +510,88 @@ function renderSq1Pads() {
   }
 }
 
+// --- Moje kostka: stav z kamery nebo chytré kostky a řešení ---------------------------------
+// Start = kostka v ruce (nafocená, nebo stav připojené chytré kostky), Cíl = složená kostka.
+// Řešení: nejkratší (two-phase, kolem 20 tahů) nebo tvou metodou krok po kroku (stejný
+// řešič jako test metody) – jde do výsledků, přehrávač ho ukáže tah po tahu.
+function setMine(colors) {
+  snapshot();
+  ui.A = colors;
+  for (const k of Object.keys(ui.constraints)) ui.constraints[k] = 'solved';
+  ui.marks = {};
+  ui.B = model.home(model.pieceNames);
+  taskChanged();
+}
+function addSolution(alg, note) {
+  ui.results.set(alg, score(alg));
+  renderResults();
+  choose(alg, true);
+  showSub?.('results');
+  if (note) $('status').textContent = note;
+}
+function openMine() {
+  if (model.id !== '333') { toast('Moje kostka je zatím pro 3×3'); return; }
+  const status = el('p', { className: 'hint' });
+  const close = el('button', { type: 'button', className: 'icon-btn', ariaLabel: 'Zavřít', textContent: '✕' });
+  const btn = (text, cls, fn, hidden = false) => Object.assign(el('button', { type: 'button', className: cls, textContent: text, hidden }), { onclick: fn });
+  const fromCube = btn('Ze chytré kostky', 'secondary', () => { setMine([...toFacelets(smartCube.state)]); status.textContent = 'Start = stav chytré kostky ✓'; sync(); }, !smartCube.connected);
+  const fromCam = btn('Nafotit kamerou', 'secondary', () => { dlg.close(); scan('A', () => { setMine([...ui.A]); openMine(); }); });
+  const shortest = btn('Nejkratší řešení', 'primary', () => {
+    const facelets = ui.A.join('');
+    status.textContent = 'Počítám…';
+    setTimeout(() => {
+      let sol = '';
+      try { sol = twoPhase(facelets, { timeLimit: 2500 }) ?? ''; } catch (e) { status.textContent = `Nejde: ${e.message} (je kostka vybarvená celá a správně?)`; return; }
+      if (!sol.trim()) { status.textContent = 'Kostka je složená.'; return; }
+      dlg.close();
+      addSolution(sol.trim(), `Nejkratší řešení: ${sol.trim().split(' ').length} tahů`);
+    }, 20);
+  });
+  const byMethod = btn('Složit mou metodou', 'primary', () => solveByMethod(status, () => dlg.close()));
+  const sync = () => { const full = ui.A.every((c) => c !== model.EMPTY); shortest.disabled = !full; byMethod.disabled = !full; };
+  const dlg = el('dialog', { className: 'help-dialog' },
+    el('div', { className: 'gen-head' }, el('h2', { textContent: 'Moje kostka' }), close),
+    el('p', { className: 'hint', textContent: 'Start = kostka, kterou máš v ruce – nafoť ji, nebo vezmi stav připojené chytré kostky. Cíl je složená kostka. Pak nejkratší řešení, nebo řešení tvou metodou krok po kroku (co uděláš v každém kroku).' }),
+    el('div', { className: 'row-btns' }, fromCube, fromCam),
+    el('div', { className: 'row-btns' }, shortest, byMethod),
+    status);
+  document.body.append(dlg);
+  close.onclick = () => dlg.close();
+  dlg.addEventListener('close', () => dlg.remove());
+  sync();
+  dlg.showModal();
+}
+/** Řešení tvou metodou (krok po kroku, ve workeru testu metody). */
+function solveByMethod(status, done) {
+  const method = methods.active();
+  const guide = guides.get(method);
+  const config = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig(method, st)]));
+  let built;
+  try { built = buildPlan({ guide, config, setAlgs: (id) => algs.list().filter((a) => a.set === id), ergonomics: ui.ergo, lambda }); } catch { built = null; }
+  if (!built?.steps.length) { status.textContent = 'Aktivní metoda nemá kroky (Metoda → Sestavit).'; return; }
+  const { plan, steps } = built;
+  status.textContent = `Skládám metodou ${methods.get(method).name}… (${steps.length} kroků)`;
+  const w = new Worker(new URL('../sim/sim-worker.js', import.meta.url), { type: 'module' });
+  w.onmessage = ({ data }) => {
+    w.terminate();
+    if (data.type !== 'solved' || !data.solve.ok) { status.textContent = 'Metodou se to nepovedlo složit (zkus delší hledání u kroků v Sestavit).'; return; }
+    // kroky v držení metody (zápis, jak je točíš), otočení kostky mezi kroky
+    const parts = data.solve.steps.map((x, i) => ({ title: steps[i].st.title || `Krok ${i + 1}`, alg: [x.rotation, x.display].filter(Boolean).join(' ') })).filter((x) => x.alg);
+    // celé řešení v zápisu modelu (pro přehrávač Labu); po krocích v držení metody
+    const whole = data.solve.steps.map((x) => x.model).filter(Boolean).join(' ');
+    done();
+    addSolution(whole, `${methods.get(method).name}: ${parts.map((x) => `${x.title}: ${x.alg}`).join(' · ')}`);
+  };
+  w.postMessage({ type: 'plan', plan });
+  w.postMessage({ type: 'solve', id: 0, keepModel: true, start: Array.from(fromFacelets(ui.A.join(''))) });
+}
+
 // Focení: stěna po stěně do vybarvení zvolené strany.
-async function scan(side) {
+async function scan(side, onDone) {
   const { openScan } = await import('./scan.js');
   const spec = model.scan;
   openScan({
+    onDone,
     spec,
     colors: P().colors,
     onFace: (face, grid) => {
@@ -1633,6 +1716,7 @@ export function initLab({ onSub, openSet } = {}) {
   $('b-view').onclick = () => cubeB.resetView();
 
   $('a-scan').onclick = () => scan('A');
+  $('a-mine').onclick = () => openMine();
   $('b-scan').onclick = () => scan('B');
   $('a-home').onclick = () => { snapshot(); ui.A = model.home(trackedPieces(ui.constraints)); ui.autoA.clear(); taskChanged(); };
   $('a-clear').onclick = () => { snapshot(); ui.A = model.blank(ui.A); ui.autoA.clear(); taskChanged(); };

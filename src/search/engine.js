@@ -21,6 +21,7 @@ import { clock } from './clock.js';
 import { MoveSet } from '../core/moveset.js';
 import { CUBE3 } from '../puzzles/cube3.js';
 import { kernelFits, idaRoot, costSearch, buildTableKernel, buildCostTableKernel, buildNearKernel } from './kernel.js';
+import { expandIdentical } from '../core/constraints.js';
 
 // Pro každý hlavolam: typ dílku → seznam pozic (nálepek) daného typu
 // a pozice → index v seznamu svého typu.
@@ -75,6 +76,8 @@ const UNREACHABLE = 255;
  *   uložené pattern databáze (podle obsahu: hlavolam, tahy, cíle dílků skupiny)
  */
 export function prepare({ puzzle = CUBE3, constraints, target = puzzle.solved(), targets = [target], moves, tableLimit = DEFAULT_TABLE_LIMIT, nearLimit = DEFAULT_NEAR_LIMIT, onTable, cache }) {
+  // zaměnitelné dílky (středy velkých kostek) jako skupinová pravidla
+  constraints = expandIdentical(puzzle, constraints, targets[0]);
   const { positions: TYPE_POSITIONS, local: LOCAL } = typeInfo(puzzle);
   const moveCount = moves.length;
   const perms = moves.map((m) => puzzle.perm(m));

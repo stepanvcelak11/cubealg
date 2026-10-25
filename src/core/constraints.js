@@ -42,9 +42,29 @@ export function makeConstraints(spec) {
  * @param {Uint8Array} [target] cílový stav B (výchozí: složená kostka)
  * @param {object} [puzzle] hlavolam (src/puzzles), výchozí 3×3
  */
+/**
+ * Zaměnitelné dílky (středy velkých kostek, `puzzle.identical`): „hotový“ střed splní
+ * kterýkoli střed té barvy – omezení dílků skupiny se převedou na skupinové pravidlo
+ * (na každém cílovém místě některý dílek skupiny), samy pak nezáleží.
+ */
+export function expandIdentical(P, constraints, target = P.solved()) {
+  if (!P?.identical?.length || constraints['#identical']) return constraints;
+  const out = { ...constraints, '#identical': true };
+  const classes = [...(constraints['#classes'] ?? [])];
+  for (const group of P.identical) {
+    const want = group.filter((name) => out[name] === 'solved' || out[name] === 'permutation');
+    if (!want.length) continue;
+    classes.push({ pieces: group, stickers: group.map(() => [0]), places: want.map((name) => [target[P.slotByName(name).facelets[0]]]) });
+    for (const name of group) out[name] = 'ignore';
+  }
+  if (classes.length) out['#classes'] = classes;
+  return out;
+}
+
 export function compileGoal(constraints, target, puzzle) {
   const P = puzzle ?? { slotByName, SLOT_OF, ORI_AT, solved };
   target ??= P.solved();
+  constraints = expandIdentical(P, constraints, target);
   const { SLOT_OF: slotOf, ORI_AT: oriAt } = P;
   const stickerEq = []; // dvojice [nálepka, pozice]
   const slotEq = [];    // dvojice [referenční nálepka, slot]
@@ -57,7 +77,7 @@ export function compileGoal(constraints, target, puzzle) {
   }));
   const classOk = (loc, c) => c.places.every((pl) => c.stickers.some((k) => pl.has(loc[k])));
   for (const [name, type] of Object.entries(constraints)) {
-    if (type === 'ignore' || name === '#classes') continue;
+    if (type === 'ignore' || name === '#classes' || name === '#identical') continue;
     if (type && typeof type === 'object' && type.allow) {
       allowed.push([P.slotByName(name).facelets[0], new Set(type.allow)]);
       continue;

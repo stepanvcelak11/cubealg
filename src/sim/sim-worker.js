@@ -47,9 +47,9 @@ self.onmessage = async ({ data }) => {
       if (!model) return x;
       const after = P.applyAlg(state, model);
       // u kroků algoritmů případ celý (stav, cíl, orientace) – simulátor řešení slučuje po případech
-      const out = x.source !== 'search' ? x : plan.stepOpts[i]?.cases
+      const out = x.source !== 'search' ? (data.keepModel ? { ...x, model } : x) : plan.stepOpts[i]?.cases
         ? { ...x, model, case: { state: Array.from(state), goal, variant: x.variant ?? 0 } }
-        : { ...x, case: { a: colors(state), b: colors(after), hold: plan.variants[x.variant ?? 0]?.hold ?? '' } };
+        : { ...x, ...(data.keepModel ? { model } : {}), case: { a: colors(state), b: colors(after), hold: plan.variants[x.variant ?? 0]?.hold ?? '' } };
       state = after;
       return out;
     });

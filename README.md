@@ -353,6 +353,26 @@ s žádostí o trvalé úložiště); zálohu jde stáhnout a obnovit v nastaven
 `e2e/offline.test.mjs` (Lab, generátor, test metody, timer bez sítě) a
 `e2e/offline-update.test.mjs` (aktualizace přerušená výpadkem).
 
+## Velké kostky v Labu (4×4, 5×5)
+
+`src/puzzles/bigcube.js`: geometrie N×N z nálepek (jako Skewb a Pyraminx), tahy podle WCA –
+R (vnější), Rw = r (dvě vrstvy), 2R (vnitřní řez), na 5×5 i 3Rw a 3R, otočení x y z; plošná
+síť. Středy stejné barvy (a druhu – na 5×5 „x“ a „t“) jsou zaměnitelné: `puzzle.identical`
+a `expandIdentical` (core/constraints.js) je v cíli převede na skupinová pravidla, takže
+„středy hotové“ splní kterékoli středy té barvy (v cíli i v databázích hledání). Dvě křídla
+hrany mají stejné barvy – rozpoznání dílků (core/task.js) je rozliší podle toho, kam se
+jejich nálepka tahy vůbec může dostat. Předvolby tahů: parita (R U Rw Uw 2R), vnější +
+široké, řezy, středy. PLL parita 4×4 se najde za vteřinu (`2R2 U2 2R2 Uw2 2R2 Uw2` a další);
+OLL parita (15+ tahů) je na obecné hledání hodně dlouhá.
+
+## Moje kostka (Lab)
+
+Lab → Start → **Moje kostka**: Start = kostka v ruce – nafocená kamerou (stěna po stěně, jako
+dřív; teď i 4×4 a 5×5), nebo stav připojené chytré kostky; Cíl = složená kostka. Pak
+**Nejkratší řešení** (two-phase, kolem 20 tahů) nebo **Složit mou metodou**: aktivní metoda
+krok po kroku stejným řešičem jako test metody (ve workeru) – řešení jde do výsledků
+(přehrávač tah po tahu), stav ukáže, co se dělá v každém kroku.
+
 ## Hlavolamy v Labu
 
 Permutační hlavolamy (3×3, 2×2, Pyraminx, Skewb) mají společný model

@@ -1409,3 +1409,54 @@ test('knihovna algoritmů: vložený text roztříděný podle případů a vah,
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('Lab 4×4 a 5×5: PLL parita (zaměnitelné středy), síť, hledání a ověření', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { labModel } = await import('./src/ui/models.js');
+    for (const id of ['444', '555']) {
+      const m = labModel(id);
+      const home = m.home(m.pieceNames);
+      const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+      localStorage.setItem(`ergocube.lab.${id}`, JSON.stringify({ constraints, bases: ['R', 'U', 'Rw', 'Uw', '2R'], colorsA: m.serialize(m.applyMoves(home, m.invertAlg('2R2 U2 2R2 Uw2 2R2 Uw2'))), colorsB: m.serialize(home) }));
+    }
+  });
+  await p.reload();
+  for (const id of ['444', '555']) {
+    await p.selectOption('#lab-puzzle', id);
+    assert.equal(await p.locator('#cube-a polygon').count(), id === '444' ? 96 : 150);
+    await p.locator('#go-search').tap();
+    await p.waitForFunction(() => document.querySelectorAll('#results .result').length > 0, null, { timeout: 60000 })
+      .catch(async (e) => { throw new Error(`${id}: ${e.message}: ${await p.locator('#status').innerText()}`); });
+    await p.waitForSelector('#detail .verdict');
+    assert.match(await p.locator('#detail .verdict').innerText(), /řeší zadání/, id);
+    if (await p.locator('#stop').isEnabled()) await p.locator('#stop').tap();
+    await p.locator('.segmented button[data-sub="task"]').tap();
+  }
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('Moje kostka: stav z chytré kostky, nejkratší řešení a řešení metodou krok po kroku', async () => {
+  // metoda jen ze dvou hran (rychlý test): řešení metodou složí jen je
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
+  ] } };
+  const { p, ctx, errors } = await open('lab', { 'ergocube.guides': guides });
+  await p.evaluate(() => { window.__smartCube.simulate(); window.__smartCube.feed("R U F' L2 D B' R2 U'"); });
+  await p.locator('#a-mine').tap();
+  await p.locator('.help-dialog button', { hasText: 'Ze chytré kostky' }).tap();
+  await p.locator('.help-dialog button', { hasText: 'Nejkratší řešení' }).tap();
+  await p.waitForSelector('#detail .verdict', { timeout: 20000 });
+  assert.match(await p.locator('#detail .verdict').innerText(), /řeší zadání/);
+  assert.match(await p.locator('#status').innerText(), /Nejkratší řešení: \d+ tahů/);
+  // tvou metodou (2 kroky) – krok po kroku
+  await p.locator('.segmented button[data-sub="task"]').tap();
+  await p.locator('#a-mine').tap();
+  await p.locator('.help-dialog button', { hasText: 'Složit mou metodou' }).tap();
+  await p.waitForFunction(() => /Hrana vpředu: .*Hrana vpravo: /.test(document.querySelector('#status').textContent), null, { timeout: 60000 })
+    .catch(async (e) => { throw new Error(`${e.message}: ${await p.locator('#status').innerText()} | ${await p.locator('.help-dialog[open]').innerText().catch(() => '')}`); });
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
