@@ -1391,3 +1391,21 @@ test('sdílení metody odkazem: kroky, algoritmy a výsledek testu; příjemce s
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('knihovna algoritmů: vložený text roztříděný podle případů a vah, uložení do trenažéru', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  await p.locator('#tr-library').tap();
+  await p.waitForSelector('.lib-dialog[open]');
+  assert.ok(await p.locator('.lib-case').count() >= 40, 'vestavěná sbírka');
+  await p.locator('.lib-dialog button', { hasText: 'Vložit text' }).tap();
+  await p.locator('.lib-text').fill(`Sune: R U R' U R U2 R'\nSune (zezadu): y2 R U R' U R U2 R'\nT-perm: R U R' U' R' F R2 U' R' U' R U R' F'`);
+  await p.locator('.lib-dialog button', { hasText: 'Seřadit podle mých vah' }).tap();
+  assert.equal(await p.locator('.lib-case').count(), 2);
+  assert.match(await p.locator('.lib-case').first().innerText(), /PLL · T-perm[\s\S]*nejlepší pro tebe/);
+  await p.locator('.lib-save button').tap();
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('ergocube.algs') ?? '[]').length === 2);
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')));
+  assert.equal(saved[0].task.colorsA.length, 54);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

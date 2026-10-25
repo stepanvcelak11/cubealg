@@ -303,6 +303,16 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Knihovna algoritmů
+
+Trenažér → **Knihovna** (`ui/algdb.js`, logika `ergonomics/algdb.js`): vestavěná sbírka
+(oblíbené algoritmy a alternativy, `corpus.js`) nebo **vložený text** zkopírovaný z
+veřejných databází (SpeedCubeDB, AlgDb, cubing.net – řádky „název: algoritmus“, tabulky,
+poznámky na konci řádku, `Rw` = `r`, otočení kostky na začátku se převede). Algoritmy se
+roztřídí podle případu, který řeší (PLL / OLL / F2L / jiné – stejný případ i s jiným AUF
+nebo viděný z jiné strany), a v každém seřadí podle tvých vah (pohled Nejrychlejší).
+Nejlepší pro tebe je předvybraný; vybrané se uloží do sady v trenažéru i s případem.
+
 ## Sdílení metody odkazem
 
 Metoda → **Sdílet** → Odkaz (`shareMethodLink` v `ui/guide.js`): celá metoda – kroky,

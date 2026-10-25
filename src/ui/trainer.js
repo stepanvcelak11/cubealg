@@ -19,6 +19,7 @@ import { pickNext as srsPick, reference, isGood, schedule, mastery, SORTS } from
 import { smartCube } from '../smartcube/index.js';
 import { mergeQuarters } from '../smartcube/recon.js';
 import { recordSegments } from './smartdata.js';
+import { openLibrary } from './algdb.js';
 
 // Trénovaná sada ('all' = všechny).
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
@@ -499,6 +500,7 @@ export function initTrainer({ isActive }) {
     else if (recog?.answer && (e.code === 'Space' || e.key === 'Enter')) { e.preventDefault(); nextRecog(); }
   });
   $('tr-open').onclick = () => { renderList(); $('tr-sheet').hidden = false; };
+  $('tr-library').onclick = () => openLibrary({ onSaved: (set) => trainSetTo(set) });
   $('tr-close').onclick = closeSheet;
   const sortSel = $('tr-sort');
   sortSel.replaceChildren(...Object.entries(SORTS).map(([k, v]) => el('option', { value: k, textContent: v.label })));
