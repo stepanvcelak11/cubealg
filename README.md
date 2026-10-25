@@ -303,6 +303,16 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Objevitel metod
+
+Metoda → **Vylepšit** (`ui/discover.js`, návrhy `sim/discover.js`): z tvé metody navrhne úpravy –
+spojit krok s dalším, volnost (pár do kteréhokoli slotu, barevná neutralita prvního kroku),
+krok naučenými algoritmy místo intuice a naopak – a každou otestuje na stejných zamícháních
+(stejné workery a model skladače jako test metody, kratší hledání na krok). Výsledek: o kolik
+se změní odhad času (± = rozptyl, menší rozdíl může být náhoda), tahy a počet algoritmů
+(sada kroku + nové případy, které test potkal). Tři nejlepší úpravy zkusí i po dvou
+dohromady. „Použít“ zapíše změnu do nastavení kroků.
+
 ## Vizuální metronom
 
 Timer → **Metronom** (`ui/metronome.js`, logika `timer/metronome.js`): telefon pod kostkou,

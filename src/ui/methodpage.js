@@ -10,11 +10,13 @@ import { initBuilder, renderBuilder, openBuilderStep } from './builder.js';
 import { initSimulator, showSimulator, harvestStep } from './simulator.js';
 import { downloadLearning } from './learnexport.js';
 import { showGuide, shareMethod } from './methods.js';
+import { mountDiscover } from './discover.js';
 
 const SUB = 'ergocube.method.sub';
-const SUBS = ['build', 'test', 'compare'];
+const SUBS = ['build', 'test', 'compare', 'discover'];
 let sub = SUBS.includes(storage.get(SUB)) ? storage.get(SUB) : 'build';
-let root = null, title = null, tabs = null, build = null, test = null, cmp = null;
+let root = null, title = null, tabs = null, build = null, test = null, cmp = null, disc = null;
+let labDeps = () => ({ ergo: {}, lambda: 0.5 });
 let visible = () => false;
 
 /** @param {{lab, practice, train, labTask, openLab, isActive}} deps */
@@ -27,11 +29,13 @@ export function initMethodPage(deps) {
     b.dataset.sub = id;
     return b;
   };
-  tabs = el('nav', { className: 'segmented steps mp-tabs', ariaLabel: 'Metoda' }, tab('build', 1, 'Sestavit'), tab('test', 2, 'Otestovat'), tab('compare', 3, 'Porovnat'));
+  tabs = el('nav', { className: 'segmented steps mp-tabs', ariaLabel: 'Metoda' }, tab('build', 1, 'Sestavit'), tab('test', 2, 'Otestovat'), tab('compare', 3, 'Porovnat'), tab('discover', 4, 'Vylepšit'));
   const action = (ic, label, hint, fn) => Object.assign(el('button', { type: 'button', className: 'secondary small', title: hint }), { innerHTML: `${icon(ic, { size: 16 })}<span>${label}</span>`, onclick: fn });
   build = el('div', { className: 'mp-build' });
   test = el('div', { id: 'sim-root', className: 'sim-page' });
   cmp = el('div', { id: 'cmp-root', className: 'sim-page' });
+  disc = el('div', { className: 'sim-page disc-page' });
+  labDeps = deps.lab;
   root.append(
     el('div', { className: 'mp-head' },
       el('div', {}, el('small', { className: 'hint', textContent: 'Tvoje metoda · přepneš ji nahoře v liště' }), title),
@@ -39,7 +43,7 @@ export function initMethodPage(deps) {
         action('book', 'Průvodce', 'Celá metoda na čtení (s obrázky a ukázkami)', () => showGuide()),
         action('download', 'Učebnice', 'Celá metoda k učení v jednom souboru (kroky, algoritmy, časy, výsledek testu); jde vytisknout i znovu importovat', () => downloadLearning()),
         action('share', 'Sdílet', 'Poslat metodu i s algoritmy jako soubor', () => shareMethod()))),
-    tabs, build, test, cmp);
+    tabs, build, test, cmp, disc);
   initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask, openLab: deps.openLab });
   initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
   // jiná metoda nebo úpravy odjinud: sestavení překreslit (při psaní se nepřekresluje)
@@ -57,6 +61,8 @@ export function showMethodPage(which = sub, stepId = null) {
   build.hidden = sub !== 'build';
   test.hidden = sub !== 'test';
   cmp.hidden = sub !== 'compare';
+  disc.hidden = sub !== 'discover';
   if (sub === 'build') openBuilderStep(stepId);
+  else if (sub === 'discover') { if (disc.dataset.running !== '1') mountDiscover(disc, labDeps()); }
   else showSimulator();
 }

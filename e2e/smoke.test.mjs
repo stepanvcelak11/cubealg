@@ -1338,3 +1338,23 @@ test('metronom: bliká v tempu, s chytrou kostkou počítá tahy na bliknutí', 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('objevitel metod: návrhy úprav otestované na stejných zamícháních, použití návrhu', async () => {
+  const guides = { default: { intro: '', steps: [
+    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
+    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
+  ] } };
+  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.discover': { count: 8, seconds: 0.5 }, 'ergocube.method.sub': 'discover' });
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.disc-page button', { hasText: 'Hledat vylepšení' }).tap();
+  await p.waitForFunction(() => /Hotovo|Zastaveno/.test(document.querySelector('.disc-page .status').textContent), null, { timeout: 240000 });
+  const rows = await p.locator('.disc-row').allInnerTexts();
+  assert.match(rows[0], /Tvoje metoda teď[\s\S]*\d+,\d+ s/);
+  assert.ok(rows.some((r) => /Spojit „Hrana vpředu“ s „Hrana vpravo“[\s\S]*s ± /.test(r)), rows.join('\n'));
+  // použít návrh: spojení se zapíše do nastavení kroku
+  await p.locator('.disc-row').filter({ hasText: 'Spojit' }).filter({ hasNotText: ' + ' }).locator('button').tap();
+  const on = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')).default.steps[0].sim?.on);
+  assert.equal(on, false);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
