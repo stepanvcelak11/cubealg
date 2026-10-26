@@ -11,8 +11,11 @@ export class NetView {
    * @param {{viewBox: string, polys?: string[], onSticker?: (pos:number) => void, label?: string, fill?: boolean}} opts
    *   polys – body polygonu každé nálepky (u Square-1 se posílají v render)
    */
-  constructor(container, { viewBox, polys = [], onSticker, label = 'Hlavolam', fill = false }) {
+  constructor(container, { viewBox, polys = [], onSticker, label = 'Hlavolam', fill = false, zoom = null }) {
     this.container = container;
+    this.viewBox = viewBox;
+    this.zoom = zoom; // výřez pro nálepku (malé nálepky: první klepnutí stěnu zvětší)
+    this.zoomed = null;
     this.onSticker = onSticker;
     this.polys = polys;
     const id = `nv${++uid}`;
@@ -33,8 +36,18 @@ export class NetView {
     container.replaceChildren(this.svg);
     this.svg.addEventListener('click', (e) => {
       const poly = e.target.closest?.('[data-pos]');
-      if (poly && this.onSticker) this.onSticker(Number(poly.dataset.pos));
+      if (!poly || !this.onSticker) return;
+      const pos = Number(poly.dataset.pos);
+      const box = this.zoom?.[pos];
+      if (box && this.zoomed !== box) { this.setZoom(box); return; }
+      this.onSticker(pos);
     });
+    if (zoom) {
+      this.unzoom = document.createElement('button');
+      Object.assign(this.unzoom, { type: 'button', className: 'secondary small nv-unzoom', textContent: 'Celá síť', hidden: true });
+      this.unzoom.onclick = () => this.setZoom(null);
+      container.append(this.unzoom);
+    }
   }
 
   /**
@@ -65,7 +78,14 @@ export class NetView {
     g.innerHTML = svgText;
   }
 
+  /** Zvětšení na výřez (stěnu), null = celá síť. */
+  setZoom(box) {
+    this.zoomed = box;
+    this.svg.setAttribute('viewBox', box ?? this.viewBox);
+    if (this.unzoom) this.unzoom.hidden = !box;
+  }
+
   layout() {}
-  resetView() {}
+  resetView() { if (this.zoomed) this.setZoom(null); }
   animate(move, ms = 120) { return new Promise((r) => setTimeout(r, ms)); }
 }

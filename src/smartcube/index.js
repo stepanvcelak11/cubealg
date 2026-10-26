@@ -80,10 +80,13 @@ function createSmartCube() {
     const notify = await service.getCharacteristic(proto.chars.state);
     const cipher = ganCipher(mac, proto.moyu);
     const send = (msg) => command.writeValue(cipher.encrypt(msg));
-    const onValue = async (ev) => {
+    // zprávy po jedné (ovladač čeká na odeslání žádosti o historii – další zpráva nesmí předběhnout)
+    let queue = Promise.resolve();
+    const onValue = (ev) => {
       const v = ev.target.value;
       if (!v || v.byteLength < 16) return;
-      await handleEvents(await proto.driver.handle(cipher.decrypt(new Uint8Array(v.buffer)), send, now()));
+      const msg = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)), t = now();
+      queue = queue.then(async () => handleEvents(await proto.driver.handle(cipher.decrypt(msg), send, t))).catch((e) => console.error(e));
     };
     notify.addEventListener('characteristicvaluechanged', onValue);
     const onGone = () => api.disconnect(false);

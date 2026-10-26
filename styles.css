@@ -1103,7 +1103,7 @@ body.timing .round-panel { visibility: hidden; }
 .mp-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .mp-head h2 { margin: 0; font-family: var(--display); font-size: 1.7rem; letter-spacing: -0.02em; }
 .mp-head .hint { margin: 0; font-size: 0.72rem; font-weight: 700; }
-.mp-tabs { justify-self: stretch; }
+.mp-tabs { justify-self: stretch; grid-template-columns: repeat(4, 1fr); }
 .mp-build { display: grid; gap: 10px; min-width: 0; }
 .mp-build[hidden], .mp .sim-page[hidden] { display: none; }
 .bld-tpls { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px; }
@@ -1582,3 +1582,12 @@ i.exec { background: var(--accent); }
 .lib-algs li.best code { font-weight: 700; }
 .lib-algs li.best small { color: var(--good); font-weight: 700; }
 .lib-save { position: sticky; bottom: 0; background: var(--panel); padding-top: 8px; }
+/* připojená chytrá kostka v liště: na telefonu se místo dělí, aby se vešel i název stránky */
+@media (max-width: 520px) {
+  .topbar:has(.cube-chip:not([hidden])) { gap: 6px; }
+  .topbar:has(.cube-chip:not([hidden])) .method-pick select { max-width: 28vw; padding-right: 26px; padding-left: 12px; }
+  .topbar:has(.cube-chip:not([hidden])) h1 { font-size: clamp(1.35rem, 6.4vw, 1.8rem); }
+  .cube-chip { padding: 4px 8px; font-size: 0.72rem; }
+}
+/* zvětšená stěna sítě (4×4, 5×5) */
+.nv-unzoom { position: absolute; right: 8px; bottom: 8px; z-index: 2; min-height: 34px; padding: 4px 12px; font-size: 0.8rem; }

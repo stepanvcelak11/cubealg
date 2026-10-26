@@ -9,7 +9,7 @@
 
 import { makePuzzle, fromGeometry } from './perm.js';
 import { CUBE_COLORS } from './colors.js';
-import { cubeNetSquare, cubeNetBox, pointsAttr } from './net.js';
+import { cubeNetSquare, cubeNetBox, pointsAttr, CUBE_NET } from './net.js';
 
 const NORMALS = { U: [0, 1, 0], R: [1, 0, 0], F: [0, 0, 1], D: [0, -1, 0], L: [-1, 0, 0], B: [0, 0, -1] };
 const AXIS = { R: [0, 1], L: [0, -1], U: [1, 1], D: [1, -1], F: [2, 1], B: [2, -1] };
@@ -44,11 +44,9 @@ function bigCube(n) {
   add('x', 'R', 0, n - 1); add('y', 'U', 0, n - 1); add('z', 'F', 0, n - 1);
   // rychlejší výběr nálepek tahu: podle souřadnic přímo (bez hledání)
   for (const mv of Object.values(moves)) {
-    const axis = mv.axis.findIndex((x) => x !== 0), sign = mv.axis[axis];
     const old = mv.select;
     const cache = new Map(stickers.map((s) => [s.c.join(','), old(s.c)]));
     mv.select = (c) => cache.get(c.map((x) => Math.round(x)).join(',')) ?? false;
-    void sign;
   }
   const typeOf = (key) => {
     const q = key.split(',').map(Number);
@@ -92,6 +90,9 @@ function bigCube(n) {
     groups.get(key).push(s.name);
   }
   // plošná síť
+  // malé nálepky: klepnutí na stěnu ji nejdřív zvětší (výřez sítě se stěnou), pak se maluje
+  const faceBox = (f) => { const [x, y] = CUBE_NET[f].at; return `${x * 3.25 - 0.08} ${y * 3.25 - 0.08} 3.16 3.16`; };
+  const zoom = stickers.map((s) => faceBox(s.face));
   const polys = stickers.map((s) => pointsAttr(cubeNetSquare(s.face, s.c.map((x) => x / n), 0.9 / n * 2 / 2, 3, 0.25)));
   const wide = n >= 5 ? ['3Rw', '3Uw'] : [];
   return makePuzzle({
@@ -111,7 +112,7 @@ function bigCube(n) {
     ergonomics: 'simple',
     defaultWeights: { R: 1, U: 1, F: 1.6, L: 1.4, D: 1.4, B: 2.6, Rw: 1.3, Uw: 1.6, Lw: 1.7, Dw: 2, Fw: 2.2, Bw: 3, '2R': 1.4, '2L': 1.6, '2U': 2.2, '2D': 2.4, '2F': 2.6, '2B': 3, '3Rw': 1.6, '3R': 1.6, '3Uw': 2, x: 3, y: 3, z: 3 },
     view: 'net',
-    net: { viewBox: cubeNetBox(), polys },
+    net: { viewBox: cubeNetBox(), polys, zoom },
   });
 }
 

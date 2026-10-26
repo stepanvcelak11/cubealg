@@ -54,7 +54,7 @@ async function evaluate({ guide, config, lab, count, seconds, level, stopped, on
                 if (fresh && plan.stepOpts[i]?.learn) for (const p of pool) p.postMessage({ type: 'learn', step: i, display: entry.display, name: `${i}` });
               }
             });
-            solves.push(data.solve);
+            solves.push({ ...data.solve, id: data.id });
             onSolve?.();
           }
           feed(w);
@@ -143,7 +143,14 @@ export function mountDiscover(host, lab) {
               use);
           }));
       };
-      const errOf = (res) => Math.sqrt((res.sum.timeSd ** 2 + ref.sum.timeSd ** 2) / Math.max(1, res.sum.count)) * 0.5;
+      // nejistota rozdílu: párově (stejná zamíchání) – rozdíl času na každém zamíchání zvlášť
+      const errOf = (res) => {
+        const d = Object.keys(res.sum.solveTimes).filter((k) => k in ref.sum.solveTimes).map((k) => res.sum.solveTimes[k] - ref.sum.solveTimes[k]);
+        if (d.length < 2) return Math.sqrt(res.sum.timeSd ** 2 + ref.sum.timeSd ** 2);
+        const m = d.reduce((a, b) => a + b, 0) / d.length;
+        const sd = Math.sqrt(d.reduce((a, b) => a + (b - m) ** 2, 0) / (d.length - 1));
+        return (1.64 * sd) / Math.sqrt(d.length);
+      };
       for (const [k, p] of props.entries()) {
         if (!running) break;
         status.textContent = `Návrh ${k + 1} z ${props.length}: ${p.label}`;

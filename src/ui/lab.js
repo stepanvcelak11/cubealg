@@ -223,7 +223,7 @@ function makeView(container, opts) {
   const v = currentView();
   return v.type === 'cube3d'
     ? new Cube3D(container, { ...opts, facelets: v.facelets, scale: v.scale })
-    : new NetView(container, { ...opts, viewBox: v.viewBox, polys: v.polys });
+    : new NetView(container, { ...opts, viewBox: v.viewBox, polys: v.polys, zoom: opts.onSticker ? v.zoom : null });
 }
 
 function buildViews() {
@@ -559,6 +559,8 @@ function openMine() {
   close.onclick = () => dlg.close();
   dlg.addEventListener('close', () => dlg.remove());
   sync();
+  // připojená chytrá kostka = kostka v ruce: Start rovnou z ní
+  if (smartCube.connected) fromCube.onclick();
   dlg.showModal();
 }
 /** Řešení tvou metodou (krok po kroku, ve workeru testu metody). */
@@ -582,6 +584,7 @@ function solveByMethod(status, done) {
     done();
     addSolution(whole, `${methods.get(method).name}: ${parts.map((x) => `${x.title}: ${x.alg}`).join(' · ')}`);
   };
+  w.onerror = () => { w.terminate(); status.textContent = 'Metodou se to nepovedlo složit (chyba při skládání).'; };
   w.postMessage({ type: 'plan', plan });
   w.postMessage({ type: 'solve', id: 0, keepModel: true, start: Array.from(fromFacelets(ui.A.join(''))) });
 }

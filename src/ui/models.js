@@ -98,7 +98,7 @@ function permModel(P) {
     solved: () => P.solved(),
     view: P.view === 'cube3d'
       ? { type: 'cube3d', facelets: P.view3d.facelets, scale: P.view3d.scale }
-      : { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys },
+      : { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys, zoom: P.net.zoom },
     flatView: P.net ? { type: 'net', viewBox: P.net.viewBox, polys: P.net.polys } : null,
     scan: scanSpecOf(P),
   };

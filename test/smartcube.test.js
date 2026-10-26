@@ -49,6 +49,27 @@ test('chytrá kostka: rozbor složení po krocích metody (CFOP: kříž, páry,
   assert.deepEqual(unpackMoves(packMoves(moves)).map((x) => x.move), moves.map((x) => x.move));
 });
 
+test('chytrá kostka: rozbor i při jiné barvě dole (barevná neutralita – žlutý kříž)', () => {
+  let n = 0;
+  const guide = templateGuide(TEMPLATES.find((t) => t.id === 'cfop'), DEFAULT_FRAME, (title) => ({ id: `s${++n}`, title }));
+  const config = Object.fromEntries(guide.steps.map((st) => [st.id, { ...(st.sim ?? {}) }]));
+  const titles = buildPlan({ guide, config }).steps.map((x) => x.st.title);
+  const fixed = buildPlan({ guide, config }).plan;
+  const neutral = buildPlan({ guide, config: { ...config, s1: { ...config.s1, free: 'all' } } }).plan;
+  // žlutá dole = tahy přímo podle středů kostky (bez otočení)
+  const solve = "R U R' U' R' F R2 U' R' U' R U R' F'";
+  const inverse = (alg) => alg.split(' ').reverse().map((m) => (m.endsWith("'") ? m[0] : m.endsWith('2') ? m : `${m}'`)).join(' ');
+  const start = applyAlg(solved(), inverse(solve));
+  const moves = mergeQuarters(timed(solve, 100, 1000));
+  // v orientaci metody (bílá dole) by „kříž“ byl celý algoritmus
+  assert.equal(reconstruct(start, moves, fixed, titles).steps[0].moves, 14);
+  const r = reconstruct(start, moves, neutral, titles);
+  assert.equal(r.done, true);
+  assert.equal(r.steps[0].to, 0);
+  const pll = r.steps.find((s) => s.title === 'PLL');
+  assert.equal(holdOf(neutral.variants[pll.v].hold).toHeldString(pll.alg), solve);
+});
+
 test('chytrá kostka: Gen3 – šifrování a čtení tahů', async () => {
   const c = ganCipher('AB:12:CD:34:EF:56');
   const d = gen3Driver();

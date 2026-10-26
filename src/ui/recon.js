@@ -21,7 +21,14 @@ function methodPlan() {
   const config = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig(method, st)]));
   try {
     const { plan, steps } = buildPlan({ guide, config });
-    return { plan, titles: steps.map((x) => x.st.title || 'Krok'), kinds: steps.map((x) => x.cfg.kind), key: JSON.stringify([method, guide.steps.map((s) => [s.id, s.cells, s.parts, s.rules])]) };
+    // záloha pro skladače, kteří začínají jinou barvou, než má metoda (barevná neutralita):
+    // první krok v kterékoli orientaci – použije se, když rozbor v orientaci metody nesedí
+    let neutral = null;
+    const first = guide.steps.find((st) => config[st.id].on !== false && config[st.id].solveBy !== 'fixed');
+    if (first && config[first.id].free !== 'all') {
+      try { neutral = buildPlan({ guide, config: { ...config, [first.id]: { ...config[first.id], free: 'all' } } }).plan; } catch { neutral = null; }
+    }
+    return { plan, neutral, titles: steps.map((x) => x.st.title || 'Krok'), kinds: steps.map((x) => x.cfg.kind), key: JSON.stringify([method, guide.steps.map((s) => [s.id, s.cells, s.parts, s.rules])]) };
   } catch { return null; }
 }
 
@@ -33,11 +40,19 @@ export function reconOf(solve, mp = methodPlan()) {
   let res = null;
   try {
     const moves = unpackMoves(solve.r);
-    const r = reconstruct(applyAlg(solved(), solve.s), moves, mp.plan, mp.titles);
+    const start = applyAlg(solved(), solve.s);
+    let r = reconstruct(start, moves, mp.plan, mp.titles);
+    let plan = mp.plan;
+    if (mp.neutral) {
+      // jiná barva dole sedí, když s ní metoda dojde do konce a první krok je hotový dřív
+      // (ve špatné orientaci se „kříž“ složí až náhodou někde uprostřed složení)
+      const n = reconstruct(start, moves, mp.neutral, mp.titles);
+      const firstEnd = (x) => x.steps.find((st) => !st.fixed)?.to ?? Infinity;
+      if (n.done && (!r.done || firstEnd(n) < firstEnd(r))) { r = n; plan = mp.neutral; }
+    }
     // zápis kroků v držení metody (kostka hlásí tahy podle středů)
-    const hold = holdOf(mp.plan.variants[0].hold);
-    for (const st of r.steps) { try { st.alg = hold.toHeldString(st.alg); } catch { /* jak je */ } }
-    res = { ...r, moves: moves.length };
+    for (const st of r.steps) { try { st.alg = holdOf(plan.variants[st.v ?? 0].hold).toHeldString(st.alg); } catch { /* jak je */ } }
+    res = { ...r, moves: moves.length, plan };
   } catch { res = null; }
   cache.set(key, res);
   return res;
@@ -84,7 +99,7 @@ export function recordAlgSteps(solve) {
   const moves = unpackMoves(solve.r);
   let n = 0;
   r.steps.forEach((st, i) => {
-    if (mp.kinds[i] === 'alg' && st.to > st.from) n += recordSegments(moves.slice(st.from, st.to), 'timer', mp.plan.variants[0].hold);
+    if (mp.kinds[i] === 'alg' && st.to > st.from) n += recordSegments(moves.slice(st.from, st.to), 'timer', r.plan.variants[st.v ?? 0].hold);
   });
   return n;
 }

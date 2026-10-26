@@ -83,11 +83,11 @@ export function openLibrary({ onSaved } = {}) {
       if (!chosen.has(a.alg)) continue;
       try {
         const core = withoutRotations(a.alg);
-        algs.add({ alg: a.alg, name: a.name ?? `${g.kind} ${++n}`, set, task: { puzzle: '333', constraints: constraintsFor(g.kind), colorsA: m.applyMoves(home, m.invertAlg(core)), colorsB: home } });
+        algs.add({ alg: a.alg, name: a.name ?? `${g.kind} ${n + 1}`, set, task: { puzzle: '333', constraints: constraintsFor(g.kind), colorsA: m.applyMoves(home, m.invertAlg(core)), colorsB: home } });
         n++;
       } catch { /* nejde uložit */ }
     }
-    toast(`Uloženo ${chosen.size} algoritmů do trenažéru`);
+    toast(n === chosen.size ? `Uloženo ${n} algoritmů do trenažéru` : `Uloženo ${n} z ${chosen.size} algoritmů (zbytek nejde převést)`);
     dlg.close();
     onSaved?.(set);
   };

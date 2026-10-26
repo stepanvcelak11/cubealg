@@ -346,6 +346,8 @@ export function summarize(solves, stepCount, timing = {}) {
     moves: total, human: steps.reduce((a, st) => a + st.human, 0), movesSd, ci: done.length > 1 ? (1.96 * movesSd) / Math.sqrt(done.length) : 0,
     median: quantile(totals, 0.5),
     score: mean(scores), time: totalTime, timeSd: sd(secs),
+    // čas každého složeného (podle id zamíchání, když ho složení nese) – pro párové porovnání
+    solveTimes: Object.fromEntries(done.map((s, k) => [s.id ?? k, secs[k]])),
     min: totals.length ? lo : 0, max: totals.length ? hi : 0,
     steps, worst: argmax((st) => st.moves), slowest: argmax((st) => st.time), hist, variants,
   };

@@ -71,21 +71,28 @@ export function reconstruct(start, moves, plan, titles) {
   const testOf = (goal) => { const k = constraintsKey(goal); if (!tests.has(k)) tests.set(k, compileGoal(goal).test); return tests.get(k); };
   const variants = plan.variants;
   const steps = [];
-  let v = 0, done = {}, at = 0; // at = počet tahů hotových před krokem
+  // orientace, které zatím sedí (krok může platit naráz ve víc orientacích – třeba kříž při
+  // libovolné přední stěně; rozhodne až další krok): [{ v, done }]
+  let alive = [{ v: 0, done: {} }], at = 0; // at = počet tahů hotových před krokem
   const t0 = moves[0]?.t ?? 0;
   let prevEnd = t0;
   for (let i = 0; i < variants[0].steps.length; i++) {
-    const st = variants[v].steps[i];
-    if (st.fixed) {
+    if (variants[alive[0].v].steps[i].fixed) {
       // krok „jen někdy“ (parita) – spojí se s dalším krokem
       steps.push({ title: titles[i], fixed: true, moves: 0, alg: '', recog: 0, exec: 0, skipped: true });
       continue;
     }
-    const options = (variants[v].next?.[i] ?? [v]).map((j) => ({ j, goal: mergeConstraints(done, variants[j].steps[i].parts) }));
+    const options = [];
+    const seen = new Set();
+    for (const a of alive) for (const j of variants[a.v].next?.[i] ?? [a.v]) {
+      const goal = mergeConstraints(a.done, variants[j].steps[i].parts);
+      const k = constraintsKey(goal);
+      if (!seen.has(`${j}|${k}`)) { seen.add(`${j}|${k}`); options.push({ v: j, done: goal, test: testOf(goal) }); }
+    }
     let found = null;
     for (let k = at; k < states.length && !found; k++) {
-      const o = options.find((x) => testOf(x.goal)(states[k]));
-      if (o) found = { k, o };
+      const fit = options.filter((o) => o.test(states[k]));
+      if (fit.length) found = { k, fit };
     }
     if (!found) {
       steps.push({ title: titles[i], moves: moves.length - at, alg: moves.slice(at).map((x) => x.move).join(' '), recog: 0, exec: 0, unfinished: true });
@@ -97,14 +104,13 @@ export function reconstruct(start, moves, plan, titles) {
       title: titles[i], moves: own.length, alg: own.map((x) => x.move).join(' '), from: at, to: found.k,
       recog: first ? Math.max(0, first.t - prevEnd) : 0,
       exec: first ? last.end - first.t : 0,
-      skipped: !own.length,
+      skipped: !own.length, v: found.fit[0].v,
     });
     if (last) prevEnd = last.end;
     at = found.k;
-    v = found.o.j;
-    done = found.o.goal;
+    alive = found.fit.map(({ v, done }) => ({ v, done }));
   }
-  return { steps, total: (moves.at(-1)?.end ?? t0) - t0, done: true };
+  return { steps, total: (moves.at(-1)?.end ?? t0) - t0, done: true, variant: alive[0].v };
 }
 
 /** Průměr rozborů (stejné kroky): pro každý krok průměrné rozpoznání, provedení a tahy. */

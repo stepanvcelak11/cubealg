@@ -7,6 +7,7 @@ import { el, storage } from './dom.js';
 import { keepAwake } from './longrun.js';
 import { smartCube } from '../smartcube/index.js';
 import { makeMetronome, RAMPS, METRONOME_DEFAULTS } from '../timer/metronome.js';
+import { DOUBLE_GAP } from '../smartcube/recon.js';
 
 const KEY = 'ergocube.metronome';
 const COLORS = { white: 'Bílá', yellow: 'Žlutá', green: 'Zelená', red: 'Červená' };
@@ -51,7 +52,7 @@ export function openMetronome() {
   const dlg = el('dialog', { className: 'met-dialog' }, setup, run);
   document.body.append(dlg);
 
-  let m = null, raf = 0, paused = false, lock = null, audio = null, offMove = null;
+  let m = null, raf = 0, paused = false, pausedAt = 0, lock = null, audio = null, offMove = null, lastMove = null;
   const click = () => {
     if (!opts.sound) return;
     try {
@@ -86,7 +87,16 @@ export function openMetronome() {
     run.hidden = false;
     dlg.dataset.color = opts.color;
     lock = keepAwake();
-    offMove = smartCube.on('move', ({ t }) => { if (m && !paused) { m.move(t); hud(); } });
+    lastMove = null;
+    offMove = smartCube.on('move', ({ move, t }) => {
+      if (!m || paused) return;
+      // dvojitý tah (U2) posílá kostka jako dva čtvrttahy – na bliknutí je to jeden tah
+      const same = lastMove && lastMove.move[0] === move[0] && t - lastMove.t <= DOUBLE_GAP;
+      lastMove = same ? null : { move, t };
+      if (same) return;
+      m.move(t);
+      hud();
+    });
     paused = false;
     hud();
     raf = requestAnimationFrame(loop);
@@ -97,11 +107,17 @@ export function openMetronome() {
     offMove?.(); offMove = null;
     if (m) {
       const s = m.stats();
-      // rychlejší tempo, které jsi dal, se zapamatuje jako výchozí pro příště
-      if (opts.ramp !== 'fixed' && s.tps > opts.tps && (!smartCube.connected || (s.onBeat ?? 0) >= 0.7)) { opts.tps = s.tps; save(); }
+      // rychlejší tempo se samo zapamatuje jen ověřené chytrou kostkou (stíhal jsi), jinak
+      // jde jedním klepnutím (bez kostky aplikace neví, jestli jsi stíhal)
+      const tps = s.tps;
+      const verified = smartCube.connected && s.moves >= 20 && (s.onBeat ?? 0) >= 0.7;
+      if (opts.ramp !== 'fixed' && tps > opts.tps && verified) { opts.tps = tps; save(); }
       setup.querySelector('input').value = String(opts.tps);
       setup.querySelector('.met-last')?.remove();
-      setup.append(el('p', { className: 'met-last hint', textContent: `Naposledy: ${s.beats} bliknutí, tempo až ${fmt(s.tps)} tahů/s${s.moves ? `, na bliknutí ${Math.round(s.onBeat * 100)} % z ${s.moves} tahů` : ''}.` }));
+      const keep = tps > opts.tps ? el('button', { type: 'button', className: 'secondary small', textContent: `Příště začít od ${fmt(tps)} tahů/s` }) : null;
+      if (keep) keep.onclick = () => { opts.tps = tps; save(); setup.querySelector('input').value = String(tps); keep.remove(); };
+      setup.append(el('div', { className: 'met-last hint' },
+        `Naposledy: ${s.beats} bliknutí, tempo až ${fmt(tps)} tahů/s${s.moves ? `, na bliknutí ${Math.round(s.onBeat * 100)} % z ${s.moves} tahů` : ''}.`, keep ? ' ' : '', keep ?? ''));
     }
     m = null;
     run.hidden = true;
@@ -111,6 +127,8 @@ export function openMetronome() {
   stopBtn.onclick = (e) => { e.stopPropagation(); end(); };
   run.onclick = () => {
     paused = !paused;
+    if (paused) pausedAt = performance.now();
+    else m?.resume(performance.now(), performance.now() - pausedAt);
     hud();
     if (!paused) raf = requestAnimationFrame(loop);
   };

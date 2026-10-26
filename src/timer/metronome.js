@@ -56,6 +56,11 @@ export function makeMetronome(opts, t0) {
       if (hit) { window.hits++; total.hits++; }
       return hit;
     },
+    /** Pokračování po pauze (ms pauzy): úder hned, úsek pro zrychlování bez pauzy. */
+    resume(now, pausedFor) {
+      phaseStart += pausedFor;
+      beatAt = now;
+    },
     /** Změna tempa ručně. */
     set(v) { tps = clampT(v); },
   };
