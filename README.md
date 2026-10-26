@@ -379,10 +379,16 @@ kolech:
 
 1. **prosívání** – dvojnásobek nápadů (různorodě, polovina originálních) na 3 zamícháních,
 2. **test** – nejlepší na všech zamícháních (první tři má worker spočítané z prosívání),
-3. **vylepšování vítězů** – objevitel (`sim/discover.js`) navrhne úpravy (spojit, rozdělit,
-   prohodit, natočit hrany jinde, jiný konec, volnost…), 8 různých druhů se proseje, dvě
-   nejslibnější se otestují pořádně a úprava zůstane, jen když párově (na stejných
-   zamícháních) zlepší čas + učení. Vylepšená metoda se v dalším kole vylepšuje dál.
+3. **vylepšování a křížení** – střídavě nejlepší metoda a nejlepší originální (i originální
+   nápad dostane šanci se vyladit):
+   - objevitel (`sim/discover.js`) navrhne úpravy (spojit, rozdělit, prohodit, natočit hrany
+     jinde, jiný konec, volnost…); v každém druhu ta nejslibnější podle odhadu bez simulace,
+     8 se proseje a dvě nejslibnější se otestují pořádně,
+   - křížení (`crossover`): začátek otestované metody a konec kterékoli vymyšlené, když je po
+     obou začátcích na kostce hotové přesně totéž (třeba první dvě vrstvy s natočenými
+     hranami); 4 nejslibnější podle odhadu (`guidePrior`: tahy + odhad případů) se prosejí,
+   - nová metoda zůstane, jen když párově (na stejných zamícháních) porazí rodiče v čase +
+     učení, a v dalším kole se vylepšuje dál.
 
 Každá metoda má vysvětlení (u vylepšených i co se změnilo a proč) a jde uložit jako nová
 metoda. Nejlepší nálezy (8) si aplikace pamatuje i mezi hledáními.

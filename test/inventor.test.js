@@ -96,3 +96,22 @@ test('vylepšování: spojené páry se staví jako blok, poslední vrstva se in
   assert.equal(pairs.patch.s3.kind, 'blocks');
   assert.ok(!ps.some((p) => p.id === 'intu:s6' || p.id === 'intu:s7'), 'OLL/PLL intuitivně');
 });
+
+test('křížení metod: začátek jedné a konec druhé, jen když je po nich hotové totéž', async () => {
+  const { crossover } = await import('../src/sim/discover.js');
+  const g = (m, k) => { let n = 0; return templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `${k}${++n}`, title })).steps; };
+  const cfg = (st) => ({ ...stepDefaults(false), ...(st.sim ?? {}) });
+  const all = allMethods();
+  const cfop = g(all.find((m) => m.known === 'CFOP'), 'a'), zz = g(all.find((m) => m.known === 'ZZ'), 'b');
+  const twolook = g(all.find((m) => m.key === 'cross|pairs4|twolook'), 'c');
+  // CFOP s koncem 2-look: po párech je hotové totéž
+  const kids = crossover(cfop, twolook, cfg);
+  assert.ok(kids.some((k) => k.a === 5 && k.steps.length === 9), JSON.stringify(kids.map((k) => [k.a, k.b])));
+  // ZZ (natočené hrany po F2L) s koncem CFOP po F2L ne – jen po OCLL/OLL (pak PLL)
+  for (const k of crossover(zz, cfop, cfg)) assert.ok(k.steps.at(-1).title === 'PLL' && k.steps.at(-2).title === 'OCLL');
+  // každé křížení složí celou kostku
+  for (const k of [...kids, ...crossover(zz, cfop, cfg)]) {
+    const done = k.steps.reduce((acc, st) => mergeParts(acc, stepParts(st)), {});
+    assert.ok(PIECES.every((p) => done[p] === 'solved'));
+  }
+});

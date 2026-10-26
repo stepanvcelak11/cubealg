@@ -5,7 +5,8 @@
 //   1. prosívání – hodně nápadů krátce (3 zamíchání), nepovedené a pomalé vypadnou
 //   2. test      – nejlepší na všech zamícháních (stejná jako test metody)
 //   3. vylepšování – vítěze upravuje objevitel (sim/discover.js: spojit, rozdělit, prohodit,
-//      natočit hrany jinde, jiný konec…) a nechá úpravu, jen když párově pomůže
+//      natočit hrany jinde, jiný konec…) a kříží nejlepší (začátek jedné, konec druhé);
+//      nová metoda zůstane, jen když párově pomůže
 // Nejlepší nálezy si pamatuje i mezi hledáními. Každá metoda má vysvětlení a jde uložit.
 
 import { el, storage } from './dom.js';
@@ -14,8 +15,8 @@ import { LEVELS } from '../sim/simulate.js';
 import { stepConfig } from './stepcfg.js';
 import { stepParts, DEFAULT_FRAME } from './parts.js';
 import { templateGuide } from '../sim/templates.js';
-import { WISHES, parseWishes, inventMethods, story, toTemplate, ALG_COST } from '../sim/inventor.js';
-import { proposals } from '../sim/discover.js';
+import { WISHES, parseWishes, inventMethods, story, toTemplate, guidePrior, ALG_COST } from '../sim/inventor.js';
+import { proposals, crossover, stepPieces } from '../sim/discover.js';
 import { evaluate, workerPool, methodSig, paired } from './evaluate.js';
 import { caseCounter } from './casecounter.js';
 import { keepAwake } from './longrun.js';
@@ -64,8 +65,8 @@ function pickProposals(props, k) {
   const byKind = new Map();
   for (const p of props) byKind.set(p.kind, [...(byKind.get(p.kind) ?? []), p]);
   const out = [];
-  // odvážnější úpravy napřed (u vymyšlené metody se vyplatí víc než ladění)
-  const queues = [...byKind.values()].map((q) => q.sort((a, b) => (b.level ?? 1) - (a.level ?? 1)));
+  // v každém druhu nejslibnější podle odhadu (čas + učení) napřed
+  const queues = [...byKind.values()].map((q) => q.sort((a, b) => a.prior - b.prior));
   while (out.length < k && queues.some((q) => q.length)) for (const q of queues) if (q.length && out.length < k) out.push(q.shift());
   return out;
 }
@@ -205,7 +206,7 @@ export function mountInventor(host, lab, { onOpen } = {}) {
       if (!sig || seen.has(sig)) continue;
       seen.add(sig);
       cands.push({
-        key: m.key, sig, name: m.name, guide, story: story(m), lineage: [],
+        key: m.key, sig, name: m.name, guide, story: story(m), lineage: [], original: !!m.original,
         badge: m.known ? 'známá' : m.original ? `originální · ${m.principle}` : 'nová kombinace',
         badgeClass: m.known ? 'l1' : m.original ? 'l3' : 'l2',
         prior: m.prior, algsPrior: m.algs, approxPrior: !!m.original,
@@ -226,7 +227,7 @@ export function mountInventor(host, lab, { onOpen } = {}) {
     const awake = keepAwake();
     const pool = workerPool();
     const counter = caseCounter();
-    const total = cands.length * SCREEN + saved.tests * saved.count + Math.min(saved.evolve, 4) * (EVO * SCREEN + 2 * saved.count);
+    const total = cands.length * SCREEN + saved.tests * saved.count + Math.min(saved.evolve, 4) * ((EVO + 4) * SCREEN + 3 * saved.count);
     let done = 0;
     const tick = () => { done++; bar.style.width = `${Math.min(100, (done / total) * 100)}%`; };
     const run = (guide, count) => evaluate({ guide, config: configOf(guide), lab, count, seconds: 1, level, stopped: () => !running, onSolve: tick, pool, counter });
@@ -249,48 +250,93 @@ export function mountInventor(host, lab, { onOpen } = {}) {
         if (res.sum.count) { c.res = res; keepBest(c); }
         render();
       }
-      // 3. vylepšování vítězů: úpravy objevitele, úprava zůstane, jen když párově pomůže
+      // 3. vylepšování: úpravy objevitele (střídavě nejlepší metoda a nejlepší originální –
+      // i originální nápad má dostat šanci se vyladit) a křížení (začátek jedné, konec druhé);
+      // nová metoda zůstane, jen když párově (na stejných zamícháních) porazí rodiče
       const tried = new Set();
+      const leader = (f = () => true) => cands.filter((c) => c.res && !c.res.sum.failed && !tried.has(c) && f(c)).sort((x, y) => costOf(x.res) - costOf(y.res))[0];
+      const gainOf = (parent, r) => paired(parent.res.sum, r.sum).dt + ALG_COST * (r.algs - parent.res.algs);
+      /** Zkusí nápady {parent, guide, sig, id, label, why} krátce, nejlepší `verify` pořádně. */
+      const trial = async (ideas, verify, what) => {
+        const kids = [];
+        for (const [k, x] of ideas.entries()) {
+          if (!running) break;
+          status.textContent = `${what(x)}: zkouším ${k + 1} z ${ideas.length} – ${x.label}`;
+          const screen = await run(x.guide, SCREEN);
+          if (screen.sum.count && !screen.sum.failed) kids.push({ ...x, screen, gain: gainOf(x.parent, screen) });
+        }
+        for (const kid of kids.filter((x) => x.gain < 0).sort((x, y) => x.gain - y.gain).slice(0, verify)) {
+          if (!running) break;
+          status.textContent = `${what(kid)}: ověřuji ${kid.label}`;
+          const res = await run(kid.guide, saved.count);
+          if (!res.sum.count || res.sum.failed) continue;
+          const gain = gainOf(kid.parent, res);
+          if (gain >= 0) continue;
+          const parent = kid.parent;
+          const child = {
+            ...parent, ...(kid.extra ?? {}), key: `${parent.key}+${kid.id}`, sig: kid.sig, guide: kid.guide, res, screen: kid.screen, out: false,
+            base: parent.base ?? parent.name, name: `${parent.base ?? parent.name} (vylepšená ${parent.lineage.length + 1}×)`,
+            lineage: [...parent.lineage, kid.label], gain: (parent.gain ?? 0) - gain,
+            badge: `vylepšená · ${parent.badge.replace(/^vylepšená · /, '')}`, badgeClass: 'l2',
+            story: `${parent.story} Vylepšení: ${kid.label} – ${kid.why}`,
+          };
+          cands.push(child);
+          keepBest(child);
+          render();
+        }
+      };
+      // dárci konců: všechny vymyšlené metody (i ty, které se netestovaly)
+      const donors = [...cands, ...found.filter((m) => !cands.some((c) => c.key === m.key)).map((m, k) => {
+        let n = 0;
+        return { name: m.name, guide: templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `d${k}s${++n}`, title })) };
+      })];
       for (let round = 0; round < saved.evolve && running; round++) {
-        const parent = cands.filter((c) => c.res && !tried.has(c)).sort((a, b) => costOf(a.res) - costOf(b.res))[0];
+        // a) úpravy objevitele
+        const parent = (round % 2 ? leader((c) => c.original) : null) ?? leader();
         if (!parent) break;
         tried.add(parent);
         const props = proposals(parent.guide, cfgOf, has, { level: 3, newId: () => `e${++seq}` }).map((p) => {
           // úprava nastavení se zapíše do kroků (metoda pak nese všechno v sobě)
           const steps = p.steps ?? parent.guide.steps.map((st) => (p.patch[st.id] ? { ...st, sim: { ...(st.sim ?? {}), ...p.patch[st.id] } } : st));
           const guide = { ...parent.guide, steps };
-          return { ...p, guide, sig: methodSig(guide, configOf(guide)) };
-        }).filter((p) => p.sig && !seen.has(p.sig) && (seen.add(p.sig), true));
+          const sig = methodSig(guide, configOf(guide));
+          return { ...p, parent, guide, sig: sig && !seen.has(sig) ? sig : null, prior: guidePrior(steps, cfgOf, stepPieces, level).cost };
+        }).filter((p, k, all) => p.sig && all.findIndex((q) => q.sig === p.sig) === k);
         const picked = pickProposals(props, EVO);
-        const kids = [];
-        for (const [k, p] of picked.entries()) {
-          if (!running) break;
-          status.textContent = `Vylepšuji „${parent.name}“ (kolo ${round + 1}): zkouším ${k + 1} z ${picked.length} – ${p.label}`;
-          const screen = await run(p.guide, SCREEN);
-          if (!screen.sum.count || screen.sum.failed) continue;
-          const d = paired(parent.res.sum, screen.sum);
-          kids.push({ p, screen, gain: d.dt + ALG_COST * (screen.algs - parent.res.algs) });
+        for (const x of picked) seen.add(x.sig);
+        await trial(picked, 2, (x) => `Vylepšuji „${x.parent.name}“ (kolo ${round + 1})`);
+        // b) křížení: začátek otestované, konec z kterékoli vymyšlené (po obou je hotové totéž)
+        const elite = cands.filter((c) => c.res && !c.res.sum.failed).sort((x, y) => costOf(x.res) - costOf(y.res)).slice(0, 5);
+        const ideas = [], tails = new Set(), local = new Set();
+        for (const A of elite) for (const B of donors) {
+          if (A.guide === B.guide) continue;
+          for (const c of crossover(A.guide.steps, B.guide.steps, cfgOf)) {
+            // stejný konec od víc dárců jen jednou
+            const tail = `${A.key}|${c.a}|${JSON.stringify(c.steps.slice(c.a).map((st) => [st.cells, st.parts, st.sim]))}`;
+            if (tails.has(tail)) continue;
+            tails.add(tail);
+            // id kroků jedinečná (konec mohl přijít z metody, která už byla křížená)
+            const ids = new Set();
+            const guide = { ...A.guide, steps: c.steps.map((st) => (ids.has(st.id) ? { ...st, id: `${st.id}_${++seq}` } : (ids.add(st.id), st))) };
+            const sig = methodSig(guide, configOf(guide));
+            if (!sig || seen.has(sig) || local.has(sig)) continue;
+            local.add(sig);
+            // odhad: o kolik je konec lepší než konec rodiče (čas + učení)
+            const prior = guidePrior(guide.steps, cfgOf, stepPieces, level).cost - guidePrior(A.guide.steps, cfgOf, stepPieces, level).cost;
+            ideas.push({ parent: A, guide, sig, prior, id: `x${++seq}`, label: `jiný konec: ${c.steps.slice(c.a).map((st) => st.title).join(' + ')} (z „${B.name}“)`, why: 'po obou začátcích je na kostce hotové totéž, takže jde vzít lepší konec' });
+          }
         }
-        // dvě nejslibnější úpravy pořádně; zůstane ta, která párově pomůže
-        for (const kid of kids.filter((x) => x.gain < 0).sort((a, b) => a.gain - b.gain).slice(0, 2)) {
-          if (!running) break;
-          status.textContent = `Vylepšuji „${parent.name}“: ověřuji ${kid.p.label}`;
-          const res = await run(kid.p.guide, saved.count);
-          if (!res.sum.count || res.sum.failed) continue;
-          const d = paired(parent.res.sum, res.sum);
-          const gain = d.dt + ALG_COST * (res.algs - parent.res.algs);
-          if (gain >= 0) continue;
-          const child = {
-            ...parent, key: `${parent.key}+${kid.p.id}`, sig: kid.p.sig, guide: kid.p.guide, res, screen: kid.screen, out: false,
-            base: parent.base ?? parent.name, name: `${parent.base ?? parent.name} (vylepšená ${parent.lineage.length + 1}×)`,
-            lineage: [...parent.lineage, kid.p.label], gain: (parent.gain ?? 0) - gain,
-            badge: `vylepšená · ${parent.badge.replace(/^vylepšená · /, '')}`, badgeClass: 'l2',
-            story: `${parent.story} Vylepšení: ${kid.p.label} – ${kid.p.why}`,
-          };
-          cands.push(child);
-          keepBest(child);
-          render();
-        }
+        // vyzkoušené se už neopakují
+        // nejslibnější podle odhadu, nejvýš dvě od jednoho rodiče
+        const perParent = new Map();
+        const crosses = ideas.sort((x, y) => x.prior - y.prior).filter((x) => {
+          const n = perParent.get(x.parent) ?? 0;
+          if (n >= 2) return false;
+          perParent.set(x.parent, n + 1);
+          return true;
+        }).slice(0, 4);
+        for (const x of crosses) seen.add(x.sig);
+        await trial(crosses, 1, () => `Křížím metody (kolo ${round + 1})`);
       }
       const top = cands.filter((c) => c.res).sort((a, b) => costOf(a.res) - costOf(b.res))[0];
       status.textContent = running && top

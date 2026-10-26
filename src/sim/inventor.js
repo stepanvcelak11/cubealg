@@ -11,7 +11,7 @@
 
 import { CROSS, E, UE, UC, PAIRS, own, oriented, custom, TEMPLATES } from './templates.js';
 import { stepEstimate, LEVELS } from './simulate.js';
-import { originalMethods, stepMoves, partsOfCells, mergeParts } from './originals.js';
+import { originalMethods, stepMoves, partsOfCells, mergeParts, estimateCases } from './originals.js';
 
 const EDGES = [...CROSS, ...E, ...UE];
 const LEFT = ['DLF', 'DBL', 'DL', 'FL', 'BL'], RIGHT = ['DFR', 'DRB', 'DR', 'FR', 'BR'];
@@ -171,8 +171,6 @@ export const ENDS = [
     why: 'Konec Roux, jak se ho učí většina: LSE po třech přehledných částech.' },
 ];
 
-const byId = (list) => Object.fromEntries(list.map((x) => [x.id, x]));
-const START = byId(STARTS), MID = byId(MIDS), END = byId(ENDS);
 // známé metody (kameny) – ostatní kombinace jsou nové
 const KNOWN = {
   'cross|pairs4|ollpll': 'CFOP', 'cross|pairs4|twolook': 'CFOP pro začátečníky (2-look)', 'eoline|zzblocks|ocllpll': 'ZZ',
@@ -216,6 +214,27 @@ export function priorTime(method, level = 'pro') {
     before = mergeParts(before, parts);
     return a + stepEstimate({ length, source: 'search' }, { kind, recog: x.sim?.recog ?? 0, level }).time;
   }, 0);
+}
+
+/**
+ * Odhad čas + učení pro kroky průvodce (i upravené a křížené; vypnutý krok se skládá
+ * s dalším): tahy podle stepMoves, algoritmy podle odhadu počtu případů.
+ * @param {object[]} steps kroky průvodce · @param {(st) => object} cfgOf nastavení kroku
+ * @param {(st) => object} piecesOf dílky kroku (hotové / natočené)
+ */
+export function guidePrior(steps, cfgOf, piecesOf, level = 'pro') {
+  let before = {}, pending = {}, time = 0, algs = 0;
+  for (const st of steps) {
+    const cfg = cfgOf(st);
+    pending = mergeParts(pending, piecesOf(st));
+    if (cfg.on === false) continue;
+    const alg = cfg.kind === 'alg';
+    time += stepEstimate({ length: stepMoves(before, pending, alg), source: 'search' }, { kind: cfg.kind ?? 'intuitive', recog: cfg.recog ?? 0, level }).time;
+    if (alg && cfg.solveBy !== 'fixed') algs += estimateCases(before, pending);
+    before = mergeParts(before, pending);
+    pending = {};
+  }
+  return { time, algs, cost: time + ALG_COST * algs };
 }
 
 export const ALG_COST = 0.002; // s za algoritmus (pořadí: čas + cena učení)

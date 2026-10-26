@@ -34,6 +34,40 @@ const isPiece = (n) => ['edge', 'corner'].includes(typeOf(n));
  * @param {{level?: 1|2|3, newId?: () => string}} [opts] nejvyšší úroveň návrhů; id nových kroků
  * @returns {{id, kind, level, label, why, patch, steps?}[]}
  */
+// buňka „některý z dílků, správně natočený“ (OLL: natočit horní vrstvu) = natočení
+const oriCell = (c) => c?.pieces && c.ori === 'correct';
+/** Dílky kroku: hotové a natočené (i z buněk „správně natočený“). */
+export const stepPieces = (st) => mergeParts(stepParts(st), Object.fromEntries(Object.entries(st.cells ?? {}).filter(([n, c]) => oriCell(c) && isPiece(n)).map(([n]) => [n, 'orientation'])));
+
+/**
+ * Křížení dvou metod: začátek jedné a konec druhé, když po nich je na kostce hotové přesně
+ * totéž (třeba první dvě vrstvy s natočenými hranami) – jako když skladač vezme začátek
+ * z jedné metody a konec z jiné. Kroky jen s jednoduchými dílky (bez pravidel).
+ * @returns {{steps: object[], a: number, b: number}[]} a = kroků ze začátku, b = od kroku b druhé
+ */
+export function crossover(A, B, cfgOf) {
+  const on = (st) => cfgOf(st).on !== false && cfgOf(st).solveBy !== 'fixed';
+  const keys = (steps) => {
+    let acc = {};
+    return steps.map((st) => {
+      acc = mergeParts(acc, stepPieces(st));
+      return on(st) && !st.rules?.length ? JSON.stringify(Object.entries(acc).filter(([n, v]) => isPiece(n) && v).sort()) : null;
+    });
+  };
+  const ka = keys(A), kb = keys(B);
+  const out = [];
+  ka.forEach((k, i) => {
+    if (!k || i === A.length - 1) return;
+    kb.forEach((l, j) => {
+      if (l !== k || j === B.length - 1) return;
+      const tail = B.slice(j + 1);
+      if (tail.some((st) => st.rules?.length || cfgOf(st).solveBy === 'fixed')) return;
+      out.push({ steps: [...A.slice(0, i + 1), ...tail.map((st) => ({ ...st, id: `x${st.id}` }))], a: i + 1, b: j + 1 });
+    });
+  });
+  return out;
+}
+
 export function proposals(guide, cfgOf, hasParts = () => true, { level = 3, newId } = {}) {
   let seq = 0;
   const makeId = newId ?? (() => `n${Date.now().toString(36)}${++seq}`);
@@ -84,9 +118,8 @@ export function proposals(guide, cfgOf, hasParts = () => true, { level = 3, newI
   // --- 2–3: přestavby (nové kroky) ------------------------------------------------------
   // krok jde přestavět, když je zadaný dílky (ne pravidly pro skupiny dílků); buňka
   // „některý z dílků, správně natočený“ (OLL: natočit horní vrstvu) = natočení
-  const oriCell = (c) => c?.pieces && c.ori === 'correct';
   const simple = (st) => !st.rules?.length && Object.values(st.cells ?? {}).every((c) => !isGroupCell(c) || oriCell(c));
-  const partsOf = (st) => mergeParts(stepParts(st), Object.fromEntries(Object.entries(st.cells ?? {}).filter(([n, c]) => oriCell(c) && isPiece(n)).map(([n]) => [n, 'orientation'])));
+  const partsOf = stepPieces;
   const beforeOf = (st) => guide.steps.slice(0, guide.steps.indexOf(st)).reduce((acc, x) => mergeParts(acc, partsOf(x)), {});
   const own = (st) => {
     const before = beforeOf(st);

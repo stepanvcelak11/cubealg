@@ -1372,8 +1372,9 @@ test('sdílení metody odkazem: kroky, algoritmy a výsledek testu; příjemce s
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.mp-head button', { hasText: 'Sdílet' }).tap();
   await p.locator('.share-dialog button', { hasText: 'Odkaz' }).tap();
-  await p.waitForFunction(async () => (await navigator.clipboard.readText()).includes('#s='));
-  const url = await p.evaluate(() => navigator.clipboard.readText());
+  // odkaz přečíst jednou (schránku můžou mezitím přepsat jiné souběžné testy)
+  let url = '';
+  for (let i = 0; i < 100 && !url.includes('#s='); i++) { url = await p.evaluate(() => navigator.clipboard.readText()); if (!url.includes('#s=')) await p.waitForTimeout(100); }
   // příjemce: jiný prohlížeč (prázdná data)
   const other = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
   const q = await other.newPage();
