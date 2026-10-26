@@ -26,7 +26,7 @@ export const TEMPLATES = [
     intro: 'Kříž, čtyři páry (F2L) do kteréhokoli slotu, OLL a PLL.',
     steps: [
       { title: 'Kříž', cells: own(CROSS), sim: { recog: 0 }, text: 'Hrany barvy dole na svá místa.' },
-      ...PAIRS.map(([c, e], k) => ({ title: `Pár ${k + 1}`, cells: own([c, e]), sim: { free: 'side', recog: 0.4 }, text: 'Roh a hrana do kteréhokoli volného slotu.' })),
+      ...PAIRS.map(([c, e], k) => ({ title: `Pár ${k + 1}`, cells: own([c, e]), sim: { free: 'side', ...custom('R', 'U', 'L', 'F'), recog: 0.4 }, text: 'Roh a hrana do kteréhokoli volného slotu (tahy R, U, L, občas F – s otočením kostky ke slotu).' })),
       { title: 'OLL', cells: oriented([...UE, ...UC]), sim: { recog: 0.5, kind: 'alg' } },
       { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' } },
     ],

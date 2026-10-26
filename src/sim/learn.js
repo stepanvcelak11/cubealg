@@ -12,7 +12,7 @@
 import { getPuzzle } from '../puzzles/index.js';
 import { holdOf } from '../core/hold.js';
 import { compileGoal } from '../core/constraints.js';
-import { constraintsKey } from '../core/rules.js';
+import { constraintsKey, mergeConstraints } from '../core/rules.js';
 import { colorsOfState } from '../core/cases.js';
 import { pickFromSet } from './simulate.js';
 
@@ -43,10 +43,29 @@ export function makeLearner(plan) {
   };
   const of = (i) => { if (!known.has(i)) known.set(i, []); return known.get(i); };
 
-  /** Algoritmus, který krok už má (ze sady) – nalezená řešení stejného případu se nepřidají. */
+  /**
+   * Algoritmy, které krok už má (ze sady) – nalezená řešení stejného případu se nepřidají.
+   * Víc algoritmů sady na tentýž případ (alternativy, jiné AUF) se počítá jako jeden případ.
+   */
   function seed(i, list) {
     const have = of(i);
-    for (const c of list) if (!have.some((x) => x.display === c.display)) have.push({ display: c.display, score: c.score ?? 0, n: 0 });
+    const v0 = plan.variants[0];
+    const step = v0.steps[i];
+    let goal = {};
+    for (let k = 0; k <= i; k++) if (!v0.steps[k].fixed) goal = mergeConstraints(goal, v0.steps[k].parts);
+    const test = testOf(goal);
+    const check = list.length <= 250; // velké sady (ZBLL…) bez kontroly – trvalo by to dlouho
+    for (const c of list) {
+      if (have.some((x) => x.display === c.display)) continue;
+      const entry = { display: c.display, score: c.score ?? 0, n: 0 };
+      if (check) try {
+        // případ algoritmu = jeho inverze na složené kostce; řeší ho už jiný algoritmus sady?
+        const state = P.applyAlg(P.solved(), P.invertAlg(P.parseAlg(c.model)));
+        const cands = have.filter((x) => !x.dup).map((x, k) => ({ ...candidateIn(plan, 0, x), name: k }));
+        if (cands.length && pickFromSet(state, test, cands, step.adjust)) entry.dup = true;
+      } catch { /* jiný zápis – počítá se zvlášť */ }
+      have.push(entry);
+    }
   }
 
   /**
@@ -90,5 +109,7 @@ export function makeLearner(plan) {
 
   /** Nové algoritmy kroku i (nalezené v tomto testu), nejčastější první. */
   const list = (i) => of(i).filter((x) => x.fresh).sort((a, b) => b.n - a.n);
-  return { seed, offer, list, count: (i) => of(i).filter((x) => x.fresh).length };
+  /** Kolik různých případů krok má (sada bez duplicit + nové z testu) = kolik algoritmů se učit. */
+  const cases = (i) => of(i).filter((x) => !x.dup).length;
+  return { seed, offer, list, cases, count: (i) => of(i).filter((x) => x.fresh).length };
 }

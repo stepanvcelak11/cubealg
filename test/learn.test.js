@@ -84,3 +84,19 @@ test('případy EPBL: U-perm nahoře z jiné strany (U … U\') je tentýž př�
   assert.equal(L.offer(i, { display: `D ${UA} D'`, model: model(`D ${UA} D'`), state: low, goal }).fresh, false);
   assert.equal(L.count(i), 1);
 });
+
+test('sada kroku: víc algoritmů na tentýž případ = jeden případ; algoritmus psaný se žlutou nahoře v metodě s bílou dole', () => {
+  let n = 0;
+  const guide = templateGuide(TEMPLATES.find((t) => t.id === 'cfop'), DEFAULT_FRAME, (title) => ({ id: `s${++n}`, title }));
+  const config = Object.fromEntries(guide.steps.map((st) => [st.id, { ...(st.sim ?? {}), solveBy: 'own' }]));
+  guide.steps[6].set = 'pll';
+  const T = "R U R' U' R' F R2 U' R' U' R U R' F'";
+  const set = [T, `U ${T} U'`, `U2 ${T}`, "x R' U R' D2 R U' R' D2 R2 x'", "R2 U R U R' U' R' U' R' U R'"];
+  const { plan } = buildPlan({ guide, config, setAlgs: (id) => (id === 'pll' ? set.map((alg) => ({ alg, name: alg })) : []) });
+  const step = plan.variants[0].steps[6];
+  // bez držení (Knihovna): obvyklý zápis = žlutá nahoře, tedy v držení metody
+  assert.equal(step.candidates[0].model, holdOf(plan.variants[0].hold).toModelString(T));
+  const learner = makeLearner(plan);
+  learner.seed(6, step.candidates);
+  assert.equal(learner.cases(6), 3);
+});

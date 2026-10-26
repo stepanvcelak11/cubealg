@@ -14,7 +14,7 @@ import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
-import { summarize, seededRandom, stepEstimate, LEVELS, levelTps } from '../sim/simulate.js';
+import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, STYLES } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
@@ -168,7 +168,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         cfg.free && cfg.free !== 'fixed' ? `${FREEDOM[cfg.free]?.label.replace(/ \(.*\)|…/g, '').toLowerCase()} (${places} míst)` : 'přesně tady',
         n && cfg.mode !== 'search' ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání',
         cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,
-      ].join(' · ');
+        cfg.style && STYLES[cfg.style] ? STYLES[cfg.style].label.toLowerCase() : null,
+      ].filter(Boolean).join(' · ');
       return el('div', { className: `sim-step${cfg.on === false ? ' off' : ''}` },
         el('div', { className: 'sim-step-head' },
           el('span', { className: 'guide-n', textContent: String(i + 1) }),
@@ -462,7 +463,9 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         item('Odhad času', `Rozpoznání + provedení každého kroku, sečtené. Provedení = tahy skladače ÷ tempo. ${L.tps
           ? `Pro „${L.label}“: algoritmy ${fmt(L.tps.alg)} tahů/s, intuitivní kroky ${fmt(L.tps.intuitive)}, bloky ${fmt(L.tps.blocks)}; rozpoznání ${pct(L.recog)} z nastaveného u kroku (špička rozpozná často už během předchozího kroku). Vestavěné metody tak vyjdou CFOP asi 6,2 s a Roux 6,3 s – jako průměry nejlepších skladačů.`
           : L.human ? `Tvoje tempo ${fmt(Number(tps.value))} tahů/s platí pro algoritmy; intuitivní kroky jdou na 90 %, bloky na 55 % (plánování).` : 'Všechny kroky stejným tempem, tahy přesně podle simulace.'}`),
-        item('Tahů na složení', 'Kolik tahů udělá skutečný skladač. Vychází ze simulace: intuitivní kroky × 0,9 (profík vidí dopředu, dělá x-cross a víc slotů naráz – simulace skládá krok po kroku), bloky × 1,2 (počítač je najde optimálně, člověk ne), algoritmy beze změny. Nastavené tak, aby CFOP vyšel kolem 57 a Roux kolem 48 tahů – jako v rekonstrukcích světové špičky.'),
+        item('Tahů na složení', `Kolik tahů udělá skutečný skladač. Vychází ze simulace (krok skládá jen povolenými tahy kroku – u F2L třeba ⟨R, U, L, F⟩ s otočením kostky ke slotu): ${L.moves
+          ? `pro „${L.label}“ intuitivní kroky × ${fmt(L.moves.intuitive)} (zaběhnuté postupy, ne vždy nejkratší), bloky × ${fmt(L.moves.blocks)}, algoritmy × ${fmt(L.moves.alg)}.`
+          : 'intuitivní kroky × 0,9 (špička vidí dopředu, dělá x-cross a víc slotů naráz – simulace skládá krok po kroku), bloky × 1,2 (počítač je najde optimálně, člověk ne), algoritmy beze změny. Nastavené tak, aby CFOP vyšel kolem 57 a Roux kolem 48 tahů – jako v rekonstrukcích světové špičky.'} U každého kroku jde nastavit vlastní Styl skládání (Sestavit → Jak se krok řeší).`),
         item('Simulace', 'Kolik tahů našel počítač, když každý krok složí zvlášť skoro nejlépe (počítá se i natočení vrstev). ± = o kolik se průměr může lišit náhodou; víc zamíchání = přesnější. Medián = polovina složení má méně; „9 z 10 ≤“ = jak dlouhé jsou horší případy.'),
         item('Tempo a rozpoznání', 'Tahy za sekundu podle druhu kroku (nastavíš u kroku v Sestavit → Pokročilé: naučený algoritmus / intuitivní / bloky) a pauza na rozpoznání před krokem (tamtéž).'),
         item('Ergonomie', 'Jak nepohodlné jsou tahy podle hodnocení z Labu (přehmaty, tahy B a D, otáčení kostky…) – součet za krok, čím méně, tím pohodlnější. Do času se nepočítá, slouží k porovnání; vestavěné metody: CFOP 76, Roux 53, ZZ 66.'),
@@ -470,7 +473,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   }
 
   function renderResults(solves, meta) {
-    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), level: lvl() };
+    const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), styles: meta.stepIds.map((id) => config[id]?.style), level: lvl() };
     const sum = summarize(solves, meta.stepTitles.length, timing);
     if (!sum.count) { results.replaceChildren(); return sum; }
     const maxTime = Math.max(...sum.steps.map((s) => s.time), 0.01);

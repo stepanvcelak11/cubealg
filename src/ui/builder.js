@@ -12,6 +12,7 @@ import { icon } from './icons.js';
 import { methods, guides, algSets, algs } from './store.js';
 import { frameEditor, partsBefore, stepParts, remapParts, validFrame, DEFAULT_FRAME, frameMap, COLOR_NAME } from './parts.js';
 import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount, buildPlan, stepBases } from '../sim/plan.js';
+import { STYLES } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { solve as twoPhase } from '../timer/twophase.js';
 import { toFacelets } from '../core/cube.js';
@@ -377,7 +378,9 @@ export function renderBuilder() {
         el('small', { textContent: nSet ? `${algWord(nSet)} v sadě. Chybějící případy test označí – tlačítkem je doplníš vygenerovanými.` : 'Vyber sadu, nebo založ novou (+ Nová sada…).' }),
         el('div', { className: 'row-btns' }, nSet ? makeAlgs('Doplnit chybějící vygenerovanými') : null,
           nSet && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null))
-      : el('small', { className: 'hint', textContent: 'Test u každého zamíchání najde nejlepší řešení kroku (jako bys ho vymýšlel). Odhad času počítá s tím, že člověk udělá víc tahů než počítač.' });
+      : el('small', { className: 'hint', textContent: 'Test u každého zamíchání najde nejlepší řešení kroku povolenými tahy (Omezení níže – např. ⟨R, U, L⟩ pro F2L, jak ho skládá člověk s otočením kostky ke slotu). Kolik tahů navíc proti testu uděláš ty, nastavíš ve Stylu skládání.' });
+    const style = solveBy === 'fixed' ? null : field('Styl skládání', select(Object.fromEntries(Object.entries(STYLES).map(([id, x]) => [id, x.label])), cfg.style ?? 'auto', `Styl skládání – krok ${k}`, (v) => patch({ style: v === 'auto' ? undefined : v })),
+      `${STYLES[cfg.style ?? 'auto']?.hint ?? ''}. Mění počet tahů v odhadu (test, porovnání i vylepšení metody).`);
     const isFixed = solveBy === 'fixed';
     const solve = sec(isFixed ? '1' : '2', 'Jak se krok řeší?', isFixed ? 'Tento krok nic nového neskládá, proto nemá kostku ani omezení.' : null,
       el('div', { className: 'bld-how-opts' },
@@ -385,7 +388,7 @@ export function renderBuilder() {
         how('generate', 'Algoritmy – vygenerovat', 'Aplikace najde algoritmy na případy kroku a uloží je jako sadu.'),
         how('own', 'Algoritmy – moje sada', 'Tvoje algoritmy; chybějící případy doplní vygenerované.'),
         how('fixed', 'Jen někdy – pevný algoritmus', 'Např. parita: M2 U2 M2, jen když je potřeba.')),
-      howBody);
+      howBody, style ? el('div', { className: 'grid-fields' }, style) : null);
 
     // 3. omezení: tahy, nejvýš tahů, podle čeho vybírat
     const moves = select({ ...STEP_MOVES, custom: { label: 'Vlastní výběr…' } }, cfg.moves, `Tahy – krok ${k}`, (v) => patch(v === 'custom' && !cfg.custom?.length ? { moves: v, custom: [...STEP_MOVES.faces.bases] } : { moves: v }));

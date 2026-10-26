@@ -1591,3 +1591,6 @@ i.exec { background: var(--accent); }
 }
 /* zvětšená stěna sítě (4×4, 5×5) */
 .nv-unzoom { position: absolute; right: 8px; bottom: 8px; z-index: 2; min-height: 34px; padding: 4px 12px; font-size: 0.8rem; }
+.disc-level { justify-self: start; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; background: var(--seg); color: var(--muted); }
+.disc-level.l2 { background: var(--sun-soft, #fff3c4); color: var(--text); }
+.disc-level.l3 { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }

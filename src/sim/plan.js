@@ -14,6 +14,7 @@ import { scoreFor } from '../ergonomics/puzzles.js';
 import { compileRule, mergeConstraints, constraintsKey } from '../core/rules.js';
 import { compileCells, remapCells, isGroupCell } from '../core/cells.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
+import { compileGoal } from '../core/constraints.js';
 
 const P = getPuzzle('333');
 const OPPOSITE = { U: 'D', D: 'U', F: 'B', B: 'F', R: 'L', L: 'R' };
@@ -260,14 +261,22 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
         const helpers = String(x.cfg.helpers ?? '').split(/[,;\n]/).map(clean).filter(Boolean).flatMap((d) => {
           try { return [{ display: d, model: toModel(d) }]; } catch { return []; }
         });
+        // dílky hotové před krokem: algoritmus sady je nesmí rozbít
+        let keeps = null;
+        if (i > 0 && x.algs.length) { try { const t = compileGoal(goals[i - 1]).test; keeps = (model) => t(P.applyAlg(P.solved(), model)); } catch { keeps = null; } }
         const candidates = x.cfg.mode === 'search' ? [] : x.algs.flatMap((a) => {
           try {
             const display = clean(a.alg);
             if (!display) return [];
             // zápis vůči orientaci; jen algoritmus z Labu v jiném držení (ne některé z orientací metody)
-            // se ve výchozí orientaci dělá v tom svém
+            // se ve výchozí orientaci dělá v tom svém – pokud v něm nerozbije hotové kroky
+            // (algoritmus z Knihovny nebo Labu bez držení je psaný obvykle: žlutá nahoře)
             const own = a.task?.hold ?? '';
-            const model = v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
+            let model = v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
+            if (keeps && v === 0 && !holds.has(own) && !keeps(model)) {
+              const held = toModel(display);
+              if (keeps(held)) model = held;
+            }
             const recent = (a.times ?? []).slice(-5).map((t) => t.t);
             return [{ model, display, name: a.name, score: scoreOnce(display), time: recent.length >= 3 ? median(recent) : undefined }];
           } catch { return []; }

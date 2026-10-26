@@ -248,9 +248,12 @@ const kindOf = (kind) => (HUMAN.moves[kind] ? kind : 'intuitive');
  * často už během předchozího kroku). Tempa špičky odpovídají rekonstrukcím (CFOP kolem
  * 9 tahů/s celkem, Roux kolem 8), takže CFOP i Roux vyjdou kolem 6 s.
  */
+// Tahy podle úrovně (moves): špička dělá intuitivní kroky efektivněji než test krok po kroku
+// (x-cross, víc slotů naráz), běžný skladač naopak s víc tahy (zaběhnuté postupy, rotace).
 export const LEVELS = {
   pro: { label: 'Světová špička (potenciál metody)', tps: { alg: 13, intuitive: 11, blocks: 6.5 }, recog: 0.5, human: true },
-  fast: { label: 'Rychlý skladač (kolem 10 s)', tps: { alg: 8, intuitive: 6.5, blocks: 4.2 }, recog: 0.8, human: true },
+  fast: { label: 'Rychlý skladač (kolem 10 s)', tps: { alg: 8, intuitive: 6.5, blocks: 4.2 }, recog: 0.8, human: true, moves: { alg: 1.03, intuitive: 1.05, blocks: 1.35 } },
+  club: { label: 'Pokročilý skladač (kolem 20 s)', tps: { alg: 4.5, intuitive: 3.3, blocks: 2.4 }, recog: 1.3, human: true, moves: { alg: 1.08, intuitive: 1.25, blocks: 1.5 } },
   custom: { label: 'Vlastní tempo (tahy za sekundu)', recog: 1, human: true },
   computer: { label: 'Počítač (tahy simulace, jedno tempo)', recog: 1, human: false },
 };
@@ -259,7 +262,19 @@ export const LEVELS = {
 const mix = (f, realism = 1) => 1 + (f - 1) * Math.max(0, Math.min(1, realism));
 
 /** Kolik tahů na krok udělá člověk. */
-export const humanMoves = (moves, kind, realism = 1) => moves * mix(HUMAN.moves[kindOf(kind)], realism);
+export const humanMoves = (moves, kind, realism = 1, style, table = HUMAN.moves) => moves * mix(STYLES[style]?.f ?? table[kindOf(kind)], realism);
+
+/**
+ * Styl skládání kroku (nastavení kroku v Sestavit): kolik tahů udělá člověk proti řešení,
+ * které najde test. „Podle druhu kroku“ = model člověka výš (HUMAN.moves).
+ */
+export const STYLES = {
+  auto: { label: 'Podle úrovně skladače', f: null, hint: 'Podle úrovně v Otestovat: špička dělá intuitivní kroky o trochu efektivněji než test (plánuje dopředu), běžný skladač s víc tahy; bloky vždy víc' },
+  computer: { label: 'Nejkratší cestou (jako test)', f: 1, hint: 'Přesně tolik tahů, kolik najde test' },
+  planned: { label: 'Promyšleně, s plánem dopředu', f: 0.9, hint: 'Spojuješ kroky, díváš se dopředu (x-cross, víc slotů naráz)' },
+  fluent: { label: 'Plynule, bez dlouhého plánování', f: 1.15, hint: 'Zaběhnuté postupy, ne vždy nejkratší (typické F2L s rotacemi)' },
+  beginner: { label: 'Začátečnicky, po kouscích', f: 1.4, hint: 'Dílky jeden po druhém, jednoduché postupy' },
+};
 
 /** Tempo člověka v kroku (tahů za sekundu) při celkové rychlosti tps. */
 export const humanTps = (tps, kind, realism = 1) => tps * mix(HUMAN.tps[kindOf(kind)], realism);
@@ -275,15 +290,15 @@ export function levelTps(kind, { level = 'custom', tps = 4 } = {}) {
  * Rozpad odhadu kroku: tahy člověka, rozpoznání a provedení (s). Bez úrovně postaru:
  * čas z trenažéru, jinak tahy člověka / jeho tempo.
  */
-export function stepEstimate(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level } = {}) {
+export function stepEstimate(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level, style } = {}) {
   if (!item || item.source === 'skip') return { moves: 0, recog: 0, exec: 0, time: 0, tps: 0 };
   if (!level) {
     if (Number.isFinite(item.time)) return { moves: item.length, recog, exec: item.time / 1000 + (item.extra ?? 0) / tps, time: recog + item.time / 1000 + (item.extra ?? 0) / tps, tps };
-    const moves = humanMoves(item.length, kind, realism), speed = humanTps(tps, kind, realism);
+    const moves = humanMoves(item.length, kind, realism, style), speed = humanTps(tps, kind, realism);
     return { moves, recog, exec: moves / speed, time: recog + moves / speed, tps: speed };
   }
   const L = LEVELS[level] ?? LEVELS.custom;
-  const moves = L.human ? humanMoves(item.length, kind) : item.length;
+  const moves = L.human ? humanMoves(item.length, kind, 1, style, L.moves) : item.length;
   const speed = levelTps(kind, { level, tps });
   const r = recog * L.recog;
   return { moves, recog: r, exec: moves / speed, time: r + moves / speed, tps: speed };
@@ -304,7 +319,7 @@ export function stepTime(item, opts = {}) {
 export function summarize(solves, stepCount, timing = {}) {
   const done = solves.filter((s) => s.ok);
   const tps = timing.tps ?? 4;
-  const est = (x, i) => stepEstimate(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1, level: timing.level });
+  const est = (x, i) => stepEstimate(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1, level: timing.level, style: timing.styles?.[i] });
   const ests = done.map((s) => s.steps.map(est));
   const times = ests.map((e) => e.map((x) => x.time));
   const steps = Array.from({ length: stepCount }, (_, i) => {

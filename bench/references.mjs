@@ -5,9 +5,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { summarize } from '../src/sim/simulate.js';
 import { TEMPLATES } from '../src/sim/templates.js';
+import { REFERENCES as OLD } from '../src/sim/references.js';
 
 const DESCRIPTIONS = {
-  cfop: 'kříž, 4 páry F2L do kteréhokoli slotu, OLL a PLL (vnější tahy).',
+  cfop: 'kříž, 4 páry F2L do kteréhokoli slotu tahy ⟨R, U, L, F⟩ (s otočením kostky ke slotu), OLL a PLL.',
   roux: 'první a druhý blok 1×2×3, CMLL a LSE ⟨M, U⟩.',
   zz: 'EOLine, bloky ⟨R, U, L⟩, OCLL a PLL.',
 };
@@ -46,6 +47,9 @@ const refs = [...byId.values()].sort((a, b) => order.indexOf(a.id) - order.index
     description: DESCRIPTIONS[r.id] ?? '', real: REAL[r.id],
   };
 });
+// metody, které ve vstupu nejsou, zůstanou z minula (stačí přepočítat jednu)
+for (const r of OLD) if (!refs.some((x) => x.id === r.id)) refs.push(r);
+refs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const n = refs[0]?.n ?? '?', s = refs[0]?.seconds ?? '?';
 writeFileSync(new URL('../src/sim/references.js', import.meta.url), `// Vestavěné metody k porovnání v simulátoru: spočtené stejným simulátorem ze šablon
 // (bench/method.mjs, semínko 1, ${n} zamíchání, ${s} s hledání na krok, bez sad – každý krok

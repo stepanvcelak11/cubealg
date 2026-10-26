@@ -1,95 +1,95 @@
 // Vestavěné metody k porovnání v simulátoru: spočtené stejným simulátorem ze šablon
-// (bench/method.mjs, semínko 1, 100 zamíchání, 3 s hledání na krok, bez sad – každý krok
+// (bench/method.mjs, semínko 1, 98 zamíchání, 3 s hledání na krok, bez sad – každý krok
 // hledáním), aby srovnání s tvou metodou bylo férové, a k nim data skutečných skladačů.
 // Vygenerováno: node bench/references.mjs.
 
-export const REFERENCE_NOTE = 'Vestavěné metody spočítal stejný simulátor (každý krok hledáním, 100 zamíchání), takže ukazují metodu, ne konkrétního skladače.';
+export const REFERENCE_NOTE = 'Vestavěné metody spočítal stejný simulátor (každý krok hledáním, 98 zamíchání), takže ukazují metodu, ne konkrétního skladače.';
 
 export const REFERENCES = [
   {
     id: 'cfop',
     name: 'CFOP',
-    n: 100,
+    n: 98,
     seconds: 3,
-    moves: 60.85,
-    ci: 1.26,
-    median: 62,
-    min: 44,
-    max: 74,
-    score: 76.08,
+    moves: 60,
+    ci: 1.08,
+    median: 60,
+    min: 47,
+    max: 72,
+    score: 85.56,
     steps: [
       {
         title: 'Kříž',
-        moves: 7.2,
+        moves: 6.53,
         median: 7,
-        p90: 9,
-        score: 10.97,
+        p90: 8,
+        score: 11.38,
         skipped: 0,
         recog: 0,
         kind: 'intuitive'
       },
       {
         title: 'Pár 1',
-        moves: 6.49,
+        moves: 6.79,
         median: 7,
         p90: 8,
-        score: 6.08,
-        skipped: 0.02,
+        score: 5.39,
+        skipped: 0.01,
         recog: 0.4,
         kind: 'intuitive'
       },
       {
         title: 'Pár 2',
-        moves: 6.92,
+        moves: 6.83,
         median: 7,
-        p90: 9,
-        score: 6.44,
+        p90: 10,
+        score: 7.69,
         skipped: 0,
         recog: 0.4,
         kind: 'intuitive'
       },
       {
         title: 'Pár 3',
-        moves: 7.38,
-        median: 7,
-        p90: 9,
-        score: 7.09,
+        moves: 7.7,
+        median: 8,
+        p90: 10,
+        score: 6.84,
         skipped: 0,
         recog: 0.4,
         kind: 'intuitive'
       },
       {
         title: 'Pár 4',
-        moves: 8.45,
-        median: 8,
-        p90: 12,
-        score: 8.04,
+        moves: 8.76,
+        median: 9,
+        p90: 11,
+        score: 12.39,
         skipped: 0,
         recog: 0.4,
         kind: 'intuitive'
       },
       {
         title: 'OLL',
-        moves: 10.33,
+        moves: 9.72,
         median: 10,
-        p90: 14,
-        score: 15.09,
-        skipped: 0.02,
+        p90: 11,
+        score: 17.22,
+        skipped: 0,
         recog: 0.5,
         kind: 'alg'
       },
       {
         title: 'PLL',
-        moves: 14.08,
+        moves: 13.67,
         median: 15,
-        p90: 18,
-        score: 22.38,
-        skipped: 0.02,
+        p90: 17,
+        score: 24.65,
+        skipped: 0,
         recog: 0.6,
         kind: 'alg'
       }
     ],
-    description: 'kříž, 4 páry F2L do kteréhokoli slotu, OLL a PLL (vnější tahy).',
+    description: 'kříž, 4 páry F2L do kteréhokoli slotu tahy ⟨R, U, L, F⟩ (s otočením kostky ke slotu), OLL a PLL.',
     real: {
       moves: '55–60 (obvykle kolem 57)',
       best: 'průměr 3,51 s – světový rekord (Yiheng Wang, 2026)',

@@ -206,7 +206,9 @@ function render() {
     }),
     iconButton(icon('trash', { size: 18 }), { label: 'Smazat poslední složení', className: 'chip', onClick: () => solves.remove(key(), idx) }));
   // rozbor posledního složení z chytré kostky (po krocích metody)
-  $('t-recon').replaceChildren(...[last.r ? reconView(reconOf(last)) : null].filter(Boolean));
+  // (metoda bez kroků → aspoň rada, kde je nastavit)
+  const recon = last.r ? reconView(reconOf(last)) : null;
+  $('t-recon').replaceChildren(...[recon ?? (last.r && settings.event === '333' ? el('p', { className: 'hint', textContent: 'Rozbor složení po krocích: aktivní metoda nemá kroky, nebo se jí složení nedalo rozdělit (Metoda → Sestavit, třeba šablona CFOP).' }) : null)].filter(Boolean));
 }
 
 function syncMode() {

@@ -324,13 +324,29 @@ velké metody je pořád i soubor.
 
 ## Objevitel metod
 
-Metoda → **Vylepšit** (`ui/discover.js`, návrhy `sim/discover.js`): z tvé metody navrhne úpravy –
-spojit krok s dalším, volnost (pár do kteréhokoli slotu, barevná neutralita prvního kroku),
-krok naučenými algoritmy místo intuice a naopak – a každou otestuje na stejných zamícháních
-(stejné workery a model skladače jako test metody, kratší hledání na krok). Výsledek: o kolik
-se změní odhad času (± = rozptyl, menší rozdíl může být náhoda), tahy a počet algoritmů
-(sada kroku + nové případy, které test potkal). Tři nejlepší úpravy zkusí i po dvou
-dohromady. „Použít“ zapíše změnu do nastavení kroků.
+Metoda → **Vylepšit** (`ui/discover.js`, návrhy `sim/discover.js`): z tvé metody navrhne úpravy
+podle zvolené odvahy a každou otestuje na stejných zamícháních (stejné workery a model skladače
+jako test metody, kratší hledání na krok):
+
+- **drobné** – volnost (pár do kteréhokoli slotu, barevná neutralita prvního kroku), krok
+  naučenými algoritmy místo intuice a naopak,
+- **větší** – spojit krok s dalším, rozdělit krok na natočení a permutaci (2-look), nejdřív
+  hrany a pak rohy, prohodit pořadí dvou nezávislých kroků,
+- **brutální** – spojit tři kroky, natočit všechny hrany hned v prvním kroku (jako EOLine
+  u ZZ) nebo před koncem (jako ZBLS), přestavět celý konec metody (natočit vše + složit vše,
+  hrany + rohy, všechno jedním algoritmem).
+
+Návrhy, které tvoje metoda už dělá (stejné kroky, stejná volnost, nový krok, který se skoro
+vždycky přeskočí), vynechá. Výsledek: o kolik se změní odhad času (± = párové porovnání na
+stejných zamícháních), tahy a počet algoritmů (různé případy – víc algoritmů sady na tentýž
+případ je jeden; intuitivní kroky žádné). Tři nejlepší úpravy nastavení zkusí i po dvou
+dohromady. „Použít“ zapíše změnu do nastavení kroků, přestavbu jde „Uložit jako novou metodu“
+(tvoje zůstane beze změny).
+
+U každého kroku jde v Sestavit nastavit **povolené tahy** (např. ⟨R, U, L, F⟩ pro F2L, jak ho
+skládá člověk s otočením kostky ke slotu – tak ho skládá i vestavěná CFOP) a **styl skládání**
+(jako test / s plánem dopředu / plynule bez plánování / začátečnicky) – kolik tahů navíc proti
+testu uděláš. Bez stylu se řídí úrovní skladače v Otestovat (špička, kolem 10 s, kolem 20 s).
 
 ## Vizuální metronom
 
@@ -338,8 +354,8 @@ Timer → **Metronom** (`ui/metronome.js`, logika `timer/metronome.js`): telefon
 celá obrazovka bliká v tempu – na každé bliknutí jeden tah, bez zastavení. Tempo (tahů/s),
 zrychlování (stálé / každých N s o krok / „když stíhám“ – s chytrou kostkou: aspoň 80 % tahů
 na bliknutí = rychleji, pod 60 % = pomaleji), strop, barva bliknutí, volitelně cvaknutí.
-Tah počítá jako „na bliknutí“, když padne do čtvrtiny periody od úderu. Dosažené tempo se
-zapamatuje jako výchozí pro příště. Displej nezhasne (Wake Lock), klepnutí = pauza.
+Tah počítá jako „na bliknutí“, když padne do čtvrtiny periody od úderu (U2 = jeden tah).
+Dosažené tempo se zapamatuje jako výchozí, když ho chytrá kostka potvrdí, jinak jedním klepnutím. Displej nezhasne (Wake Lock), klepnutí = pauza.
 
 Aplikace funguje i offline a jde nainstalovat na plochu (PWA) – celá, včetně hledání
 algoritmů, generátoru sad a testu metody (všechno počítá prohlížeč: WebAssembly ve

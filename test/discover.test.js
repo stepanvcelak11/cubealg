@@ -47,3 +47,20 @@ test('objevitel: návrh jde otestovat simulací (spojení kroků = méně kroků
     assert.equal(steps.length, config === base ? 3 : 2);
   }
 });
+
+test('objevitel: přestavby od větších po brutální, bez návrhů, které metoda už dělá', () => {
+  const props = proposals(guide, cfgOf, () => true, { level: 3 });
+  const labels = props.map((p) => p.label);
+  assert.ok(labels.some((l) => /Natočit všechny hrany už v „Kříž“/.test(l)), 'EO na začátku');
+  assert.ok(labels.some((l) => /Přestavět poslední tři kroky/.test(l)), 'konec jinak');
+  assert.ok(labels.some((l) => /Prohodit pořadí/.test(l)));
+  // CFOP už končí „natočit, pak složit“ (OLL + PLL) – to se nenavrhuje
+  assert.ok(!labels.some((l) => /poslední dva kroky .*natočit všechno, pak všechno složit/.test(l)), labels.join('\n'));
+  // úroveň 1 = jen drobné úpravy
+  assert.ok(proposals(guide, cfgOf, () => true, { level: 1 }).every((p) => p.level === 1 && !p.steps));
+  // přestavba = nové kroky, buildPlan je přijme
+  const eo = props.find((p) => p.id === 'eo-first');
+  const config = Object.fromEntries(eo.steps.map((st) => [st.id, cfgOf(st)]));
+  const { steps } = buildPlan({ guide: { ...guide, steps: eo.steps }, config });
+  assert.equal(steps.length, 7);
+});
