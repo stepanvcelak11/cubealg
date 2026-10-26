@@ -11,11 +11,11 @@
 
 import { CROSS, E, UE, UC, PAIRS, own, oriented, custom, TEMPLATES } from './templates.js';
 import { stepEstimate, LEVELS } from './simulate.js';
-import { originalMethods } from './originals.js';
+import { originalMethods, stepMoves, partsOfCells, mergeParts } from './originals.js';
 
 const EDGES = [...CROSS, ...E, ...UE];
 const LEFT = ['DLF', 'DBL', 'DL', 'FL', 'BL'], RIGHT = ['DFR', 'DRB', 'DR', 'FR', 'BR'];
-const pair = ([c, e], k, extra = {}) => ({ title: `Pár ${k}`, cells: own([c, e]), sim: { free: 'side', recog: 0.4, ...extra }, est: 7 });
+const pair = ([c, e], k, extra = {}) => ({ title: `Pár ${k}`, cells: own([c, e]), sim: { free: 'side', recog: 0.4, ...extra } });
 const RULF = custom('R', 'U', 'L', 'F'), RUL = custom('R', 'U', 'L');
 
 /** Přání: štítky kamenů a slova, podle kterých je pozná text. */
@@ -50,23 +50,23 @@ export function parseWishes(text) {
 
 // --- stavební kameny ----------------------------------------------------------------------
 // start: { gives } · mid: { after: [start], eo?: true, roux?: true } · end: { needs: {eo, roux} }
-// algs = počet případů (algoritmů k naučení) podle komunity; est = odhad tahů kroku
+// algs = počet případů (algoritmů k naučení) podle komunity
 
 export const STARTS = [
-  { id: 'cross', label: 'Kříž', tags: ['cross'], eo: false, steps: [{ title: 'Kříž', cells: own(CROSS), sim: { recog: 0 }, est: 7 }],
+  { id: 'cross', label: 'Kříž', tags: ['cross'], eo: false, steps: [{ title: 'Kříž', cells: own(CROSS), sim: { recog: 0 } }],
     why: 'Kříž je nejpřehlednější začátek: čtyři hrany dole, dá se celý naplánovat v inspekci.' },
-  { id: 'xcross', label: 'X-kříž', tags: ['cross'], eo: false, steps: [{ title: 'X-kříž', cells: own([...CROSS, 'DFR', 'FR']), sim: { free: 'side', recog: 0 }, est: 10 }],
+  { id: 'xcross', label: 'X-kříž', tags: ['cross'], eo: false, steps: [{ title: 'X-kříž', cells: own([...CROSS, 'DFR', 'FR']), sim: { free: 'side', recog: 0 } }],
     why: 'Kříž i s prvním párem naráz (jako špička): o krok a jednu pauzu méně, ale náročnější plánování v inspekci.' },
-  { id: 'eoline', label: 'EOLine', tags: ['eo'], eo: true, steps: [{ title: 'EOLine', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { recog: 0 }, est: 7 }],
+  { id: 'eoline', label: 'EOLine', tags: ['eo'], eo: true, steps: [{ title: 'EOLine', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { recog: 0 } }],
     why: 'EOLine natočí všechny hrany a postaví „čáru“ dole – celý zbytek pak jde bez F a B, jen R U L, bez rotací.' },
-  { id: 'eocross', label: 'EO-kříž', tags: ['eo', 'cross'], eo: true, steps: [{ title: 'EO-kříž', cells: { ...oriented(EDGES), ...own(CROSS) }, sim: { recog: 0 }, est: 10 }],
+  { id: 'eocross', label: 'EO-kříž', tags: ['eo', 'cross'], eo: true, steps: [{ title: 'EO-kříž', cells: { ...oriented(EDGES), ...own(CROSS) }, sim: { recog: 0 } }],
     why: 'Kříž a k tomu natočené hrany: páry pak jdou čistě R U L (žádná otočená hrana) a konec má méně případů.' },
   { id: 'petrus', label: 'Blok 2×2×2 → 2×2×3', tags: ['blocks'], eo: false, steps: [
-    { title: 'Blok 2×2×2', cells: own(['DBL', 'DB', 'DL', 'BL']), sim: { recog: 0, kind: 'blocks' }, est: 7 },
-    { title: 'Blok 2×2×3', cells: own(['DLF', 'DF', 'FL']), sim: { recog: 0.3, kind: 'blocks' }, est: 7 }],
+    { title: 'Blok 2×2×2', cells: own(['DBL', 'DB', 'DL', 'BL']), sim: { recog: 0, kind: 'blocks' } },
+    { title: 'Blok 2×2×3', cells: own(['DLF', 'DF', 'FL']), sim: { recog: 0.3, kind: 'blocks' } }],
     why: 'Bloky jako u Petruse: málo tahů, protože se staví dílky, které spolu drží, a hodně volného místa k tahům.' },
   { id: 'fb', label: 'První blok 1×2×3', tags: ['blocks'], eo: false, steps: [
-    { title: 'První blok', cells: own(LEFT), sim: { ...custom('R', 'L', 'U', 'D', 'F', 'B', 'r', 'M'), recog: 0, kind: 'blocks' }, est: 8 }],
+    { title: 'První blok', cells: own(LEFT), sim: { ...custom('R', 'L', 'U', 'D', 'F', 'B', 'r', 'M'), recog: 0, kind: 'blocks' } }],
     why: 'První blok jako u Roux: 1×2×3 vlevo dole, pravá strana i střed zůstávají volné pro rychlé tahy R, r, U a M.' },
 ];
 
@@ -74,100 +74,100 @@ export const MIDS = [
   { id: 'pairs4', label: 'páry ⟨R U L F⟩', tags: ['cross'], after: ['cross'], steps: PAIRS.map((p, k) => pair(p, k + 1, RULF)),
     why: 'Čtyři páry do kteréhokoli slotu, jak to dělá CFOP – intuitivní, každý pár zvlášť.' },
   { id: 'halves', label: 'poloviny F2L', tags: ['cross', 'blocks'], after: ['cross'], steps: [
-    { title: 'Levá polovina F2L', cells: own(['DLF', 'FL', 'DBL', 'BL']), sim: { free: 'side', recog: 0.5, kind: 'blocks' }, est: 13 },
-    { title: 'Pravá polovina F2L', cells: own(['DFR', 'FR', 'DRB', 'BR']), sim: { recog: 0.5, kind: 'blocks', ...RULF }, est: 13 }],
+    { title: 'Levá polovina F2L', cells: own(['DLF', 'FL', 'DBL', 'BL']), sim: { free: 'side', recog: 0.5, kind: 'blocks' } },
+    { title: 'Pravá polovina F2L', cells: own(['DFR', 'FR', 'DRB', 'BR']), sim: { recog: 0.5, kind: 'blocks', ...RULF } }],
     why: 'Dva páry naráz jako blok 1×2×3: jen dvě pauzy místo čtyř, plánuje se víc dopředu.' },
   { id: 'pairs3zbls', label: 'páry + ZBLS', tags: ['cross', 'eo'], after: ['cross'], eo: true, steps: [
     ...PAIRS.slice(0, 3).map((p, k) => pair(p, k + 1, RULF)),
-    { title: 'Poslední pár + EO (ZBLS)', cells: { ...own(PAIRS[3]), ...oriented(UE) }, sim: { free: 'side', recog: 0.5, kind: 'alg' }, est: 10, algs: 302 }],
+    { title: 'Poslední pár + EO (ZBLS)', cells: { ...own(PAIRS[3]), ...oriented(UE) }, sim: { free: 'side', recog: 0.5, kind: 'alg' }, algs: 302 }],
     why: 'Při posledním páru se rovnou natočí hrany nahoře (ZBLS): konec pak má natočené hrany a jde ZBLL nebo COLL.' },
   { id: 'pairs3', label: 'páry ⟨R U L F⟩', tags: ['cross'], after: ['xcross'], steps: PAIRS.slice(1).map((p, k) => pair(p, k + 2, RULF)),
     why: 'Zbylé tři páry po X-kříži.' },
   { id: 'pairs2zbls', label: 'páry + ZBLS', tags: ['cross', 'eo'], after: ['xcross'], eo: true, steps: [
     ...PAIRS.slice(1, 3).map((p, k) => pair(p, k + 2, RULF)),
-    { title: 'Poslední pár + EO (ZBLS)', cells: { ...own(PAIRS[3]), ...oriented(UE) }, sim: { free: 'side', recog: 0.5, kind: 'alg' }, est: 10, algs: 302 }],
+    { title: 'Poslední pár + EO (ZBLS)', cells: { ...own(PAIRS[3]), ...oriented(UE) }, sim: { free: 'side', recog: 0.5, kind: 'alg' }, algs: 302 }],
     why: 'Po X-kříži dva páry a poslední pár rovnou s natočením hran (ZBLS).' },
   { id: 'zzblocks', label: 'bloky ⟨R U L⟩', tags: ['blocks', 'eo', 'rul'], after: ['eoline'], steps: [
-    { title: 'Levý blok', cells: own(LEFT), sim: { ...RUL, recog: 0.3, kind: 'blocks' }, est: 12 },
-    { title: 'Pravý blok', cells: own(RIGHT), sim: { ...RUL, recog: 0.3, kind: 'blocks' }, est: 12 }],
+    { title: 'Levý blok', cells: own(LEFT), sim: { ...RUL, recog: 0.3, kind: 'blocks' } },
+    { title: 'Pravý blok', cells: own(RIGHT), sim: { ...RUL, recog: 0.3, kind: 'blocks' } }],
     why: 'Bloky jako ZZ: s natočenými hranami jen tahy R U L, bez rotací – plynulé točení.' },
   { id: 'zzpairs', label: 'kříž + páry ⟨R U L⟩', tags: ['cross', 'rul'], after: ['eoline'], steps: [
-    { title: 'Dokončit kříž', cells: own(['DL', 'DR']), sim: { ...RUL, recog: 0.2 }, est: 5 },
+    { title: 'Dokončit kříž', cells: own(['DL', 'DR']), sim: { ...RUL, recog: 0.2 } },
     ...PAIRS.map((p, k) => pair(p, k + 1, RUL))],
     why: 'Po EOLine dokončit kříž a pak páry jen R U L – CFOP bez otočených hran a bez rotací.' },
   { id: 'pairs4rul', label: 'páry ⟨R U L⟩', tags: ['cross', 'rul'], after: ['eocross'], steps: PAIRS.map((p, k) => pair(p, k + 1, RUL)),
     why: 'Hrany jsou natočené, takže každý pár jde jen R U L – žádné F, žádné otočené hrany.' },
   { id: 'halvesrul', label: 'poloviny F2L ⟨R U L⟩', tags: ['blocks', 'rul'], after: ['eocross'], steps: [
-    { title: 'Levá polovina F2L', cells: own(['DLF', 'FL', 'DBL', 'BL']), sim: { ...RUL, free: 'side', recog: 0.5, kind: 'blocks' }, est: 13 },
-    { title: 'Pravá polovina F2L', cells: own(['DFR', 'FR', 'DRB', 'BR']), sim: { ...RUL, recog: 0.5, kind: 'blocks' }, est: 13 }],
+    { title: 'Levá polovina F2L', cells: own(['DLF', 'FL', 'DBL', 'BL']), sim: { ...RUL, free: 'side', recog: 0.5, kind: 'blocks' } },
+    { title: 'Pravá polovina F2L', cells: own(['DFR', 'FR', 'DRB', 'BR']), sim: { ...RUL, recog: 0.5, kind: 'blocks' } }],
     why: 'Po EO-kříži dva bloky po dvou párech, jen R U L.' },
   { id: 'petruseo', label: 'EO + F2L ⟨R U⟩', tags: ['blocks', 'eo', 'rul'], after: ['petrus'], eo: true, steps: [
-    { title: 'EO', cells: oriented(['DR', 'FR', 'BR', ...UE]), sim: { recog: 0.4 }, est: 5 },
-    { title: 'F2L', cells: own(RIGHT), sim: { moves: 'RU', recog: 0.3, kind: 'blocks' }, est: 14 }],
+    { title: 'EO', cells: oriented(['DR', 'FR', 'BR', ...UE]), sim: { recog: 0.4 } },
+    { title: 'F2L', cells: own(RIGHT), sim: { moves: 'RU', recog: 0.3, kind: 'blocks' } }],
     why: 'Jako Petrus: natočit hrany a pak dostavět F2L jen tahy R a U – nejpohodlnější tahy, žádné rotace.' },
   { id: 'petrusf2l', label: 'F2L', tags: ['blocks'], after: ['petrus'], steps: [
-    { title: 'F2L', cells: own(RIGHT), sim: { ...RULF, recog: 0.3, kind: 'blocks' }, est: 15 }],
+    { title: 'F2L', cells: own(RIGHT), sim: { ...RULF, recog: 0.3, kind: 'blocks' } }],
     why: 'Po bloku 2×2×3 rovnou dostavět F2L bez natáčení hran (otočené hrany vyřeší konec).' },
   { id: 'rouxsb', label: 'druhý blok', tags: ['blocks', 'm'], after: ['fb'], roux: true, steps: [
-    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3, kind: 'blocks' }, est: 12 }],
+    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3, kind: 'blocks' } }],
     why: 'Druhý blok jako Roux: tahy R, r, U a M, střed zůstává volný – konec pak dělá tahy M.' },
   { id: 'fbeoline', label: 'EO + čára, druhý blok ⟨R U L⟩', tags: ['blocks', 'eo', 'rul'], after: ['fb'], eo: true, steps: [
-    { title: 'EO + čára', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { moves: 'facesM', recog: 0.4 }, est: 8 },
-    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...RUL, recog: 0.3, kind: 'blocks' }, est: 11 }],
+    { title: 'EO + čára', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { moves: 'facesM', recog: 0.4 } },
+    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...RUL, recog: 0.3, kind: 'blocks' } }],
     why: 'Hybrid Roux a ZZ: po prvním bloku natočit hrany a postavit čáru (DF, DB), druhý blok pak jen R U L a konec s natočenými hranami.' },
   { id: 'fbline', label: 'čára + druhý blok', tags: ['blocks'], after: ['fb'], steps: [
-    { title: 'Čára (DF, DB)', cells: own(['DF', 'DB']), sim: { moves: 'facesM', recog: 0.2 }, est: 5 },
-    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...RULF, recog: 0.3, kind: 'blocks' }, est: 12 }],
+    { title: 'Čára (DF, DB)', cells: own(['DF', 'DB']), sim: { moves: 'facesM', recog: 0.2 } },
+    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...RULF, recog: 0.3, kind: 'blocks' } }],
     why: 'Po prvním bloku doplnit hrany dole a druhý blok – pak klasický konec poslední vrstvy.' },
   { id: 'rouxsbeo', label: 'druhý blok + EO a čára ⟨M U⟩', tags: ['blocks', 'm', 'eo'], after: ['fb'], eo: true, steps: [
-    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3, kind: 'blocks' }, est: 12 },
-    { title: 'EO + čára ⟨M U⟩', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { ...custom('M', 'U'), recog: 0.4 }, est: 8 }],
+    { title: 'Druhý blok', cells: own(RIGHT), sim: { ...custom('R', 'r', 'U', 'M'), recog: 0.3, kind: 'blocks' } },
+    { title: 'EO + čára ⟨M U⟩', cells: { ...oriented(EDGES), ...own(['DF', 'DB']) }, sim: { ...custom('M', 'U'), recog: 0.4 } }],
     why: 'Bloky jako Roux, pak tahy M a U natočit hrany a postavit čáru – konec jako u ZZ (natočené hrany, třeba ZBLL).' },
 ];
 
 export const ENDS = [
   { id: 'ollpll', label: 'OLL + PLL', needs: { eo: false }, steps: [
-    { title: 'OLL', cells: oriented([...UE, ...UC]), sim: { recog: 0.5, kind: 'alg' }, est: 10, algs: 57 },
-    { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' }, est: 12, algs: 21 }],
+    { title: 'OLL', cells: oriented([...UE, ...UC]), sim: { recog: 0.5, kind: 'alg' }, algs: 57 },
+    { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' }, algs: 21 }],
     why: 'Klasický konec: natočit vrstvu (57 případů), pak ji složit (21).' },
   { id: 'twolook', label: '2-look OLL + PLL', needs: { eo: false }, steps: [
-    { title: 'Hrany nahoře natočit', cells: oriented(UE), sim: { recog: 0.3, kind: 'alg' }, est: 7, algs: 3 },
-    { title: 'Rohy nahoře natočit', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 7 },
-    { title: 'Rohy na místa', cells: own(UC), sim: { recog: 0.4, kind: 'alg' }, est: 11, algs: 2 },
-    { title: 'Hrany na místa', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 4 }],
+    { title: 'Hrany nahoře natočit', cells: oriented(UE), sim: { recog: 0.3, kind: 'alg' }, algs: 3 },
+    { title: 'Rohy nahoře natočit', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, algs: 7 },
+    { title: 'Rohy na místa', cells: own(UC), sim: { recog: 0.4, kind: 'alg' }, algs: 2 },
+    { title: 'Hrany na místa', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, algs: 4 }],
     why: 'Konec na čtyři kroky s 16 algoritmy – rychle naučitelný, pomalejší (víc pauz a tahů).' },
   { id: 'ollcp', label: 'OLLCP + EPLL', needs: { eo: false }, steps: [
-    { title: 'OLLCP', cells: { ...oriented(UE), ...own(UC) }, sim: { recog: 0.7, kind: 'alg' }, est: 12, algs: 331 },
-    { title: 'EPLL', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 4 }],
+    { title: 'OLLCP', cells: { ...oriented(UE), ...own(UC) }, sim: { recog: 0.7, kind: 'alg' }, algs: 331 },
+    { title: 'EPLL', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, algs: 4 }],
     why: 'Natočení i rohy naráz (OLLCP), pak jen hrany (4 případy) – hodně algoritmů, ale konec je skoro vždy rychlý.' },
   { id: '1lll', label: 'celá vrstva naráz (1LLL)', needs: {}, steps: [
-    { title: 'Poslední vrstva (1LLL)', cells: own([...UE, ...UC]), sim: { recog: 0.9, kind: 'alg' }, est: 14, algs: 3915 }],
+    { title: 'Poslední vrstva (1LLL)', cells: own([...UE, ...UC]), sim: { recog: 0.9, kind: 'alg' }, algs: 3915 }],
     why: 'Celá poslední vrstva jedním algoritmem – teoretický strop: jedna pauza, ale tisíce algoritmů.' },
   { id: 'ocllpll', label: 'OCLL + PLL', needs: { eo: true }, steps: [
-    { title: 'OCLL', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 7 },
-    { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' }, est: 12, algs: 21 }],
+    { title: 'OCLL', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, algs: 7 },
+    { title: 'PLL', cells: own([...UE, ...UC]), sim: { recog: 0.6, kind: 'alg' }, algs: 21 }],
     why: 'Hrany už jsou natočené, takže stačí natočit rohy (7 případů) a PLL (21).' },
   { id: 'collepll', label: 'COLL + EPLL', needs: { eo: true }, steps: [
-    { title: 'COLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, est: 11, algs: 42 },
-    { title: 'EPLL', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 4 }],
+    { title: 'COLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, algs: 42 },
+    { title: 'EPLL', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, algs: 4 }],
     why: 'Rohy nahoře natočit i umístit naráz (COLL, 42), pak jen hrany (4 případy, rychlé U-permy).' },
   { id: 'zbll', label: 'ZBLL', needs: { eo: true }, steps: [
-    { title: 'ZBLL', cells: own([...UE, ...UC]), sim: { recog: 0.8, kind: 'alg' }, est: 13, algs: 493 }],
+    { title: 'ZBLL', cells: own([...UE, ...UC]), sim: { recog: 0.8, kind: 'alg' }, algs: 493 }],
     why: 'S natočenými hranami celá vrstva jedním algoritmem (ZBLL, 493) – jedna pauza, ale dlouhé učení.' },
   { id: 'eo2look', label: 'OCLL + rohy + hrany', needs: { eo: true }, steps: [
-    { title: 'OCLL', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 7 },
-    { title: 'Rohy na místa', cells: own(UC), sim: { recog: 0.4, kind: 'alg' }, est: 11, algs: 2 },
-    { title: 'Hrany na místa', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, est: 9, algs: 4 }],
+    { title: 'OCLL', cells: oriented(UC), sim: { recog: 0.4, kind: 'alg' }, algs: 7 },
+    { title: 'Rohy na místa', cells: own(UC), sim: { recog: 0.4, kind: 'alg' }, algs: 2 },
+    { title: 'Hrany na místa', cells: own(UE), sim: { recog: 0.4, kind: 'alg' }, algs: 4 }],
     why: 'Konec se 13 algoritmy pro natočené hrany – jednoduchý na učení.' },
   { id: 'rouxend', label: 'CMLL + LSE', tags: ['m'], needs: { roux: true }, steps: [
-    { title: 'CMLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, est: 10, algs: 42 },
-    { title: 'LSE', cells: own([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.4 }, est: 13 }],
+    { title: 'CMLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, algs: 42 },
+    { title: 'LSE', cells: own([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.4 } }],
     why: 'Konec Roux: rohy nahoře (CMLL, 42) a zbylých 6 hran tahy M a U – málo tahů.' },
   { id: 'rouxend3', label: 'CMLL + LSE po částech', tags: ['m'], needs: { roux: true }, steps: [
-    { title: 'CMLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, est: 10, algs: 42 },
-    { title: 'LSE – natočit hrany', cells: oriented([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.3 }, est: 5 },
-    { title: 'LSE – UL a UR', cells: own(['UL', 'UR']), sim: { ...custom('M', 'U'), recog: 0.3 }, est: 5 },
-    { title: 'LSE – zbytek', cells: own([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.2 }, est: 4 }],
+    { title: 'CMLL', cells: own(UC), sim: { recog: 0.6, kind: 'alg' }, algs: 42 },
+    { title: 'LSE – natočit hrany', cells: oriented([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.3 } },
+    { title: 'LSE – UL a UR', cells: own(['UL', 'UR']), sim: { ...custom('M', 'U'), recog: 0.3 } },
+    { title: 'LSE – zbytek', cells: own([...UE, 'DF', 'DB']), sim: { ...custom('M', 'U'), recog: 0.2 } }],
     why: 'Konec Roux, jak se ho učí většina: LSE po třech přehledných částech.' },
 ];
 
@@ -206,9 +206,16 @@ export function allMethods() {
   return out;
 }
 
-/** Odhad času složení (s) podle odhadu tahů kroků a úrovně skladače (bez simulace). */
+/** Odhad času složení (s) podle odhadu tahů kroků (stepMoves) a úrovně skladače (bez simulace). */
 export function priorTime(method, level = 'pro') {
-  return method.steps.reduce((a, x) => a + stepEstimate({ length: x.est ?? 8, source: 'search' }, { kind: x.sim?.kind ?? 'intuitive', recog: x.sim?.recog ?? 0, level }).time, 0);
+  let before = {};
+  return method.steps.reduce((a, x) => {
+    const parts = partsOfCells(x.cells);
+    const kind = x.sim?.kind ?? 'intuitive';
+    const length = stepMoves(before, parts, kind === 'alg');
+    before = mergeParts(before, parts);
+    return a + stepEstimate({ length, source: 'search' }, { kind, recog: x.sim?.recog ?? 0, level }).time;
+  }, 0);
 }
 
 export const ALG_COST = 0.002; // s za algoritmus (pořadí: čas + cena učení)

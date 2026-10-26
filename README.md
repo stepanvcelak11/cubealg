@@ -363,14 +363,29 @@ vymýšlí celé metody dvěma způsoby:
   navazují podle toho, co je po nich hotové (natočené hrany, volný střed pro tahy M). Vzniknou
   známé metody (CFOP, ZZ, Petrus, Roux…) i nové kombinace,
 - **úplně originální** – nové kroky podle principů, jak skladači přemýšlejí: blok rostoucí
-  z různých zárodků po souvislých kusech, rohy napřed (pak hrany tahy se středy), nejdřív natočit
-  všechno a pak jen permutovat, pás napřed, natočení hran vložené kamkoli, neobvyklé konce
-  (CLL + ELL, nejdřív hrany…). Každé „Vymyslet“ dá jiné nápady.
+  z různých zárodků po souvislých kusech (2–4 dílky), dva bloky po stranách s volným středem
+  a koncem tahy M v různých podobách, rohy napřed (pak hrany tahy se středy), nejdřív natočit
+  všechno a pak jen permutovat, hrany napřed (kříž a pás v různém pořadí, rohy se vkládají),
+  natočení hran vložené kamkoli (i s posledním kusem jako ZBLS), neobvyklé konce (CLL + ELL,
+  nejdřív hrany…). Intuitivní krok (kromě prvního, plánovaného v inspekci) skládá nejvýš ~5
+  nových dílků – víc člověk naráz neudrží v hlavě. Každé „Vymyslet“ dá jiné nápady (150 na
+  hledání).
 
 Přání: klepnutím (chci → nechci → jedno) nebo vlastními slovy („baví mě EO jako u ZZ, nechci
-tahy M, málo algoritmů“), rozpočet algoritmů. Nejslibnější metody (odhad času + cena učení,
-různorodé, polovina originálních) otestuje simulací na stejných zamícháních; každá má
-vysvětlení, proč dává smysl, a jde uložit jako nová metoda (a dál ladit ve Vylepšit).
+tahy M, málo algoritmů“), rozpočet algoritmů. Nápady se seřadí podle odhadu bez simulace:
+tahy kroku podle počtu nových dílků a toho, jak je kostka už plná (kalibrace na testech ~70
+metod: ±0,9 tahu u intuitivních kroků, čas metody ±0,35 s, korelace 0,91). Pak hledá ve třech
+kolech:
+
+1. **prosívání** – dvojnásobek nápadů (různorodě, polovina originálních) na 3 zamícháních,
+2. **test** – nejlepší na všech zamícháních (první tři má worker spočítané z prosívání),
+3. **vylepšování vítězů** – objevitel (`sim/discover.js`) navrhne úpravy (spojit, rozdělit,
+   prohodit, natočit hrany jinde, jiný konec, volnost…), 8 různých druhů se proseje, dvě
+   nejslibnější se otestují pořádně a úprava zůstane, jen když párově (na stejných
+   zamícháních) zlepší čas + učení. Vylepšená metoda se v dalším kole vylepšuje dál.
+
+Každá metoda má vysvětlení (u vylepšených i co se změnilo a proč) a jde uložit jako nová
+metoda. Nejlepší nálezy (8) si aplikace pamatuje i mezi hledáními.
 
 ## Vizuální metronom
 

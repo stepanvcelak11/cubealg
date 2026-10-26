@@ -51,7 +51,7 @@ test('originální metody: nové kroky podle principů, každá složí celou ko
   assert.notDeepEqual(a.map((m) => m.key), b.map((m) => m.key));
   assert.deepEqual(originalMethods(1, 30).map((m) => m.key), a.map((m) => m.key));
   const principles = new Set([...a, ...b].map((m) => m.principle));
-  for (const p of ['bloky', 'rohy napřed', 'orientace napřed', 'pás napřed']) assert.ok(principles.has(p), p);
+  for (const p of ['bloky', 'rohy napřed', 'orientace napřed', 'hrany napřed']) assert.ok(principles.has(p), p);
   for (const m of [...a, ...b]) {
     let n = 0;
     const guide = templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `s${++n}`, title }));
@@ -64,4 +64,35 @@ test('originální metody: nové kroky podle principů, každá složí celou ko
   // jen originální podle přání
   const { list } = inventMethods({ source: 'original', want: ['eo'], seed: 3 });
   assert.ok(list.length && list.every((m) => m.original && m.tags.has('eo')));
+});
+
+test('vymýšlení metod: odhad tahů a času bez simulace, intuitivní kroky jen tolik dílků, kolik člověk udrží', async () => {
+  const { stepMoves, partsOfCells, mergeParts: merge, originalMethods } = await import('../src/sim/originals.js');
+  const { priorTime } = await import('../src/sim/inventor.js');
+  // víc nových dílků = víc tahů; plnější kostka = dražší dílek
+  assert.ok(stepMoves({}, { DF: 'solved', DB: 'solved', DL: 'solved', DR: 'solved' }, false) > stepMoves({}, { DF: 'solved' }, false));
+  assert.ok(stepMoves({ DF: 'solved', DB: 'solved', DL: 'solved', DR: 'solved' }, { FR: 'solved', DFR: 'solved' }, false) > stepMoves({}, { FR: 'solved', DFR: 'solved' }, false));
+  const cfop = allMethods().find((m) => m.known === 'CFOP');
+  const t = priorTime(cfop);
+  assert.ok(t > 5 && t < 7.5, String(t));
+  for (const m of originalMethods(4, 60)) {
+    let before = {};
+    m.steps.forEach((x, i) => {
+      const parts = partsOfCells(x.cells);
+      const fresh = Object.keys(parts).filter((n) => parts[n] === 'solved' && before[n] !== 'solved').length;
+      if (i > 0 && x.sim.kind !== 'alg' && !x.sim.custom?.includes('M')) assert.ok(fresh <= 5, `${m.name}: ${x.title} ${fresh}`);
+      before = merge(before, parts);
+    });
+  }
+});
+
+test('vylepšování: spojené páry se staví jako blok, poslední vrstva se intuitivně nenavrhuje', async () => {
+  const { proposals } = await import('../src/sim/discover.js');
+  const m = allMethods().find((x) => x.known === 'CFOP');
+  let n = 0;
+  const guide = templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `s${++n}`, title }));
+  const ps = proposals(guide, (st) => ({ ...stepDefaults(false), ...(st.sim ?? {}) }), () => true, { level: 3 });
+  const pairs = ps.find((p) => p.label === 'Spojit „Pár 1“ s „Pár 2“');
+  assert.equal(pairs.patch.s3.kind, 'blocks');
+  assert.ok(!ps.some((p) => p.id === 'intu:s6' || p.id === 'intu:s7'), 'OLL/PLL intuitivně');
 });

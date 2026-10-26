@@ -1,44 +1,57 @@
-// Metoda → Vymyslet: aplikace vymyslí metody ze stavebních kamenů (sim/inventor.js) podle
-// tvých přání – klepnutím (chci / nechci) nebo vlastními slovy („baví mě EO jako u ZZ,
-// nechci tahy M“). Nejslibnější metody (odhad času + cena učení, různorodé) pak otestuje
-// simulací na stejných zamícháních (ui/evaluate.js) a seřadí podle výsledku. Každá má
-// vysvětlení, proč dává smysl, a jde uložit jako nová metoda.
+// Metoda → Vymyslet: aplikace vymyslí metody ze stavebních kamenů a z originálních principů
+// (sim/inventor.js, sim/originals.js) podle tvých přání – klepnutím (chci / nechci) nebo
+// vlastními slovy („baví mě EO jako u ZZ, nechci tahy M“). Hledá ve třech kolech jako
+// skladač, který zkouší nápady:
+//   1. prosívání – hodně nápadů krátce (3 zamíchání), nepovedené a pomalé vypadnou
+//   2. test      – nejlepší na všech zamícháních (stejná jako test metody)
+//   3. vylepšování – vítěze upravuje objevitel (sim/discover.js: spojit, rozdělit, prohodit,
+//      natočit hrany jinde, jiný konec…) a nechá úpravu, jen když párově pomůže
+// Nejlepší nálezy si pamatuje i mezi hledáními. Každá metoda má vysvětlení a jde uložit.
 
 import { el, storage } from './dom.js';
 import { methods, guides } from './store.js';
 import { LEVELS } from '../sim/simulate.js';
 import { stepConfig } from './stepcfg.js';
+import { stepParts, DEFAULT_FRAME } from './parts.js';
 import { templateGuide } from '../sim/templates.js';
-import { DEFAULT_FRAME } from './parts.js';
 import { WISHES, parseWishes, inventMethods, story, toTemplate, ALG_COST } from '../sim/inventor.js';
-import { evaluate, workerPool } from './evaluate.js';
+import { proposals } from '../sim/discover.js';
+import { evaluate, workerPool, methodSig, paired } from './evaluate.js';
 import { caseCounter } from './casecounter.js';
 import { keepAwake } from './longrun.js';
 import { toast } from './share.js';
 
 const OPTS = 'ergocube.inventor';
+const BEST = 'ergocube.inventor.best';
+const SCREEN = 3; // zamíchání při prosívání
+const EVO = 8; // úprav vítěze na kolo
 const fmt = (v, d = 2) => Number(v).toFixed(d).replace('.', ',');
 const BUDGETS = [[30, 'Málo (do 30)'], [60, 'Do 60'], [150, 'Do 150'], [0, 'Klidně hodně']];
+const cfgOf = (st) => stepConfig('__inventor__', st);
+const configOf = (g) => Object.fromEntries(g.steps.map((st) => [st.id, cfgOf(st)]));
+const has = (st) => Object.keys(stepParts(st)).length || st.rules?.length || Object.keys(st.cells ?? {}).length;
+const live = (g) => g.steps.filter((st) => cfgOf(st).on !== false);
+/** Cena výsledku: čas + učení; nesložená zamíchání = metoda nefunguje (vzadu). */
+const costOf = (r) => (r?.sum.count ? r.sum.time + ALG_COST * r.algs + (r.sum.failed ? 5 : 0) : Infinity);
 
 /** Různorodý výběr: nejvýš dva se stejným začátkem i středem, aspoň jedna nová kombinace. */
 function pickDiverse(list, k, source = 'mix') {
+  if (k <= 0) return [];
   // mix: polovina míst pro originální nápady
   if (source === 'mix') {
     const orig = list.filter((m) => m.original), known = list.filter((m) => !m.original);
-    const half = Math.ceil(k / 2);
-    const a = pickDiverse(orig, Math.min(orig.length, half), 'one');
+    const a = pickDiverse(orig, Math.min(orig.length, Math.ceil(k / 2)), 'one');
     const b = pickDiverse(known, k - a.length, 'one');
     return [...a, ...b, ...pickDiverse(orig.filter((m) => !a.includes(m)), k - a.length - b.length, 'one')];
   }
   const out = [], seen = new Map();
   for (const m of list) {
-    const key = m.original ? `${m.principle}|${m.name.split(' → ')[0]}` : `${m.start.id}|${m.mid.id}`;
+    const key = m.original ? `${m.principle}|${m.roux ? 'roux' : ''}` : `${m.start.id}|${m.mid.id}`;
     if ((seen.get(key) ?? 0) >= 2) continue;
     seen.set(key, (seen.get(key) ?? 0) + 1);
     out.push(m);
     if (out.length >= k) break;
   }
-  if (k <= 0) return [];
   if (out.length && !out.some((m) => !m.known)) {
     const novel = list.find((m) => !m.known && !out.includes(m));
     if (novel) out[out.length - 1] = novel;
@@ -46,15 +59,26 @@ function pickDiverse(list, k, source = 'mix') {
   return out;
 }
 
+/** Úpravy vítěze k vyzkoušení: různé druhy (spojit, rozdělit, pořadí, hrany, konec, volnost…) střídavě. */
+function pickProposals(props, k) {
+  const byKind = new Map();
+  for (const p of props) byKind.set(p.kind, [...(byKind.get(p.kind) ?? []), p]);
+  const out = [];
+  // odvážnější úpravy napřed (u vymyšlené metody se vyplatí víc než ladění)
+  const queues = [...byKind.values()].map((q) => q.sort((a, b) => (b.level ?? 1) - (a.level ?? 1)));
+  while (out.length < k && queues.some((q) => q.length)) for (const q of queues) if (q.length && out.length < k) out.push(q.shift());
+  return out;
+}
+
 /** @param {{onOpen?: (methodId) => void}} [opts] */
 export function mountInventor(host, lab, { onOpen } = {}) {
-  const saved = { wishes: {}, text: '', budget: 0, count: 8, tests: 6, source: 'mix', ...(storage.get(OPTS) ?? {}) };
+  const saved = { wishes: {}, text: '', budget: 0, count: 8, tests: 6, source: 'mix', evolve: 2, ...(storage.get(OPTS) ?? {}) };
   const save = () => storage.set(OPTS, saved);
   const level = LEVELS[storage.get('ergocube.sim.options')?.level] ? storage.get('ergocube.sim.options').level : 'pro';
   const select = (value, options, label, onChange) => {
     const s = el('select', { ariaLabel: label }, ...options.map(([v, t]) => el('option', { value: String(v), textContent: t })));
     s.value = String(value);
-    s.onchange = () => onChange(Number(s.value));
+    s.onchange = () => onChange(/^\d+$/.test(s.value) ? Number(s.value) : s.value);
     return el('label', { className: 'field' }, label, s);
   };
   // přání: klepnutí = chci → nechci → je mi to jedno
@@ -79,53 +103,85 @@ export function mountInventor(host, lab, { onOpen } = {}) {
   const track = el('div', { className: 'gen-track', hidden: true }, bar);
   const list = el('div', { className: 'inv-list' });
   const more = el('details', { className: 'inv-more', hidden: true });
+  const best = el('details', { className: 'inv-more inv-best' });
   host.replaceChildren(el('section', { className: 'sim-card' },
     el('header', { className: 'bld-q sim-card-head' }, el('span', { className: 'bld-qn', textContent: '✧' }),
       el('div', {}, el('b', { textContent: 'Vymyslet metodu' }),
-        el('small', { textContent: 'Dva druhy nápadů: kombinace osvědčených kroků (kříž, EOLine, EO-kříž, bloky, páry, ZBLS, OLL/PLL, COLL, ZBLL, CMLL/LSE…) a úplně originální metody s novými kroky – blok rostoucí z různých zárodků, rohy napřed, nejdřív natočit všechno, pás napřed, natočení hran kdekoli, neobvyklé konce. Každé klepnutí vymyslí jiné. Vybere podle tvých přání, nejslibnější otestuje na stejných zamícháních a každou vysvětlí.' }))),
+        el('small', { textContent: 'Dva druhy nápadů: kombinace osvědčených kroků (kříž, EOLine, EO-kříž, bloky, páry, ZBLS, OLL/PLL, COLL, ZBLL, CMLL/LSE…) a úplně originální metody s novými kroky – blok rostoucí z různých zárodků, dva bloky s koncem tahy M, rohy napřed, nejdřív natočit všechno, hrany napřed, natočení hran kdekoli, neobvyklé konce. Hledá jako skladač: hodně nápadů krátce vyzkouší, nejlepší otestuje pořádně a vítěze dál vylepšuje (spojit, rozdělit, prohodit kroky, natočit hrany jinde…). Každé klepnutí vymyslí jiné.' }))),
     el('b', { className: 'bld-sub', textContent: 'Co tě baví (klepni: chci → nechci → jedno)' }),
     el('div', { className: 'inv-wishes' }, ...chips),
     text,
     el('div', { className: 'grid-fields' },
       select(saved.budget, BUDGETS, 'Kolik algoritmů se naučit', (v) => { saved.budget = v; save(); }),
-      (() => {
-        const s = el('select', { ariaLabel: 'Jaké metody' }, ...[['mix', 'Známé kroky i originální nápady'], ['original', 'Jen úplně originální'], ['known', 'Jen z osvědčených kroků']].map(([v, t]) => el('option', { value: v, textContent: t })));
-        s.value = saved.source;
-        s.onchange = () => { saved.source = s.value; save(); };
-        return el('label', { className: 'field' }, 'Jaké metody', s);
-      })(),
-      select(saved.tests, [[4, '4 metody'], [6, '6 metod'], [10, '10 metod']], 'Otestovat simulací', (v) => { saved.tests = v; save(); }),
-      select(saved.count, [[8, '8 zamíchání (rychle)'], [12, '12 zamíchání'], [24, '24 zamíchání (přesněji)']], 'Zamíchání na metodu', (v) => { saved.count = v; save(); })),
-    el('p', { className: 'hint', textContent: `Odhad času pro: ${LEVELS[level].label} (změníš v Otestovat). Pořadí: čas + učení (100 algoritmů ≈ 0,2 s).` }),
-    el('div', { className: 'row-btns' }, go, stop), track, status, list, more));
+      select(saved.source, [['mix', 'Známé kroky i originální nápady'], ['original', 'Jen úplně originální'], ['known', 'Jen z osvědčených kroků']], 'Jaké metody', (v) => { saved.source = v; save(); }),
+      select(saved.tests, [[4, '4 metody'], [6, '6 metod'], [10, '10 metod']], 'Otestovat pořádně', (v) => { saved.tests = v; save(); }),
+      select(saved.count, [[8, '8 zamíchání (rychle)'], [12, '12 zamíchání'], [24, '24 zamíchání (přesněji)']], 'Zamíchání na metodu', (v) => { saved.count = v; save(); }),
+      select(saved.evolve, [[0, 'Nevylepšovat'], [1, '1 kolo'], [2, '2 kola'], [4, '4 kola'], [99, 'Dokud nezastavím']], 'Vylepšovat vítěze', (v) => { saved.evolve = v; save(); })),
+    el('p', { className: 'hint', textContent: `Odhad času pro: ${LEVELS[level].label} (změníš v Otestovat). Pořadí: čas + učení (100 algoritmů ≈ 0,2 s). Nejdřív se na ${SCREEN} zamícháních prosívá dvojnásobek nápadů, pak se nejlepší testují na všech.` }),
+    el('div', { className: 'row-btns' }, go, stop), track, status, list, more, best));
 
-  let running = false;
-  stop.onclick = () => { running = false; status.textContent = 'Zastavuji…'; };
-
-  /** Karta metody (odhad, nebo výsledek testu). */
-  const card = (m, r) => {
+  // --- nejlepší nálezy (pamatují se mezi hledáními) ------------------------------------
+  const keepBest = (c) => {
+    if (!c.res?.sum.count || c.res.sum.failed) return;
+    const all = (storage.get(BEST) ?? []).filter((x) => x.sig !== c.sig);
+    all.push({ sig: c.sig, name: c.name, badge: c.badge, lineage: c.lineage, story: c.story, guide: c.guide, time: c.res.sum.time, human: c.res.sum.human, algs: c.res.algs, approx: c.res.approx, cost: costOf(c.res), at: Date.now() });
+    all.sort((a, b) => a.cost - b.cost);
+    storage.set(BEST, all.slice(0, 8));
+  };
+  const saveGuide = (name, guide, intro) => {
+    const id = methods.add(name);
+    // vlastní id kroků (nastavení kroků je v kroku – sim)
+    guides.set(id, { intro, frame: guide.frame ?? DEFAULT_FRAME, steps: guide.steps.map((st) => ({ ...st, id: guides.newStep().id })) });
+    toast(`Uloženo: „${name}“ – najdeš ji nahoře v liště metod`);
+    return id;
+  };
+  const saveButton = (name, guide, intro) => {
     const keep = el('button', { type: 'button', className: 'primary small', textContent: 'Uložit jako novou metodu' });
     keep.onclick = () => {
-      const id = methods.add(m.name);
-      guides.set(id, templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => guides.newStep(title)));
+      const id = saveGuide(name, guide, intro);
       keep.disabled = true;
       keep.textContent = 'Uloženo';
       const open = el('button', { type: 'button', className: 'secondary small', textContent: 'Přepnout na ni' });
       open.onclick = () => { methods.setActive(id); onOpen?.(id); };
       keep.after(open);
-      toast(`Uloženo: „${m.name}“ – najdeš ji nahoře v liště metod`);
     };
+    return keep;
+  };
+  const renderBest = () => {
+    const all = storage.get(BEST) ?? [];
+    best.hidden = !all.length;
+    const clear = el('button', { type: 'button', className: 'secondary small', textContent: 'Zapomenout' });
+    clear.onclick = () => { storage.set(BEST, []); renderBest(); };
+    best.replaceChildren(el('summary', { textContent: `Nejlepší nálezy ze všech hledání (${all.length})` }),
+      ...all.map((x) => el('article', { className: 'inv-card tested' },
+        el('div', { className: 'inv-head' }, el('span', { className: 'disc-level l2', textContent: x.badge }), el('b', { textContent: x.name })),
+        el('ol', { className: 'inv-steps' }, ...live(x.guide).map((st) => el('li', { textContent: st.title }))),
+        x.lineage?.length ? el('small', { className: 'inv-evo', textContent: `Vylepšeno: ${x.lineage.join(' → ')}` }) : '',
+        el('span', { className: 'inv-nums', textContent: `${fmt(x.time)} s · ${fmt(x.human, 1)} tahů · ${x.approx ? '≈' : ''}${x.algs} algoritmů` }),
+        el('div', { className: 'row-btns' }, saveButton(x.name, x.guide, x.story)))),
+      el('div', { className: 'row-btns' }, clear));
+  };
+  renderBest();
+
+  let running = false;
+  stop.onclick = () => { running = false; status.textContent = 'Zastavuji…'; };
+
+  /** Karta kandidáta: odhad, předběžný výsledek (prosívání) nebo výsledek testu. */
+  const card = (c) => {
+    const r = c.res, s = c.screen;
     const nums = r
       ? `${fmt(r.sum.time)} s · ${fmt(r.sum.human, 1)} tahů · ${r.approx ? '≈' : ''}${r.algs} algoritmů${r.sum.failed ? ` · ${r.sum.failed}× nesloženo` : ''}`
-      : `odhad ${fmt(m.prior)} s · ${m.original ? '≈' : ''}${m.algs} algoritmů · čeká na test`;
-    return el('article', { className: `inv-card${r ? ' tested' : ''}` },
+      : s ? `předběžně ${s.sum.count ? `${fmt(s.sum.time)} s` : 'nesloženo'} (${SCREEN} zamíchání) · ${s.approx ? '≈' : ''}${s.algs} algoritmů${c.out ? ' · vypadla v prosívání' : ''}${s.sum.failed ? ` · ${s.sum.failed}× nesloženo` : ''}`
+        : `odhad ${fmt(c.prior)} s · ${c.approxPrior ? '≈' : ''}${c.algsPrior} algoritmů · čeká na test`;
+    return el('article', { className: `inv-card${r ? ' tested' : ''}${c.out ? ' out' : ''}` },
       el('div', { className: 'inv-head' },
-        el('span', { className: `disc-level ${m.known ? 'l1' : m.original ? 'l3' : 'l2'}`, textContent: m.known ? 'známá' : m.original ? `originální · ${m.principle}` : 'nová kombinace' }),
-        el('b', { textContent: m.name })),
-      el('ol', { className: 'inv-steps' }, ...m.steps.map((x) => el('li', { textContent: x.title }))),
+        el('span', { className: `disc-level ${c.badgeClass}`, textContent: c.badge }),
+        el('b', { textContent: c.name })),
+      el('ol', { className: 'inv-steps' }, ...live(c.guide).map((st) => el('li', { textContent: st.title }))),
+      c.lineage.length ? el('small', { className: 'inv-evo', textContent: `Vylepšeno: ${c.lineage.join(' → ')}${c.gain ? ` (o ${fmt(c.gain)} s lepší než původní)` : ''}` }) : '',
       el('span', { className: 'inv-nums', textContent: nums }),
-      el('small', { className: 'inv-story', textContent: story(m) }),
-      el('div', { className: 'row-btns' }, keep));
+      el('small', { className: 'inv-story', textContent: c.story }),
+      el('div', { className: 'row-btns' }, saveButton(c.name, c.guide, c.story)));
   };
 
   go.onclick = async () => {
@@ -135,44 +191,110 @@ export function mountInventor(host, lab, { onOpen } = {}) {
     for (const w of want) avoid.delete(w);
     const budget = saved.budget || fromText.budget || Infinity;
     // originální nápady jsou pokaždé jiné (nové semínko)
-    const { list: found, relaxed } = inventMethods({ want, avoid, budget, level, source: saved.source, seed: Date.now() });
+    const { list: found, relaxed } = inventMethods({ want, avoid, budget, level, source: saved.source, seed: Date.now(), originals: 150 });
     if (!found.length) { status.textContent = 'Nic takového nejde postavit – zkus přání zmírnit.'; return; }
-    const chosen = pickDiverse(found, saved.tests, saved.source);
-    const results = new Map(); // key → výsledek testu
-    const render = () => {
-      const cost = (m) => { const r = results.get(m.key); return r ? r.sum.time + ALG_COST * r.algs : m.score + 100; };
-      list.replaceChildren(...chosen.slice().sort((a, b) => cost(a) - cost(b)).map((m) => card(m, results.get(m.key))));
-    };
+    // prosívání: dvojnásobek nápadů (různorodě), pak nejlepší pořádně
+    const seen = new Set();
+    let seq = 0;
+    const cands = [];
+    for (const m of pickDiverse(found, Math.min(found.length, saved.tests * 2), saved.source)) {
+      const k = cands.length;
+      let n = 0;
+      const guide = templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `i${k}s${++n}`, title }));
+      const sig = methodSig(guide, configOf(guide));
+      if (!sig || seen.has(sig)) continue;
+      seen.add(sig);
+      cands.push({
+        key: m.key, sig, name: m.name, guide, story: story(m), lineage: [],
+        badge: m.known ? 'známá' : m.original ? `originální · ${m.principle}` : 'nová kombinace',
+        badgeClass: m.known ? 'l1' : m.original ? 'l3' : 'l2',
+        prior: m.prior, algsPrior: m.algs, approxPrior: !!m.original,
+      });
+    }
+    const order = (c) => (c.res ? costOf(c.res) : c.screen && !c.out ? 1000 + costOf(c.screen) : c.screen ? 3000 + costOf(c.screen) : 2000 + c.prior);
+    const render = () => list.replaceChildren(...cands.slice().sort((a, b) => order(a) - order(b)).map(card));
     render();
-    const rest = found.filter((m) => !chosen.includes(m));
+    const rest = found.filter((m) => !cands.some((c) => c.key === m.key));
     more.hidden = !rest.length;
     more.replaceChildren(el('summary', { textContent: `Další nápady (${rest.length}) – jen odhad bez testu` }),
-      ...rest.slice(0, 40).map((m) => el('div', { className: 'inv-idea' }, el('b', { textContent: m.name }), el('small', { textContent: ` · odhad ${fmt(m.prior)} s · ${m.algs} algoritmů` }))));
+      ...rest.slice(0, 40).map((m) => el('div', { className: 'inv-idea' }, el('b', { textContent: m.name }), el('small', { textContent: ` · odhad ${fmt(m.prior)} s · ${m.original ? '≈' : ''}${m.algs} algoritmů` }))));
     const wishText = [...want].map((w) => WISHES[w]?.label).filter(Boolean).join(', ');
-    status.textContent = `${relaxed ? 'Všechna přání najednou nejdou splnit – tady jsou nejbližší metody. ' : ''}${found.length} metod podle přání${wishText ? ` (${wishText})` : ''}; testuji ${chosen.length} nejslibnějších…`;
-    // test simulací
+    const intro = `${relaxed ? 'Všechna přání najednou nejdou splnit – tady jsou nejbližší metody. ' : ''}${found.length} metod podle přání${wishText ? ` (${wishText})` : ''}.`;
     running = true;
     host.dataset.running = '1';
     go.hidden = true; stop.hidden = false; track.hidden = false;
     const awake = keepAwake();
     const pool = workerPool();
     const counter = caseCounter();
+    const total = cands.length * SCREEN + saved.tests * saved.count + Math.min(saved.evolve, 4) * (EVO * SCREEN + 2 * saved.count);
     let done = 0;
-    const total = chosen.length * saved.count;
     const tick = () => { done++; bar.style.width = `${Math.min(100, (done / total) * 100)}%`; };
+    const run = (guide, count) => evaluate({ guide, config: configOf(guide), lab, count, seconds: 1, level, stopped: () => !running, onSolve: tick, pool, counter });
     try {
-      for (const [k, m] of chosen.entries()) {
+      // 1. prosívání
+      for (const [k, c] of cands.entries()) {
         if (!running) break;
-        status.textContent = `Testuji ${k + 1} z ${chosen.length}: ${m.name}`;
-        let n = 0;
-        const guide = templateGuide(toTemplate(m), DEFAULT_FRAME, (title) => ({ id: `inv${k}s${++n}`, title }));
-        const config = Object.fromEntries(guide.steps.map((st) => [st.id, stepConfig('__inventor__', st)]));
-        const res = await evaluate({ guide, config, lab, count: saved.count, seconds: 1, level, stopped: () => !running, onSolve: tick, pool, counter });
-        if (res.sum.count) { results.set(m.key, res); render(); }
+        status.textContent = `${intro} Prosívám ${k + 1} z ${cands.length}: ${c.name}`;
+        c.screen = await run(c.guide, SCREEN);
+        render();
       }
-      const best = chosen.filter((m) => results.has(m.key)).sort((a, b) => (results.get(a.key).sum.time + ALG_COST * results.get(a.key).algs) - (results.get(b.key).sum.time + ALG_COST * results.get(b.key).algs))[0];
-      status.textContent = running && best
-        ? `Hotovo: nejvíc se vyplatí „${best.name}“ (${fmt(results.get(best.key).sum.time)} s, ${results.get(best.key).algs} algoritmů). Ulož si ji a v „Vylepšit“ ji můžeš dál ladit.`
+      const finalists = cands.filter((c) => c.screen?.sum.count).sort((a, b) => costOf(a.screen) - costOf(b.screen)).slice(0, saved.tests);
+      for (const c of cands) c.out = running && !finalists.includes(c);
+      render();
+      // 2. test na všech zamícháních (první tři má worker spočítané z prosívání)
+      for (const [k, c] of finalists.entries()) {
+        if (!running) break;
+        status.textContent = `Testuji pořádně ${k + 1} z ${finalists.length}: ${c.name}`;
+        const res = await run(c.guide, saved.count);
+        if (res.sum.count) { c.res = res; keepBest(c); }
+        render();
+      }
+      // 3. vylepšování vítězů: úpravy objevitele, úprava zůstane, jen když párově pomůže
+      const tried = new Set();
+      for (let round = 0; round < saved.evolve && running; round++) {
+        const parent = cands.filter((c) => c.res && !tried.has(c)).sort((a, b) => costOf(a.res) - costOf(b.res))[0];
+        if (!parent) break;
+        tried.add(parent);
+        const props = proposals(parent.guide, cfgOf, has, { level: 3, newId: () => `e${++seq}` }).map((p) => {
+          // úprava nastavení se zapíše do kroků (metoda pak nese všechno v sobě)
+          const steps = p.steps ?? parent.guide.steps.map((st) => (p.patch[st.id] ? { ...st, sim: { ...(st.sim ?? {}), ...p.patch[st.id] } } : st));
+          const guide = { ...parent.guide, steps };
+          return { ...p, guide, sig: methodSig(guide, configOf(guide)) };
+        }).filter((p) => p.sig && !seen.has(p.sig) && (seen.add(p.sig), true));
+        const picked = pickProposals(props, EVO);
+        const kids = [];
+        for (const [k, p] of picked.entries()) {
+          if (!running) break;
+          status.textContent = `Vylepšuji „${parent.name}“ (kolo ${round + 1}): zkouším ${k + 1} z ${picked.length} – ${p.label}`;
+          const screen = await run(p.guide, SCREEN);
+          if (!screen.sum.count || screen.sum.failed) continue;
+          const d = paired(parent.res.sum, screen.sum);
+          kids.push({ p, screen, gain: d.dt + ALG_COST * (screen.algs - parent.res.algs) });
+        }
+        // dvě nejslibnější úpravy pořádně; zůstane ta, která párově pomůže
+        for (const kid of kids.filter((x) => x.gain < 0).sort((a, b) => a.gain - b.gain).slice(0, 2)) {
+          if (!running) break;
+          status.textContent = `Vylepšuji „${parent.name}“: ověřuji ${kid.p.label}`;
+          const res = await run(kid.p.guide, saved.count);
+          if (!res.sum.count || res.sum.failed) continue;
+          const d = paired(parent.res.sum, res.sum);
+          const gain = d.dt + ALG_COST * (res.algs - parent.res.algs);
+          if (gain >= 0) continue;
+          const child = {
+            ...parent, key: `${parent.key}+${kid.p.id}`, sig: kid.p.sig, guide: kid.p.guide, res, screen: kid.screen, out: false,
+            base: parent.base ?? parent.name, name: `${parent.base ?? parent.name} (vylepšená ${parent.lineage.length + 1}×)`,
+            lineage: [...parent.lineage, kid.p.label], gain: (parent.gain ?? 0) - gain,
+            badge: `vylepšená · ${parent.badge.replace(/^vylepšená · /, '')}`, badgeClass: 'l2',
+            story: `${parent.story} Vylepšení: ${kid.p.label} – ${kid.p.why}`,
+          };
+          cands.push(child);
+          keepBest(child);
+          render();
+        }
+      }
+      const top = cands.filter((c) => c.res).sort((a, b) => costOf(a.res) - costOf(b.res))[0];
+      status.textContent = running && top
+        ? `Hotovo: nejvíc se vyplatí „${top.name}“ – ${fmt(top.res.sum.time)} s, ${top.res.approx ? '≈' : ''}${top.res.algs} algoritmů. Ulož si ji; nejlepší nálezy se pamatují i pro příští hledání.`
         : 'Zastaveno.';
     } finally {
       for (const w of pool) w.terminate();
@@ -181,6 +303,7 @@ export function mountInventor(host, lab, { onOpen } = {}) {
       running = false;
       delete host.dataset.running;
       go.hidden = false; stop.hidden = true; track.hidden = true;
+      renderBest();
     }
   };
 }

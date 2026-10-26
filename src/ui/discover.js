@@ -5,14 +5,12 @@
 
 import { el, storage } from './dom.js';
 import { methods, guides } from './store.js';
-import { buildPlan } from '../sim/plan.js';
 import { LEVELS } from '../sim/simulate.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { stepParts } from './parts.js';
 import { proposals, applyPatch, combine, LEVEL_TEXT } from '../sim/discover.js';
-import { constraintsKey } from '../core/rules.js';
 import { caseCounter } from './casecounter.js';
-import { evaluate, workerPool } from './evaluate.js';
+import { evaluate, workerPool, methodSig, paired } from './evaluate.js';
 import { keepAwake } from './longrun.js';
 import { toast } from './share.js';
 
@@ -62,14 +60,8 @@ export function mountDiscover(host, lab) {
     const base = Object.fromEntries(guide.steps.map((st) => [st.id, cfgOf(st)]));
     // návrh → metoda k testu: změna nastavení, nebo nové kroky
     const variantOf = (p) => (p.steps ? { g: { ...guide, steps: p.steps }, config: Object.fromEntries(p.steps.map((st) => [st.id, cfgOf(st)])) } : { g: guide, config: applyPatch(base, p.patch) });
-    // otisk metody: co je po každém kroku hotové, kolik míst smí krok mít, jak se řeší –
     // návrh se stejným otiskem jako tvoje metoda nic nemění (to už metoda dělá)
-    const sigOf = ({ g, config }) => {
-      try {
-        const { plan, steps } = buildPlan({ guide: g, config });
-        return JSON.stringify(steps.map((x, i) => [constraintsKey(plan.variants[0].steps[i].parts), plan.choices[i], x.cfg.kind, x.cfg.solveBy === 'intuitive']));
-      } catch { return null; }
-    };
+    const sigOf = ({ g, config }) => methodSig(g, config);
     const baseSig = sigOf({ g: guide, config: base });
     const seen = new Set([baseSig]);
     const props = proposals(guide, cfgOf, has, { level: saved.level, newId: () => guides.newStep().id }).filter((p) => {
@@ -128,16 +120,8 @@ export function mountDiscover(host, lab) {
       // pořadí: zisk času, ale s cenou učení – každých 100 algoritmů navíc jako 0,2 s
       // (jinak by vyhrálo „všechno jedním algoritmem“ s desítkami tisíc případů)
       const costOf = (r) => r.dt + ALG_COST * Math.max(0, r.da);
-      // rozdíl proti tvé metodě párově: jen zamíchání, která složily obě (nesložená by
-      // zkreslila průměr), a nejistota z rozdílů na každém zamíchání zvlášť
-      const compare = (res) => {
-        const ids = Object.keys(res.sum.solveTimes).filter((k) => k in ref.sum.solveTimes);
-        const d = ids.map((k) => res.sum.solveTimes[k] - ref.sum.solveTimes[k]);
-        const mean = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
-        const dt = mean(d), dm = mean(ids.map((k) => res.sum.solveMoves[k] - ref.sum.solveMoves[k]));
-        const sd = d.length > 1 ? Math.sqrt(d.reduce((a, b) => a + (b - dt) ** 2, 0) / (d.length - 1)) : Infinity;
-        return { dt, dm, err: d.length > 1 ? (1.64 * sd) / Math.sqrt(d.length) : Infinity, n: ids.length };
-      };
+      // rozdíl proti tvé metodě párově (jen zamíchání, která složily obě)
+      const compare = (res) => paired(ref.sum, res.sum);
       for (const [k, p] of props.entries()) {
         if (!running) break;
         status.textContent = `Návrh ${k + 1} z ${props.length}: ${p.label}`;

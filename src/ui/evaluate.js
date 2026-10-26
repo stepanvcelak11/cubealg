@@ -7,6 +7,7 @@ import { buildPlan } from '../sim/plan.js';
 import { summarize, seededRandom } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { makeLearner } from '../sim/learn.js';
+import { constraintsKey } from '../core/rules.js';
 
 export const workerCount = () => Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1));
 /** Workery pro evaluate (ukončit: for (const w of pool) w.terminate()). */
@@ -71,3 +72,28 @@ export async function evaluate({ guide, config, lab, count, seconds, level, stop
   return { ids: steps.map((x) => x.st.id), sum, algs: algCount, approx, perStep: steps.map((x, i) => [x.st.title || `Krok ${i + 1}`, perStep[i]]).filter(([, n]) => n), failed: sum.failed };
 }
 
+
+/**
+ * Otisk metody: co je po každém kroku hotové, kolik míst smí krok mít, jak se řeší –
+ * dvě metody se stejným otiskem se skládají stejně (null = metoda nejde sestavit).
+ */
+export function methodSig(guide, config) {
+  try {
+    const { plan, steps } = buildPlan({ guide, config });
+    return JSON.stringify(steps.map((x, i) => [constraintsKey(plan.variants[0].steps[i].parts), plan.choices[i], x.cfg.kind, x.cfg.solveBy === 'intuitive']));
+  } catch { return null; }
+}
+
+/**
+ * Párový rozdíl b − a: jen zamíchání, která složily obě (nesložená by zkreslila průměr),
+ * nejistota (90 %) z rozdílů na každém zamíchání zvlášť.
+ * @returns {{dt: number, dm: number, err: number, n: number}}
+ */
+export function paired(a, b) {
+  const ids = Object.keys(b.solveTimes).filter((k) => k in a.solveTimes);
+  const d = ids.map((k) => b.solveTimes[k] - a.solveTimes[k]);
+  const mean = (x) => x.reduce((p, q) => p + q, 0) / Math.max(1, x.length);
+  const dt = mean(d), dm = mean(ids.map((k) => b.solveMoves[k] - a.solveMoves[k]));
+  const sd = d.length > 1 ? Math.sqrt(d.reduce((p, q) => p + (q - dt) ** 2, 0) / (d.length - 1)) : Infinity;
+  return { dt, dm, err: d.length > 1 ? (1.64 * sd) / Math.sqrt(d.length) : Infinity, n: ids.length };
+}

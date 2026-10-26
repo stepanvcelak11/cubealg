@@ -1613,3 +1613,7 @@ i.exec { background: var(--accent); }
 .inv-more summary { cursor: pointer; font-weight: 800; }
 .inv-idea { padding: 4px 0; font-size: 0.84rem; }
 .inv-idea small { color: var(--muted); }
+.inv-card.out { opacity: 0.6; }
+.inv-evo { color: var(--good); font-size: 0.8rem; font-weight: 700; }
+.inv-best { border-top: 1px solid var(--border-strong); padding-top: 8px; }
+.inv-best .inv-card { margin-top: 8px; }

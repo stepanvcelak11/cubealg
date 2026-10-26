@@ -192,7 +192,31 @@ export function proposals(guide, cfgOf, hasParts = () => true, { level = 3, newI
     return Object.entries(partsOf(st)).filter(([n, v]) => isPiece(n) && before[n] !== 'solved' && before[n] !== v).sort().join(',');
   }));
   const mine = shape(guide.steps);
-  return out.filter((p) => !p.steps || shape(p.steps) !== mine);
+  // spojený intuitivní krok s víc dílky (ne první – ten se plánuje v inspekci) člověk
+  // neskládá nejkratší cestou jako test: staví ho jako blok (tempo a tahy bloků)
+  for (const p of out) {
+    if (p.kind !== 'spojit') continue;
+    const ids = Object.keys(p.patch);
+    const last = ids.find((id) => p.patch[id].recog !== undefined);
+    const merged = real.filter((st) => ids.includes(st.id));
+    const cfg = cfgOf(real.find((st) => st.id === last));
+    if (merged[0] === real[0] || cfg.kind === 'alg' || cfg.kind === 'blocks') continue;
+    const fresh = merged.reduce((acc, st) => mergeParts(acc, own(st)), {});
+    if (Object.values(fresh).filter((v) => v === 'solved').length >= 3) p.patch[last] = { ...p.patch[last], kind: 'blocks' };
+  }
+  // krok algoritmů intuitivně: s víc dílky jako blok (jinak nadlidsky krátké řešení); když
+  // je kostka skoro hotová (poslední vrstva), člověk ho intuitivně rychle neudělá vůbec
+  const drop = new Set();
+  for (const p of out) {
+    if (!p.id.startsWith('intu:')) continue;
+    const st = real.find((x) => x.id === p.id.slice(5));
+    if (!st || Object.keys(own(st)).length < 3) continue;
+    const after = mergeParts(beforeOf(st), partsOf(st));
+    const free = guide.steps.reduce((acc, x) => mergeParts(acc, partsOf(x)), {});
+    if (Object.keys(free).filter((n) => isPiece(n) && after[n] !== 'solved').length <= 8) drop.add(p);
+    else p.patch[st.id].kind = 'blocks';
+  }
+  return out.filter((p) => !drop.has(p) && (!p.steps || shape(p.steps) !== mine));
 }
 
 /** Použije změny návrhu na nastavení kroků (kopie). */

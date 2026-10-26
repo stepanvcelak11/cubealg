@@ -1462,7 +1462,7 @@ test('Moje kostka: stav z chytré kostky, nejkratší řešení a řešení meto
 });
 
 test('vymyslet metodu: přání, originální i známé nápady, test simulací a uložení jako nové metody', async () => {
-  const { p, ctx, errors } = await open('timer', { 'ergocube.method.sub': 'invent', 'ergocube.inventor': { text: 'baví mě EO jako u ZZ, nechci tahy M', tests: 4, count: 8, source: 'mix' } });
+  const { p, ctx, errors } = await open('timer', { 'ergocube.method.sub': 'invent', 'ergocube.inventor': { text: 'baví mě EO jako u ZZ, nechci tahy M', tests: 4, count: 8, source: 'mix', evolve: 1 } });
   await p.locator('.tabbar [data-tab="method"]').tap();
   await p.locator('.inv-page button', { hasText: 'Vymyslet metody' }).tap();
   await p.waitForSelector('.inv-card');
