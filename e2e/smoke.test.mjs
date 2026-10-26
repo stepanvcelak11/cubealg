@@ -1353,7 +1353,7 @@ test('objevitel metod: návrhy úprav otestované na stejných zamícháních, p
   assert.match(rows[0], /Tvoje metoda teď[\s\S]*\d+,\d+ s/);
   assert.ok(rows.some((r) => /Spojit „Hrana vpředu“ s „Hrana vpravo“[\s\S]*s ± /.test(r)), rows.join('\n'));
   // použít návrh: spojení se zapíše do nastavení kroku
-  await p.locator('.disc-row').filter({ hasText: 'Spojit' }).filter({ hasNotText: ' + ' }).locator('button').tap();
+  await p.locator('.disc-row', { has: p.locator('b', { hasText: /^Spojit „Hrana vpředu“ s „Hrana vpravo“$/ }) }).locator('button').tap();
   const on = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')).default.steps[0].sim?.on);
   assert.equal(on, false);
   assert.deepEqual(errors, []);

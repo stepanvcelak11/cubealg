@@ -5,7 +5,7 @@
 // Vstup:  { type: 'plan', plan } · { type: 'solve', id, start }
 // Výstup: { type: 'solved', id, solve } · { type: 'error', id, message }
 
-import { makeStepSolver, betterFor } from './stepsolver.js';
+import { makeStepSolver, betterFor, memoryCache } from './stepsolver.js';
 import { simulate } from './simulate.js';
 import { initKernel } from '../search/kernel.js';
 import { getPuzzle } from '../puzzles/index.js';
@@ -20,13 +20,15 @@ const colors = (loc) => colorsOfState(P, loc, ALL).join('');
 const kernel = initKernel();
 let plan = null;
 let solver = null;
+// databáze a nalezená řešení kroků přes plány (objevitel metod posílá jeden plán za druhým)
+const shared = { cache: memoryCache(), memo: new Map() };
 
 
 self.onmessage = async ({ data }) => {
   await kernel;
   if (data.type === 'plan') {
     plan = data.plan;
-    solver = makeStepSolver(plan);
+    solver = makeStepSolver(plan, { shared });
     return;
   }
   // nový algoritmus kroku (test ho našel u jiného zamíchání): další případy ho už použijí

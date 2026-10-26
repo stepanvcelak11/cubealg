@@ -116,5 +116,6 @@ function bigCube(n) {
   });
 }
 
-export const CUBE4 = bigCube(4);
-export const CUBE5 = bigCube(5);
+// sestaví se až při prvním použití (geometrie 150 nálepek stojí čas při startu aplikace i workerů)
+const built = new Map();
+export const bigCubeOf = (n) => { if (!built.has(n)) built.set(n, bigCube(n)); return built.get(n); };

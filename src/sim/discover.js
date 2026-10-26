@@ -47,16 +47,22 @@ export function proposals(guide, cfgOf, hasParts = () => true, { level = 3, newI
   real.forEach((st, k) => {
     const cfg = cfgOf(st);
     const next = real[k + 1];
+    // spojený intuitivní krok se hůř plánuje: dva cíle naráz = delší rozmýšlení před ním
+    // (polovina pauzy spojeného kroku + 0,3 s); u algoritmů rozpoznání většího případu
+    const mergedRecog = (list) => {
+      const last = cfgOf(list.at(-1));
+      return list.slice(0, -1).reduce((a, x) => a + 0.5 * (cfgOf(x).recog ?? 0) + 0.3, last.recog ?? 0);
+    };
     if (next) add({
       id: `merge:${st.id}`, kind: 'spojit', level: 2, label: `Spojit ${name(st)} s ${name(next)}`,
-      why: 'Jeden krok místo dvou: méně pauz na rozpoznání, často méně tahů – ale víc případů (algoritmů) nebo delší přemýšlení.',
-      patch: { [st.id]: { on: false } },
+      why: 'Jeden krok místo dvou: méně tahů a jedna pauza místo dvou – ale víc případů (algoritmů) nebo delší přemýšlení před krokem.',
+      patch: { [st.id]: { on: false }, [next.id]: { recog: +mergedRecog([st, next]).toFixed(2) } },
     });
     const third = real[k + 2];
     if (next && third) add({
       id: `merge3:${st.id}`, kind: 'spojit', level: 3, label: `Spojit ${name(st)}, ${name(next)} a ${name(third)} do jednoho kroku`,
       why: 'Velký skok: tři kroky naráz. Méně zastavení, ale krok je mnohem složitější (hodně případů nebo dlouhé vymýšlení).',
-      patch: { [st.id]: { on: false }, [next.id]: { on: false } },
+      patch: { [st.id]: { on: false }, [next.id]: { on: false }, [third.id]: { recog: +mergedRecog([st, next, third]).toFixed(2) } },
     });
     for (const f of FREE_NEXT[cfg.free ?? 'fixed'] ?? []) {
       if ((f === 'dual' || f === 'dualSide' || f === 'all') && k > 0) continue; // barevná neutralita jen u prvního kroku

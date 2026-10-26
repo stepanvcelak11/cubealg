@@ -14,6 +14,7 @@ import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
+import { caseCounter } from './casecounter.js';
 import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, STYLES } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
@@ -472,6 +473,19 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         item('Nejvíc času', 'Krok, který nejvíc zdržuje – tam se nejvíc vyplatí zlepšovat (víc algoritmů, jiné tahy, spojit s jiným krokem).')));
   }
 
+  // kolik případů má krok algoritmů (= kolik algoritmů se naučit) – dopočítá se ve workeru
+  const counter = caseCounter();
+  function casesOf(i, id) {
+    const cfg = config[id];
+    if (!plan || cfg?.kind !== 'alg' || cfg.solveBy === 'intuitive' || cfg.solveBy === 'fixed' || plan.variants[0].steps[i]?.fixed) return null;
+    const out = el('small', { className: 'sim-cover sim-cases', textContent: 'Počítám případy kroku…' });
+    counter.count(plan, i).then((r) => {
+      out.textContent = r ? `Krok má ${r.exact ? '' : 'asi '}${r.cases} případů = tolik algoritmů se naučit (stejný případ jen s natočenou vrstvou je jeden)` : '';
+      out.hidden = !r;
+    });
+    return out;
+  }
+
   function renderResults(solves, meta) {
     const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), styles: meta.stepIds.map((id) => config[id]?.style), level: lvl() };
     const sum = summarize(solves, meta.stepTitles.length, timing);
@@ -508,6 +522,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         detail ? el('small', { className: 'sim-res-detail', textContent: detail }) : null,
         cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
         learned(i) ? el('small', { className: 'sim-cover', textContent: learned(i) }) : null,
+        casesOf(i, id),
         harvest.get(i)?.size ? el('button', { type: 'button', className: 'secondary small sim-harvest',
           textContent: `Uložit ${harvest.get(i).size} nalezených řešení jako algoritmy kroku`,
           title: 'Řešení, která test u tohoto kroku našel, se uloží do sady kroku (případ + algoritmus). Další test je bude používat; najdeš je i v Trenažéru.',

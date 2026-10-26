@@ -189,7 +189,7 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
         for (const o of opts) {
           if (stopped()) break;
           const test = testOf(o.goal, o.key);
-          const x = await solveStep(i, state, test, o.j, o.goal);
+          const x = await solveStep(i, state, test, o.j, o.goal, done);
           if (!x) continue;
           if (x.source === 'missing') { if (!r) { r = x; pick = o; } continue; }
           if (!test(applyAlg(state, x.model))) continue;
@@ -363,6 +363,7 @@ export function summarize(solves, stepCount, timing = {}) {
     score: mean(scores), time: totalTime, timeSd: sd(secs),
     // čas každého složeného (podle id zamíchání, když ho složení nese) – pro párové porovnání
     solveTimes: Object.fromEntries(done.map((s, k) => [s.id ?? k, secs[k]])),
+    solveMoves: Object.fromEntries(done.map((s, k) => [s.id ?? k, ests[k].reduce((a, x) => a + x.moves, 0)])),
     min: totals.length ? lo : 0, max: totals.length ? hi : 0,
     steps, worst: argmax((st) => st.moves), slowest: argmax((st) => st.time), hist, variants,
   };
