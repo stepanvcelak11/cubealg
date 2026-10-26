@@ -337,9 +337,13 @@ jako test metody, kratší hledání na krok):
   hrany + rohy, všechno jedním algoritmem).
 
 Návrhy, které tvoje metoda už dělá (stejné kroky, stejná volnost, nový krok, který se skoro
-vždycky přeskočí), vynechá. Výsledek: o kolik se změní odhad času (± = párové porovnání na
-stejných zamícháních), tahy a počet algoritmů (různé případy – víc algoritmů sady na tentýž
-případ je jeden; intuitivní kroky žádné). Tři nejlepší úpravy nastavení zkusí i po dvou
+vždycky přeskočí), vynechá. Výsledek: o kolik se změní odhad času (párově jen na zamícháních,
+která složily obě varianty; ± z rozdílů na každém zamíchání), tahy a počet algoritmů = počet
+případů kroků (`sim/casecount.js`: náhodné stavy před krokem sloučené jako při učení – i s AUF
+a paritou; OLL 57, PLL 21, CMLL 42, EPBL 24; když je případů moc, odhad Chao1). Pořadí počítá
+i s cenou učení (100 algoritmů navíc ≈ 0,2 s). Workery zůstávají mezi návrhy a pamatují si
+řešení kroků na stejných zamícháních (nezměněné kroky se nehledají znovu). Počet případů kroku
+ukáže i Sestavit a test metody. Tři nejlepší úpravy nastavení zkusí i po dvou
 dohromady. „Použít“ zapíše změnu do nastavení kroků, přestavbu jde „Uložit jako novou metodu“
 (tvoje zůstane beze změny).
 
