@@ -4,16 +4,15 @@
 // klepnutím použít (změní nastavení kroků v Sestavit).
 
 import { el, storage } from './dom.js';
-import { methods, guides, algs } from './store.js';
+import { methods, guides } from './store.js';
 import { buildPlan } from '../sim/plan.js';
-import { summarize, seededRandom, LEVELS } from '../sim/simulate.js';
-import { practiceState } from '../timer/practice.js';
+import { LEVELS } from '../sim/simulate.js';
 import { stepConfig, setStepConfig } from './stepcfg.js';
 import { stepParts } from './parts.js';
 import { proposals, applyPatch, combine, LEVEL_TEXT } from '../sim/discover.js';
 import { constraintsKey } from '../core/rules.js';
 import { caseCounter } from './casecounter.js';
-import { makeLearner } from '../sim/learn.js';
+import { evaluate, workerPool } from './evaluate.js';
 import { keepAwake } from './longrun.js';
 import { toast } from './share.js';
 
@@ -21,66 +20,6 @@ const OPTS = 'ergocube.discover';
 const ALG_COST = 0.002; // s za algoritmus navíc (pořadí návrhů)
 const fmt = (v, d = 2) => Number(v).toFixed(d).replace('.', ',');
 const signed = (v, d = 2, unit = '') => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v), d)}${unit}`;
-const workerCount = () => Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1));
-
-/**
- * Otestuje nastavení kroků na zamícháních (souběžně ve workerech) → souhrn a počet algoritmů.
- * @returns {Promise<{sum: object, algs: number, failed: number}>}
- */
-async function evaluate({ guide, config, lab, count, seconds, level, stopped, onSolve, pool, counter }) {
-  const setAlgs = (id) => algs.list().filter((a) => a.set === id);
-  const { plan, steps } = buildPlan({ guide, config, setAlgs, rotation: 'free', ergonomics: lab.ergo, lambda: lab.lambda });
-  // kratší hledání než v testu (návrhů je hodně) – pro všechny stejné, porovnání je férové
-  // (kroky algoritmů ne pod 2 s: případ se hledá jen jednou, pak se algoritmus opakuje)
-  plan.stepOpts = plan.stepOpts.map((o) => ({ ...o, time: Math.min(o.time, Math.max(seconds * 1000, o.cases ? 2000 : 0)) }));
-  const learner = makeLearner(plan);
-  plan.stepOpts.forEach((o, i) => learner.seed(i, plan.variants[0].steps[i].candidates));
-  const rand = seededRandom(7);
-  const starts = Array.from({ length: count }, () => practiceState({}, rand));
-  const solves = [];
-  // případy kroků algoritmů (souběžně se skládáním)
-  const isAlg = (x) => x.cfg.kind === 'alg' && !x.fixed && x.cfg.solveBy !== 'intuitive';
-  const counts = Promise.all(steps.map((x, i) => (isAlg(x) && !plan.variants[0].steps[i].fixed ? counter.count(plan, i) : null)));
-  // workery zůstávají mezi návrhy a zamíchání k má vždy tentýž worker: nezměněné kroky
-  // na stejném zamíchání má worker už spočítané (paměť řešení ve workeru)
-  await new Promise((resolve) => {
-    let active = pool.length;
-    const queues = pool.map((_, w) => starts.map((_, k) => k).filter((k) => k % pool.length === w));
-    const feed = (w, wi) => {
-      if (stopped() || !queues[wi].length) { if (--active === 0) resolve(); return; }
-      const k = queues[wi].shift();
-      w.postMessage({ type: 'solve', id: k, start: Array.from(starts[k]) });
-    };
-    pool.forEach((w, wi) => {
-      w.onmessage = ({ data }) => {
-        if (data.type === 'solved') {
-          data.solve.steps.forEach((x, i) => {
-            if (x.case?.state && x.display) {
-              const { entry, fresh } = learner.offer(i, { display: x.display, model: x.model, state: Uint8Array.from(x.case.state), goal: x.case.goal, variant: x.case.variant, score: x.score });
-              if (fresh && plan.stepOpts[i]?.learn) for (const p of pool) p.postMessage({ type: 'learn', step: i, display: entry.display, name: `${i}` });
-            }
-          });
-          solves.push({ ...data.solve, id: data.id });
-          onSolve?.();
-        }
-        feed(w, wi);
-      };
-      w.onerror = () => feed(w, wi);
-      w.postMessage({ type: 'plan', plan });
-    });
-    pool.forEach((w, wi) => feed(w, wi));
-  });
-  const kinds = steps.map((x) => x.cfg.kind ?? 'intuitive');
-  const sum = summarize(solves, steps.length, { tps: 4, recog: plan.stepOpts.map((o) => o.recog), kinds, level, styles: steps.map((x) => x.cfg.style) });
-  // algoritmy: kroky algoritmů – sada kroku + nové případy, které test potkal
-  // (různé případy – víc algoritmů sady na tentýž případ je jeden; intuitivní kroky žádné)
-  // odhad z výčtu případů; když nejde, případy, které test potkal (aspoň tolik)
-  const counted = await counts;
-  const perStep = steps.map((x, i) => (isAlg(x) ? (counted[i]?.cases ?? learner.cases(i)) : 0));
-  const algCount = perStep.reduce((a, b) => a + b, 0);
-  const approx = steps.some((x, i) => isAlg(x) && !counted[i]?.exact);
-  return { ids: steps.map((x) => x.st.id), sum, algs: algCount, approx, perStep: steps.map((x, i) => [x.st.title || `Krok ${i + 1}`, perStep[i]]).filter(([, n]) => n), failed: sum.failed };
-}
 
 export function mountDiscover(host, lab) {
   const method = methods.active();
@@ -142,7 +81,7 @@ export function mountDiscover(host, lab) {
     const total = (props.length + 1 + 3) * saved.count;
     let done = 0;
     const tick = () => { done++; bar.style.width = `${Math.min(100, (done / total) * 100)}%`; };
-    const pool = Array.from({ length: workerCount() }, () => new Worker(new URL('../sim/sim-worker.js', import.meta.url), { type: 'module' }));
+    const pool = workerPool();
     const counter = caseCounter();
     const run = ({ g, config }) => evaluate({ guide: g, config, lab, count: saved.count, seconds: saved.seconds, level, stopped: () => !running, onSolve: tick, pool, counter });
     list.replaceChildren();

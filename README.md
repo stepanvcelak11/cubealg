@@ -352,6 +352,26 @@ skládá člověk s otočením kostky ke slotu – tak ho skládá i vestavěná
 (jako test / s plánem dopředu / plynule bez plánování / začátečnicky) – kolik tahů navíc proti
 testu uděláš. Bez stylu se řídí úrovní skladače v Otestovat (špička, kolem 10 s, kolem 20 s).
 
+## Vymyslet metodu
+
+Metoda → **Vymyslet** (`ui/inventor.js`, nápady `sim/inventor.js` a `sim/originals.js`): aplikace
+vymýšlí celé metody dvěma způsoby:
+
+- **z osvědčených kroků** – začátek (kříž, X-kříž, EOLine, EO-kříž, bloky Petrus, první blok
+  Roux), střed (páry ⟨R U L F⟩, poloviny F2L, bloky ZZ, ZBLS, druhý blok, hybrid Roux + ZZ…)
+  a konec (OLL/PLL, 2-look, OLLCP, OCLL/PLL, COLL/EPLL, ZBLL, CMLL/LSE…); kameny na sebe
+  navazují podle toho, co je po nich hotové (natočené hrany, volný střed pro tahy M). Vzniknou
+  známé metody (CFOP, ZZ, Petrus, Roux…) i nové kombinace,
+- **úplně originální** – nové kroky podle principů, jak skladači přemýšlejí: blok rostoucí
+  z různých zárodků po souvislých kusech, rohy napřed (pak hrany tahy se středy), nejdřív natočit
+  všechno a pak jen permutovat, pás napřed, natočení hran vložené kamkoli, neobvyklé konce
+  (CLL + ELL, nejdřív hrany…). Každé „Vymyslet“ dá jiné nápady.
+
+Přání: klepnutím (chci → nechci → jedno) nebo vlastními slovy („baví mě EO jako u ZZ, nechci
+tahy M, málo algoritmů“), rozpočet algoritmů. Nejslibnější metody (odhad času + cena učení,
+různorodé, polovina originálních) otestuje simulací na stejných zamícháních; každá má
+vysvětlení, proč dává smysl, a jde uložit jako nová metoda (a dál ladit ve Vylepšit).
+
 ## Vizuální metronom
 
 Timer → **Metronom** (`ui/metronome.js`, logika `timer/metronome.js`): telefon pod kostkou,

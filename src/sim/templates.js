@@ -20,6 +20,9 @@ const colorTo = (names, colors) => Object.fromEntries(names.map((n) => [n, { col
 const oriented = (names) => Object.fromEntries(names.map((n) => [n, { pieces: piecesWithColors(typeOf(n)), ori: 'correct' }]));
 const custom = (...bases) => ({ moves: 'custom', custom: bases });
 
+// stavební kameny pro vymýšlení metod (sim/inventor.js)
+export { CROSS, E, UE, DC, UC, PAIRS, own, oriented, custom };
+
 export const TEMPLATES = [
   {
     id: 'cfop', name: 'CFOP',
