@@ -23,6 +23,8 @@ import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 import { toast } from './share.js';
 import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
 import { methodReport } from '../sim/report.js';
+import { openProfile, onProfile, profileSummary, profile } from './profile.js';
+import { knownForStep } from '../sim/profile.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } from './stepcfg.js';
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
@@ -183,7 +185,18 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const rotation = select(ROTATION, ROTATION[saved.rotation] ? saved.rotation : 'free', 'Otočení kostky', () => changed());
   const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
   const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
-  const rerender = () => { remember(); tpsField.hidden = !!LEVELS[level.value].tps; if (last) renderResults(last.solves, last.meta); renderCompare(); };
+  const rerender = () => { remember(); tpsField.hidden = !!LEVELS[level.value].tps; updateProfileNote(); if (last) renderResults(last.solves, last.meta); renderCompare(); };
+  // úroveň „Já“: shrnutí profilu a odkaz na jeho úpravu
+  const profileNote = el('p', { className: 'hint sim-profile' });
+  function updateProfileNote() {
+    profileNote.hidden = level.value !== 'me';
+    profileNote.replaceChildren(profileSummary(), ' ', Object.assign(el('button', { type: 'button', className: 'link-btn' }), { textContent: LEVELS.me?.fromProfile ? 'Upravit profil' : 'Vyplnit profil', onclick: () => openProfile() }));
+  }
+  onProfile(() => {
+    const o = level.querySelector('option[value="me"]');
+    if (o) o.textContent = LEVELS.me.label;
+    rerender();
+  });
   const tps = num(saved.tps ?? 4, 'Tahy za sekundu', 1, 15, 0.5, rerender);
   // úroveň skladače: světová špička (potenciál metody), rychlý skladač, vlastní tempo, počítač
   const level = select(Object.fromEntries(Object.entries(LEVELS).map(([id, x]) => [id, x.label])), LEVELS[saved.level] ? saved.level : 'pro', 'Úroveň skladače', rerender);
@@ -191,6 +204,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const levelText = () => (LEVELS[lvl()].tps ? LEVELS[lvl()].label : `${LEVELS[lvl()].label}: ${fmt(Number(tps.value))} tahů/s`);
   const tpsField = field('Tahy za sekundu', tps, 'Tvoje tempo – algoritmy jdou rychleji, intuitivní kroky a bloky pomaleji');
   tpsField.hidden = !!LEVELS[lvl()].tps;
+  updateProfileNote();
   const go = el('button', { type: 'button', className: 'primary sim-go', textContent: 'Spustit test' });
   const more = el('button', { type: 'button', className: 'secondary', textContent: 'Přidat zamíchání', hidden: true, title: 'Pokračuje dalšími zamícháními (stejné semínko) a výsledky doplní' });
   const stop = el('button', { type: 'button', className: 'secondary', textContent: 'Zastavit', hidden: true });
@@ -210,8 +224,9 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       head('1', 'Spustit test', 'Náhodná zamíchání se složí krok po kroku podle tvé metody – algoritmem ze sady, jinak hledáním. Algoritmy kroků „vygenerovat“ si test vytvoří sám. Srovnání s CFOP, Roux a ZZ je v části „Porovnat“.'),
       el('div', { className: 'grid-fields' },
         field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
-        field('Odhad času pro', level, 'Světová špička = co z metody jde vytáhnout (tempo a rozpoznání nejlepších skladačů)'),
+        field('Odhad času pro', level, 'Světová špička = co z metody jde vytáhnout (tempo a rozpoznání nejlepších skladačů); „Já“ = podle tvého profilu skladače'),
         tpsField),
+      profileNote,
       el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko)' }),
         el('div', { className: 'grid-fields' },
           field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
@@ -498,8 +513,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     const g = guides.get(method);
     const done = g.steps.reduce((acc, st) => mergeParts(acc, stepParts(st)), {});
     const partial = !g.steps.some((st) => st.rules?.length) && !SLOTS.filter((s) => s.type !== 'center').every((s) => done[s.name] === 'solved');
-    const draw = (algCount) => {
-      const r = methodReport({ solves, stepCount: meta.stepTitles.length, timing, titles: meta.stepTitles, algCount, partial });
+    const draw = (algCount, knownAlgs = null) => {
+      const r = methodReport({ solves, stepCount: meta.stepTitles.length, timing, titles: meta.stepTitles, algCount, knownAlgs, partial });
       if (!r) { box.replaceChildren(); return; }
       const f2 = (v) => fmt(v, 2);
       const show = (m, v) => (Number.isFinite(v) ? (m.unit ? `${fmt(v, m.digits)} ${m.unit}` : fmt(v, m.digits)) : '–');
@@ -552,7 +567,12 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       const cfg = config[id];
       return plan && cfg?.kind === 'alg' && cfg.solveBy !== 'intuitive' && cfg.solveBy !== 'fixed' && !plan.variants[0].steps[i]?.fixed;
     }).map(([, i]) => i);
-    Promise.all(idx.map((i) => counter.count(plan, i))).then((list) => draw(list.reduce((a, x) => a + (x?.cases ?? 0), 0)), () => {});
+    // z toho už umíš (sady v profilu skladače, podle názvu kroku)
+    Promise.all(idx.map((i) => counter.count(plan, i))).then((list) => {
+      const p = profile();
+      const known = p.known || p.otherAlgs ? list.reduce((a, x, k) => a + knownForStep(meta.stepTitles[idx[k]], x?.cases ?? 0, p), 0) : null;
+      draw(list.reduce((a, x) => a + (x?.cases ?? 0), 0), known);
+    }, () => {});
     return box;
   }
 

@@ -48,3 +48,15 @@ test('hodnocení metody: metoda, která nesloží celou kostku, se se vestavěn�
   assert.ok(r.metrics.every((m) => m.rank === null));
   assert.match(r.verdict[0], /neskládá celou kostku/);
 });
+
+test('hodnocení metody: s profilem skladače i čas „pro tebe“ a kolik algoritmů už umí', async () => {
+  const { LEVELS } = await import('../src/sim/simulate.js');
+  const { profileLevel } = await import('../src/sim/profile.js');
+  LEVELS.me = profileLevel({ method: 'cfop', avg: 12 });
+  try {
+    const r = methodReport({ solves, stepCount: titles.length, timing, titles, algCount: 78, knownAlgs: 21 });
+    assert.ok(r.levels.some((l) => l.level === 'me'));
+    assert.match(r.verdict[0], /Pro tebe \(podle profilu\): asi [\d,]+ s – proti tvému průměru CFOP 12,00 s/);
+    assert.ok(r.verdict.some((l) => /už umíš 21 – nových k naučení 57/.test(l)));
+  } finally { delete LEVELS.me; }
+});

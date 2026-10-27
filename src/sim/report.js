@@ -30,7 +30,7 @@ export function refEstimate(ref, level = 'pro', tps = 4) {
  * @param {{solves: object[], stepCount: number, timing: object, titles: string[], algCount?: number|null, refs?: object[]}} input
  *   timing jako pro summarize (tps, recog, kinds, styles, level); algCount = algoritmů k naučení (když je známý)
  */
-export function methodReport({ solves, stepCount, timing, titles, algCount = null, refs = REFERENCES, partial = false }) {
+export function methodReport({ solves, stepCount, timing, titles, algCount = null, knownAlgs = null, refs = REFERENCES, partial = false }) {
   const level = timing.level ?? 'pro';
   const tps = timing.tps ?? 4;
   const sum = summarize(solves, stepCount, timing);
@@ -59,7 +59,7 @@ export function methodReport({ solves, stepCount, timing, titles, algCount = nul
   });
 
   // úrovně skladače: tvoje metoda a vestavěné stejným modelem
-  const levels = REPORT_LEVELS.map((lv) => {
+  const levels = [...REPORT_LEVELS, ...(LEVELS.me?.fromProfile ? ['me'] : [])].map((lv) => {
     const s = lv === level ? sum : summarize(solves, stepCount, { ...timing, level: lv });
     const r = Object.fromEntries(refs.map((x) => [x.id, refEstimate(x, lv, tps).time]));
     return { level: lv, label: LEVELS[lv].label, time: s.time, refs: r, index: Math.round((r.cfop / s.time) * 100) };
@@ -91,7 +91,16 @@ export function methodReport({ solves, stepCount, timing, titles, algCount = nul
     return { sum, level, mine, ref, metrics, levels, dist, steps, partial, index: null,
       verdict: ['Metoda zatím neskládá celou kostku – srovnání s CFOP, Roux a ZZ by nic neříkalo. Níže je rozptyl a kde krok ztrácí čas; po doplnění všech kroků se objeví i index a pořadí.'] };
   }
-  return { sum, level, mine, ref, metrics, levels, dist, steps, partial, index: cfop ? Math.round((cfop.time / sum.time) * 100) : null, verdict: verdict(sum, ref, mine, dist) };
+  const lines = verdict(sum, ref, mine, dist);
+  if (Number.isFinite(knownAlgs) && Number.isFinite(algCount) && algCount > 0) lines.splice(2, 0, `Z nich už umíš ${knownAlgs} – nových k naučení ${algCount - knownAlgs}.`);
+  // pro tebe: úroveň „Já“ z profilu proti tvému průměru tvojí metodou
+  const me = levels.find((l) => l.level === 'me');
+  if (me && LEVELS.me.anchor) {
+    const d = me.time - LEVELS.me.anchor.avg;
+    const name = refs.find((r) => r.id === LEVELS.me.anchor.method)?.name ?? 'tvoje metoda';
+    lines.unshift(`Pro tebe (podle profilu): asi ${me.time.toFixed(2).replace('.', ',')} s – proti tvému průměru ${name} ${LEVELS.me.anchor.avg.toFixed(2).replace('.', ',')} s o ${Math.abs(d).toFixed(2).replace('.', ',')} s ${d <= 0 ? 'rychleji' : 'pomaleji'} (± ${LEVELS.me.accuracy?.pct ?? 15} %).`);
+  }
+  return { sum, level, mine, ref, metrics, levels, dist, steps, partial, index: cfop ? Math.round((cfop.time / sum.time) * 100) : null, verdict: lines };
 }
 
 /** Histogram časů po 0,25 s (nejvýš 14 sloupců). */

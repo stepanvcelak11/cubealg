@@ -360,6 +360,16 @@ sadu algoritmů, nic se z něj neučí a jeho řešení se nenabízí uložit ja
 ukazuje jako „Ukázky řešení“); algoritmy hledá a používá jen u kroků „Algoritmy – vygenerovat /
 moje sada“.
 
+**Můj profil skladače** (Nastavení → Můj profil, v Otestovat úroveň „Já“; `ui/profile.js`,
+`sim/profile.js`): průměr a single 3×3 a metoda, kterou skládáš, kolik složení, tempo algoritmů,
+look-ahead, plánování v inspekci, barevná neutralita, ruka, roky a trénink, sady algoritmů, které
+umíš (OLL, PLL, COLL, CMLL, ZBLL…, u velkých sad i kolik z nich), a průměry na dalších kostkách.
+„Doplnit z mých dat“ vezme průměry a rekordy z timeru a tempo algoritmů z časů v trenažéru. Úroveň
+„Já“ se dopočítá plynule mezi špičkou, ~10 s a ~20 s podle průměru a doladí tak, aby tvoje metoda
+vyšla přesně na tvůj průměr; zadané tempo algoritmů a look-ahead rozdělí čas mezi provedení a
+pauzy. Hodnocení metody pak ukáže čas „pro tebe“ proti tvému průměru (± podle vyplněnosti profilu:
+jen průměr ± 15 %, všechno ± 5 %) a kolik algoritmů metody už umíš.
+
 **Jak dobrá je metoda** (výsledek testu, `sim/report.js`): index rychlosti (CFOP = 100), krátké
 shrnutí, tabulka proti CFOP, Roux a ZZ spočteným stejným modelem skladače (čas, tahy skladače,
 pauzy na rozpoznání, ergonomie, počet zastavení, algoritmy k naučení – s pořadím), čas na třech

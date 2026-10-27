@@ -14,6 +14,7 @@ import { takeShared, unpackTask, toast } from './share.js';
 import { algs, algSets, methods, importMethod } from './store.js';
 import { openTask } from './lab.js';
 import { el } from './dom.js';
+import { applyProfile, openProfile, onProfile, profileSummary } from './profile.js';
 
 let page = storage.get('ergocube.page') ?? 'timer';
 if (page === 'sim') page = 'method';
@@ -48,7 +49,14 @@ function showPage(name, opts = {}) {
 }
 
 hydrateIcons();
+// úroveň „Já“ z profilu skladače musí být hotová dřív, než se postaví test metody
+applyProfile();
 for (const b of document.querySelectorAll('.tabbar button')) b.onclick = () => { showPage(b.dataset.tab); b.blur(); };
+// Nastavení → Můj profil skladače
+const profileInfo = () => { document.getElementById('set-profile-info').textContent = profileSummary(); };
+profileInfo();
+onProfile(profileInfo);
+document.getElementById('set-profile').onclick = () => { document.getElementById('settings-dialog').close(); openProfile(); };
 // Nastavení → Doladit hodnocení tahů: Lab, krok Tahy a váhy, porovnávání dvojic
 document.getElementById('set-ergo').onclick = () => {
   document.getElementById('settings-dialog').close();

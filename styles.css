@@ -1850,6 +1850,28 @@ body.timing .page[data-page="timer"] > .scramble::before { visibility: hidden; }
 .bld-preset.on { background: var(--sun-soft); box-shadow: inset 0 0 0 2px var(--text); }
 @media (prefers-color-scheme: dark) { .bld-preset.on { box-shadow: inset 0 0 0 2px var(--sun); } }
 
+/* Můj profil skladače */
+.profile-dialog { width: min(640px, calc(100vw - 16px)); max-width: none; max-height: calc(100dvh - 16px); overflow-y: auto; }
+.profile-dialog h3 { margin: 18px 0 8px; font-size: 0.95rem; font-weight: 800; }
+.prof-head { display: grid; gap: 6px; }
+.prof-head h2 { margin: 0; }
+.prof-fill { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+.prof-fill i { display: block; height: 100%; background: var(--sun); border-radius: 4px; transition: width 0.3s; }
+.prof-acc { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+.profile-dialog .field small.hint { margin: 0; font-size: 0.72rem; font-weight: 500; }
+.prof-sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.prof-set { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--panel-2); cursor: pointer; }
+.prof-set span { display: grid; flex: 1; min-width: 0; }
+.prof-set b { font-size: 0.84rem; }
+.prof-set small { color: var(--muted); font-size: 0.7rem; }
+.prof-set.on { background: var(--sun-soft); box-shadow: inset 0 0 0 1.5px var(--text); }
+.prof-count { width: 4.5em; min-height: 32px; padding: 2px 6px; }
+.prof-evs { display: grid; gap: 4px; }
+.prof-ev { display: grid; grid-template-columns: minmax(0, 1.3fr) 1fr 1fr; gap: 6px; align-items: center; font-size: 0.84rem; font-weight: 700; }
+.prof-ev input { min-height: 34px; padding: 4px 8px; }
+.profile-dialog form { display: flex; justify-content: flex-end; margin-top: 16px; position: sticky; bottom: -22px; padding: 10px 0; background: var(--panel); }
+.sim-profile { margin: 0; }
+
 /* --- Otestovat: Jak dobrá je metoda ---------------------------------------------------- */
 .sim-quality { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius); background: var(--panel-2); border: var(--line); min-width: 0; }
 .sim-quality:empty { display: none; }

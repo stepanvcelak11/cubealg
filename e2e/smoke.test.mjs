@@ -1492,3 +1492,52 @@ test('vymyslet metodu: přání, originální i známé nápady, test simulací 
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('můj profil skladače: doplnění z dat, sady algoritmů a úroveň „Já“ v testu metody', async () => {
+  const solvesSeed = Array.from({ length: 30 }, (_, i) => ({ t: 11500 + (i % 5) * 250, p: 0, s: "R U R' U'", d: Date.now() - i * 60000 }));
+  const { p, ctx, errors } = await open('timer', { 'ergocube.solves': { 333: solvesSeed } });
+  await p.evaluate(async () => {
+    const { algs } = await import('./src/ui/store.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333'); const home = m.home(m.pieceNames);
+    const constraints = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    for (const alg of ["R U R' U R U2 R'", "R U R' U' R' F R2 U' R' U' R U R' F'", "F R U R' U' F'"]) {
+      const id = algs.add({ alg, name: alg.slice(0, 6), task: { puzzle: '333', constraints, colorsA: m.applyMoves(home, m.invertAlg(alg)), colorsB: home } });
+      algs.update(id, { times: [{ t: 1000, d: Date.now() }, { t: 1100, d: Date.now() }, { t: 1200, d: Date.now() }] });
+    }
+  });
+  await p.locator('#settings-btn').tap();
+  assert.match(await p.locator('#set-profile-info').innerText(), /není vyplněný/);
+  await p.locator('#set-profile').tap();
+  await p.waitForSelector('.profile-dialog[open]');
+  await p.locator('.profile-dialog button', { hasText: 'Doplnit z mých dat' }).tap();
+  // průměr z timeru (ao12 kolem 12 s) a tempo algoritmů z trenažéru
+  const avg = Number(await p.locator('.profile-dialog input[aria-label="Průměr"]').inputValue());
+  assert.ok(avg > 11 && avg < 13, String(avg));
+  assert.ok(Number(await p.locator('.profile-dialog input[aria-label="Tempo algoritmů"]').inputValue()) > 4);
+  await p.locator('.profile-dialog select[aria-label="Jakou metodou skládáš"]').selectOption('cfop');
+  await p.locator('.profile-dialog .prof-set', { hasText: 'Celé OLL' }).locator('input').check();
+  assert.match(await p.locator('.prof-acc').innerText(), /Vyplněno \d+ % · odhad času ± \d+ %/);
+  await p.locator('.profile-dialog button', { hasText: 'Hotovo' }).tap();
+  const prof = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.profile')));
+  assert.equal(prof.method, 'cfop');
+  assert.equal(prof.known.oll, true);
+  // test metody: úroveň „Já“ podle profilu (metoda CFOP ze šablony)
+  await p.evaluate(async () => {
+    const { TEMPLATES, templateGuide } = await import('./src/sim/templates.js');
+    const { DEFAULT_FRAME } = await import('./src/ui/parts.js');
+    let n = 0;
+    const g = templateGuide(TEMPLATES.find((t) => t.id === 'cfop'), DEFAULT_FRAME, (title) => ({ id: `k${++n}`, title }));
+    localStorage.setItem('ergocube.methods', JSON.stringify({ active: 'm1', list: [{ id: 'm1', name: 'CFOP' }] }));
+    localStorage.setItem('ergocube.guides', JSON.stringify({ m1: g }));
+  });
+  await p.reload();
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
+  const opt = await p.locator('select[aria-label="Úroveň skladače"] option[value="me"]').innerText();
+  assert.match(opt, /Já – můj profil \(CFOP 1[12],\d\d s\)/);
+  await p.locator('select[aria-label="Úroveň skladače"]').selectOption('me');
+  assert.match(await p.locator('.sim-profile').innerText(), /CFOP [\d,]+ s[\s\S]*umíš 57 algoritmů[\s\S]*Upravit profil/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
