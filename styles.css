@@ -1725,6 +1725,24 @@ body.timing .page[data-page="timer"] > :is(.scramble, .mini-stats) { visibility:
 body.timing .page[data-page="timer"] > :is(.scramble, .mini-stats) * { visibility: hidden; }
 body.timing .page[data-page="timer"] > .scramble::before { visibility: hidden; }
 
+/* ruční zadání času ze stopek: velké pole na jevišti, pod ním +2 / DNF */
+.type-entry { flex-direction: column; align-items: center; gap: 10px; width: min(100%, 420px); margin-top: 14px; }
+.type-entry input { width: 100%; text-align: center; font: 800 1.6rem/1.2 var(--display); letter-spacing: -0.01em; min-height: 56px; background: var(--stage-2); color: var(--stage-text); box-shadow: inset 0 0 0 1.5px var(--stage-line); }
+.type-entry input::placeholder { color: var(--stage-muted); font: 600 1rem/1.2 "Manrope", sans-serif; letter-spacing: 0; }
+.type-entry input:focus { background: var(--stage-2); box-shadow: inset 0 0 0 2px var(--sun); }
+.type-btns { display: flex; gap: 8px; }
+.type-btns button { min-width: 64px; }
+.page[data-page="timer"] .type-btns button.secondary { background: var(--stage-2); color: var(--stage-text); box-shadow: none; }
+.type-read { color: var(--stage-muted); font-size: 0.76rem; font-weight: 700; text-align: center; min-height: 1.2em; }
+.type-read.bad { color: var(--stage-bad); }
+body[data-typing] .page[data-page="timer"] > .timer-pad .time { font-size: clamp(2.2rem, min(16vw, 10vh), 5rem); }
+@media (max-width: 480px) {
+  /* timer: výběry v prvním řádku, přepínače a nové zamíchání ve druhém */
+  .page[data-page="timer"] > .timer-head { flex-wrap: wrap; }
+  .page[data-page="timer"] > .timer-head select, .page[data-page="timer"] > .timer-head #t-event { flex: 1 1 40%; max-width: none; }
+  .page[data-page="timer"] > .timer-head :is(.toggle, #t-new) { flex: 1 1 0; width: auto; }
+}
+
 /* Trenažér: kostka a čas na jednom jevišti */
 .page[data-page="trainer"] { gap: 0; }
 .page[data-page="trainer"] > :is(.trainer-head, .tr-mode) { margin-bottom: 10px; }
@@ -1921,7 +1939,6 @@ body.timing .page[data-page="timer"] > .scramble::before { visibility: hidden; }
   .topbar h1 { font-size: 1.15rem; }
   .method-pick select { max-width: 38vw; }
   .tabbar { padding-left: 4px; padding-right: 4px; }
-  .tabbar button .ico { padding: 2px 10px; }
   /* timer: výběry v prvním řádku, přepínače ve druhém */
   .timer-head { flex-wrap: wrap; }
   .timer-head select, .timer-head #t-event { flex: 1 1 40%; max-width: none; }
@@ -1932,3 +1949,39 @@ body.timing .page[data-page="timer"] > .scramble::before { visibility: hidden; }
   .mini-stats b { font-size: 1.05rem; }
   .mp-tabs button { font-size: 0.74rem; padding: 5px 3px; }
 }
+
+/* ruční zadání: místo velkého času jen formulář (poslední čas je pod jevištěm) */
+body[data-typing] .page[data-page="timer"] > .timer-pad > :is(.time, .preview) { display: none; }
+body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: center; flex: 1 0 auto; padding: 10px 14px; container-type: normal; }
+.page[data-page="timer"] .type-btns .primary { background: var(--sun); color: #131416; }
+@media (max-height: 700px) { .type-entry { margin-top: 0; gap: 6px; } .type-entry input { min-height: 46px; font-size: 1.3rem; } }
+
+/* Statistiky: přepínač pohledu a Moje rekordy */
+.s-view { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-column: 1 / -1; align-self: start; justify-self: start; width: min(100%, 460px); }
+.page[data-page="stats"] > .mytable { grid-column: 1 / -1; }
+.page[data-page="stats"][data-view="table"] { align-content: start; }
+.page[data-page="stats"][data-view="table"] > :not(.s-view, .mytable) { display: none !important; }
+.mt-panel { display: grid; gap: 10px; }
+.mt-panel .panel-head { margin: 0; }
+.mt-tools { align-items: center; }
+.mt-tools .small-select { max-width: 220px; }
+.mt-scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+.mt-table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-variant-numeric: tabular-nums; }
+.mt-table th, .mt-table td { padding: 4px; text-align: center; border-bottom: var(--line); }
+.mt-table thead th { font-size: 0.72rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 4px; white-space: nowrap; }
+.mt-table thead th:first-child, .mt-table tbody th { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.mt-name { min-height: 36px; padding: 4px 8px; font-weight: 800; box-shadow: none; background: none; text-align: left; justify-content: flex-start; white-space: nowrap; }
+.mt-cell { display: flex; width: 100%; max-width: 92px; margin: 0 auto; flex-direction: column; gap: 0; min-width: 76px; min-height: 48px; padding: 4px 6px; box-shadow: none; background: var(--panel-2); position: relative; }
+.mt-cell b { font: 800 1rem/1.15 var(--display); }
+.mt-cell small { font-size: 0.62rem; color: var(--muted); font-weight: 700; }
+.mt-cell.empty b { color: var(--faint); font-weight: 600; }
+.mt-hist { position: absolute; top: 2px; right: 4px; font-style: normal; font-size: 0.58rem; font-weight: 800; color: var(--good); }
+.mt-input { width: 86px; min-height: 48px; text-align: center; font: 800 1rem var(--display); }
+.mt-timer { display: block; margin: 3px auto 0; min-height: 0; padding: 1px 6px; font-size: 0.68rem; font-weight: 700; color: var(--muted); background: none; box-shadow: none; }
+.mt-timer.better { color: var(--good); background: var(--good-soft); border-radius: 999px; }
+.mt-note { min-height: 36px; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; color: var(--muted); box-shadow: none; background: none; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-empty { margin: 0; padding: 18px; border-radius: 12px; background: var(--panel-2); color: var(--muted); text-align: center; }
+.mt-recent summary { cursor: pointer; font-weight: 800; font-size: 0.86rem; }
+.mt-recent ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; font-size: 0.84rem; }
+.mt-paste { width: min(560px, calc(100vw - 32px)); }
+.mt-paste textarea { width: 100%; font-family: var(--mono); font-size: 0.85rem; }

@@ -5,7 +5,8 @@ import { EVENT_BY_ID } from '../timer/events.js';
 import { summary, value, currentAverage, formatValue, formatSolve, recordHistory, compareRows, DNF } from '../timer/stats.js';
 import { solvesToCsv } from '../timer/csv.js';
 import { EVENTS } from '../timer/events.js';
-import { $, el, iconButton } from './dom.js';
+import { $, el, iconButton, storage } from './dom.js';
+import { mountMyTable } from './mytable.js';
 import { icon } from './icons.js';
 import { solves, groups, methods } from './store.js';
 import { roundsOf } from './compround.js';
@@ -297,6 +298,17 @@ export function initStats() {
   $('s-csv-all').onclick = () => exportCsv(true);
   solves.subscribe(render);
   render();
+  // pohled: statistiky ze složení v timeru, nebo moje tabulka rekordů (místo Excelu)
+  const drawTable = mountMyTable($('s-mytable'));
+  const setView = (v) => {
+    storage.set('ergocube.stats.view', v);
+    document.querySelector('.page[data-page="stats"]').dataset.view = v;
+    $('s-mytable').hidden = v !== 'table';
+    for (const b of $('s-view').querySelectorAll('button')) b.classList.toggle('active', b.dataset.view === v);
+    if (v === 'table') drawTable();
+  };
+  for (const b of $('s-view').querySelectorAll('button')) b.onclick = () => { setView(b.dataset.view); b.blur(); };
+  setView(storage.get('ergocube.stats.view') === 'table' ? 'table' : 'solves');
 }
 
 /** Při otevření stránky ukáže disciplínu, která je právě v timeru. */

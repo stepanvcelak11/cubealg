@@ -149,3 +149,21 @@ test('CSV: hlavička, escapování, trest a DNF', () => {
   assert.match(lines[3], /,15000,DNF,DNF,/);
   assert.match(lines[1], new RegExp(new Date(1000).toISOString()));
 });
+
+test('ručně napsaný čas ze stopek', async () => {
+  const { parseTime } = await import('../src/timer/stats.js');
+  assert.deepEqual(parseTime('12.34'), { t: 12340, p: 0 });
+  assert.deepEqual(parseTime('12,34'), { t: 12340, p: 0 });
+  assert.deepEqual(parseTime('1:02.45'), { t: 62450, p: 0 });
+  assert.deepEqual(parseTime('1234'), { t: 12340, p: 0 });
+  assert.deepEqual(parseTime('10234'), { t: 62340, p: 0 });
+  assert.deepEqual(parseTime('987'), { t: 9870, p: 0 });
+  assert.deepEqual(parseTime('12.34+'), { t: 12340, p: 2000 });
+  assert.deepEqual(parseTime('1234 +2'), { t: 12340, p: 2000 });
+  assert.deepEqual(parseTime('DNF'), { t: 0, p: -1 });
+  assert.deepEqual(parseTime('d'), { t: 0, p: -1 });
+  assert.equal(parseTime(''), null);
+  assert.equal(parseTime('abc'), null);
+  assert.equal(parseTime('1:75.00'), null);
+  assert.equal(parseTime('0'), null);
+});

@@ -158,6 +158,34 @@ export function formatValue(v, result = 'time') {
   return formatTime(v);
 }
 
+/**
+ * Ručně napsaný čas (ze stopek): „12.34“, „12,34“, „1:02.45“, jen číslice jako csTimer
+ * („1234“ = 12,34 s, „10234“ = 1:02,34), „+“ / „+2“ na konci = trest +2, „d“ / „dnf“ = DNF.
+ * @returns {{t: number, p: number}|null} t v ms, p = 0 / 2000 / -1 (DNF); null = nejde přečíst
+ */
+export function parseTime(text) {
+  let s = String(text ?? '').trim().toLowerCase().replace(/\s+/g, '').replace(',', '.');
+  if (!s) return null;
+  if (s === 'd' || s === 'dnf') return { t: 0, p: -1 };
+  let p = 0;
+  if (/\+2?$/.test(s)) { p = 2000; s = s.replace(/\+2?$/, ''); }
+  let ms;
+  if (/^\d+$/.test(s)) {
+    // jen číslice: poslední dvě jsou setiny, před nimi sekundy, víc než 4 číslice = minuty
+    const n = s.padStart(3, '0');
+    const cs = Number(n.slice(-2)), rest = n.slice(0, -2);
+    const sec = rest.length > 2 ? Number(rest.slice(-2)) + 60 * Number(rest.slice(0, -2)) : Number(rest);
+    if (rest.length > 2 && Number(rest.slice(-2)) >= 60) return null;
+    ms = sec * 1000 + cs * 10;
+  } else {
+    const m = s.match(/^(?:(\d+):)?(\d+(?:\.\d{1,3})?)$/);
+    if (!m) return null;
+    if (m[1] && Number(m[2]) >= 60) return null;
+    ms = Math.round((Number(m[1] ?? 0) * 60 + Number(m[2])) * 1000);
+  }
+  return ms > 0 ? { t: ms, p } : null;
+}
+
 /** Čas jako m:ss (Multi-Blind se měří na celé sekundy). */
 export function formatClock(ms) {
   const sec = Math.floor(ms / 1000);

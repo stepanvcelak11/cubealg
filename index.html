@@ -89,6 +89,7 @@
         <button type="button" id="t-inspection" class="toggle" data-icon="inspect" aria-pressed="false" title="Inspekce 15 s"><span>Inspekce</span></button>
         <button type="button" id="t-comp" class="toggle" data-icon="flag" aria-pressed="false" title="Simulace soutěžního kola (WCA)"><span>Soutěž</span></button>
         <button type="button" id="t-metronome" class="toggle" data-icon="voice" title="Vizuální metronom – plynulé točení v tempu"><span>Metronom</span></button>
+        <button type="button" id="t-typing" class="toggle" data-icon="edit" aria-pressed="false" title="Zadávat čas ručně – třeba ze stopek (stackmat)"><span>Ručně</span></button>
         <button type="button" id="t-new" class="icon-btn" data-icon="refresh" title="Nové zamíchání" aria-label="Nové zamíchání"></button>
       </div>
       <div id="t-round" class="round-panel" aria-live="polite" hidden></div>
@@ -102,6 +103,15 @@
         <div id="t-preview" class="preview"></div>
         <div id="t-display" class="time">0.00</div>
         <div id="t-hint" class="timer-hint">Podrž mezerník nebo prst, pusť pro start</div>
+        <form id="t-type" class="fm-entry type-entry" hidden>
+          <input id="t-type-time" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="Čas ze stopek, např. 12.34" aria-label="Čas ze stopek">
+          <div class="type-btns">
+            <button type="submit" class="primary">Uložit</button>
+            <button type="button" id="t-type-plus" class="secondary" title="Uložit napsaný čas s trestem +2">+2</button>
+            <button type="button" id="t-type-dnf" class="secondary">DNF</button>
+          </div>
+          <small id="t-type-read" class="type-read" aria-live="polite">12.34 · 1:02.45 · jen číslice jako 1234 = 12,34 s · + na konci = +2 · d = DNF</small>
+        </form>
         <form id="t-fm" class="fm-entry" hidden>
           <input id="t-fm-moves" type="number" min="1" max="80" inputmode="numeric" placeholder="Počet tahů" aria-label="Počet tahů">
           <button type="submit" class="primary">Uložit</button>
@@ -121,6 +131,11 @@
 
     <!-- ===================== Statistiky ===================== -->
     <section class="page" data-page="stats" hidden>
+      <div id="s-view" class="segmented s-view" role="group" aria-label="Pohled na statistiky">
+        <button type="button" data-view="solves" class="active">Ze složení v timeru</button>
+        <button type="button" data-view="table">Moje rekordy</button>
+      </div>
+      <section id="s-mytable" class="mytable" hidden></section>
       <div class="stats-head">
         <select id="s-event" aria-label="Disciplína"></select>
         <select id="s-group" class="group-select" aria-label="Skupina"></select>

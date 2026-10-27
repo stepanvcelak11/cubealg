@@ -31,10 +31,20 @@ Spodní lišta má čtyři sekce, ozubené kolo nahoře otevře nastavení a zá
   a 4×4 (i naslepo) se míchají z náhodného stavu (4×4 ~50 tahů, první zamíchání
   chvíli trvá kvůli tabulkám), ostatní náhodnými tahy. Každá disciplína může mít
   vlastní skupiny složení (např. pro různé kostky).
+  **Ručně** (tlačítko v hlavičce Timeru): čas ze stackmatu nebo jiných stopek se
+  napíše (`12.34`, `12,34`, `1:02.45`, jen číslice jako v csTimeru `1234` = 12.34,
+  `+` / `+2` = trest, `d` = DNF) a uloží se k aktuálnímu zamíchání stejně jako změřený.
 - **Statistiky** – single, ao5, ao12, ao50, ao100 (aktuální i nejlepší podle WCA),
   průměr, graf vývoje, **osobní rekordy s historií zlepšení**, **porovnání dvou
   skupin**, rozložení časů, filtr období, seznam složení s úpravou trestů a poznámek
   a **export do CSV** (skupina nebo všechno) – pro každou skupinu zvlášť.
+  **Moje rekordy** (přepínač nahoře ve Statistikách, `ui/mytable.js`, logika
+  `timer/records.js`): vlastní tabulka rekordů místo Excelu – řádky kostky (i ty, které
+  timer nezná), sloupce Single / Mo3 / Ao5… a vlastní, ke každé buňce datum a historie
+  zlepšení, poznámka u kostky. **Vložit z Excelu** načte zkopírované buňky (tabulátor,
+  středník i čárka, záhlaví se pozná), **Stáhnout CSV** ji vrátí zpátky. U kostek, které
+  skládáš i v timeru, je pod buňkou rekord z timeru (⏱) a když je lepší, jedním klepnutím
+  se převezme. Profil skladače se umí z tabulky doplnit.
 - **Metody** – výběr metody v horní liště (např. CFOP a tvoje vlastní) přepne celou
   aplikaci: složení v timeru, statistiky i sady algoritmů z Labu a Trenažéru patří
   k aktivní metodě. Ve statistikách jde metody (i skupiny) porovnat vedle sebe.

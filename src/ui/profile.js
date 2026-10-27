@@ -10,6 +10,7 @@ import { EVENTS } from '../timer/events.js';
 import { LEVELS } from '../sim/simulate.js';
 import { profileLevel, profileAccuracy, KNOWN_SETS, PROFILE_METHODS, knownTotal } from '../sim/profile.js';
 import { toast } from './share.js';
+import { myTable } from './mytable.js';
 
 const KEY = 'ergocube.profile';
 const EVENT = 'ergocube-profile';
@@ -51,6 +52,21 @@ export function profileFromData(p = profile()) {
       out.solves = Math.max(out.solves ?? 0, list.length);
     } else if (avg) {
       out.events[e.id] = { avg: +(avg / 1000).toFixed(2), ...(Number.isFinite(single) ? { single: +(single / 1000).toFixed(2) } : {}) };
+      filled++;
+    }
+  }
+  // Moje rekordy (tabulka ve Statistikách): kde timer nemá složení, vezme se průměr z tabulky
+  for (const row of myTable().rows) {
+    const e = EVENTS.find((x) => x.result === 'time' && x.name.toLowerCase() === row.name.toLowerCase());
+    if (!e) continue;
+    const c = row.cells ?? {};
+    const avg = [c.ao100, c.ao50, c.ao12, c.ao5].find((v) => Number.isFinite(v));
+    const single = Number.isFinite(c.single) ? +(c.single / 1000).toFixed(2) : undefined;
+    if (e.id === '333') {
+      if (!(out.avg > 0) && avg) { out.avg = +(avg / 1000).toFixed(2); filled++; }
+      if (!(out.single > 0) && single) out.single = single;
+    } else if (avg && !out.events[e.id]) {
+      out.events[e.id] = { avg: +(avg / 1000).toFixed(2), ...(single ? { single } : {}) };
       filled++;
     }
   }
@@ -96,11 +112,11 @@ function render() {
   const acc = profileAccuracy(p);
   const L = profileLevel(p);
   const fill = el('div', { className: 'prof-fill' }, el('i', { style: `width: ${Math.round(acc.fill * 100)}%` }));
-  const auto = el('button', { type: 'button', className: 'secondary small', textContent: 'Doplnit z mých dat (timer, trenažér)' });
+  const auto = el('button', { type: 'button', className: 'secondary small', textContent: 'Doplnit z mých dat (timer, rekordy, trenažér)' });
   auto.onclick = () => {
     const { profile: np, filled } = profileFromData(profile());
     save(np);
-    toast(filled ? `Doplněno ${filled} údajů z timeru a trenažéru` : 'V timeru a trenažéru zatím není dost dat (aspoň 5 složení, 3 algoritmy s časy)');
+    toast(filled ? `Doplněno ${filled} údajů z timeru, rekordů a trenažéru` : 'V timeru a trenažéru zatím není dost dat (aspoň 5 složení, 3 algoritmy s časy)');
     render();
   };
   // sady algoritmů: zaškrtnout; u velkých sad i kolik z nich

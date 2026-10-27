@@ -1541,3 +1541,68 @@ test('můj profil skladače: doplnění z dat, sady algoritmů a úroveň „Já
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('timer: ruční zadání času ze stopek (+2, DNF, jen číslice)', async () => {
+  const { p, ctx, errors } = await open('timer');
+  await p.waitForFunction(() => /[RUFDLB]/.test(document.querySelector('#t-scramble').textContent));
+  await p.locator('#t-typing').tap();
+  assert.equal(await p.locator('#t-typing').getAttribute('aria-pressed'), 'true');
+  await p.waitForSelector('#t-type:not([hidden])');
+  const scr1 = await p.locator('#t-scramble').textContent();
+  await p.locator('#t-type-time').fill('1234');
+  assert.match(await p.locator('#t-type-read').innerText(), /Uloží se 12\.34/);
+  await p.locator('#t-type-time').press('Enter');
+  await p.locator('#t-type-time').fill('9.87+');
+  await p.locator('#t-type-time').press('Enter');
+  await p.locator('#t-type-time').fill('1:02.45');
+  await p.locator('#t-type-plus').tap();
+  await p.locator('#t-type-dnf').tap();
+  await p.locator('#t-type-time').fill('xyz');
+  await p.locator('#t-type-time').press('Enter');
+  assert.match(await p.locator('#t-type-read').innerText(), /nejde přečíst/);
+  const list = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.solves'))['333']);
+  assert.deepEqual(list.map((s) => [s.t, s.p]), [[12340, 0], [9870, 2000], [62450, 2000], [0, -1]]);
+  // každé složení má své zamíchání a mezerník čas nespouští
+  assert.notEqual(list[0].s, list[1].s);
+  assert.ok(list.every((x) => x.s && /[RUFDLB]/.test(x.s)));
+  assert.ok(scr1.includes(list[0].s.split(' ')[0]));
+  await p.locator('#t-pad').press('Space');
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.solves'))['333'].length), 4);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('moje rekordy: vložení z Excelu, zápis času, historie a rekord z timeru', async () => {
+  const solvesSeed = Array.from({ length: 12 }, (_, i) => ({ t: 9000 + i * 300, p: 0, s: "R U R' U'", d: Date.now() - i * 60000 }));
+  const { p, ctx, errors } = await open('stats', { 'ergocube.solves': { 333: solvesSeed } });
+  await p.locator('#s-view button', { hasText: 'Moje rekordy' }).tap();
+  await p.waitForSelector('#s-mytable:not([hidden]) .mt-empty');
+  assert.equal(await p.locator('#s-tiles').isVisible(), false);
+  // vložit z Excelu (tabulátor, záhlaví, poznámka, kostka mimo timer)
+  await p.locator('.mt-tools button', { hasText: 'Vložit z Excelu' }).tap();
+  await p.locator('.mt-paste textarea').fill('Kostka\tSingle\tAo5\tAo12\tPoznámka\n3×3\t9.50\t11.20\t12.00\tdoma\nMirror cube\t25.10\t31,40\t\t\n');
+  assert.match(await p.locator('.mt-paste .hint').innerText(), /Načtu 2 kostek a sloupce Single, Ao5, Ao12/);
+  await p.locator('.mt-paste button', { hasText: 'Vložit do tabulky' }).tap();
+  await p.waitForSelector('.mt-table tbody tr');
+  assert.equal(await p.locator('.mt-table tbody tr').count(), 2);
+  assert.match(await p.locator('.mt-table tbody tr').nth(1).innerText(), /Mirror cube[\s\S]*25\.10[\s\S]*31\.40/);
+  // zápis lepšího času: stará hodnota jde do historie
+  await p.locator('.mt-cell[aria-label="Mirror cube Single"]').tap();
+  await p.locator('.mt-input').fill('23.9');
+  await p.locator('.mt-input').press('Enter');
+  const tab = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.mytable')));
+  const mirror = tab.rows.find((r) => r.name === 'Mirror cube');
+  assert.equal(mirror.cells.single, 23900);
+  assert.equal(mirror.history.single[0].t, 25100);
+  assert.equal(tab.rows[0].note, 'doma');
+  // 3×3 má v timeru single 9.00 – lepší než zapsaný 9.50: jde převzít
+  const timerBtn = p.locator('.mt-table tbody tr').first().locator('.mt-timer.better').first();
+  assert.match(await timerBtn.innerText(), /⏱ 9\.00/);
+  await timerBtn.tap();
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.mytable')).rows[0].cells.single), 9000);
+  // pohled se pamatuje
+  await p.reload();
+  await p.waitForSelector('#s-mytable:not([hidden]) .mt-table');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

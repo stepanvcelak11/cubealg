@@ -1,7 +1,7 @@
 // Stránka Timer: zamíchání pro disciplínu WCA, stopky, rychlé statistiky.
 
 import { EVENTS, EVENT_BY_ID } from '../timer/events.js';
-import { summary, formatValue, formatSolve, formatClock } from '../timer/stats.js';
+import { summary, formatValue, formatSolve, formatClock, formatTime, parseTime } from '../timer/stats.js';
 import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { solves, groups, methods, guides, algs } from './store.js';
@@ -151,7 +151,14 @@ export function timerGroup() {
   return groups.get(settings.event, id) ? id : 'main';
 }
 
-async function newScramble() {
+// ruční zadání čeká na nové zamíchání (rychle napsané časy nesmí dostat stejné zamíchání)
+let scrambleReady = Promise.resolve();
+function newScramble() {
+  scrambleReady = makeScramble();
+  return scrambleReady;
+}
+
+async function makeScramble() {
   const box = $('t-scramble');
   box.classList.add('loading');
   box.textContent = 'Míchám…';
@@ -214,11 +221,17 @@ function render() {
 function syncMode() {
   const result = EVENT_BY_ID[settings.event].result;
   const fm = result === 'moves';
+  // ruční zadání času (stopky, stackmat) – jen disciplíny na čas
+  const typing = !!settings.typing && result === 'time';
   $('t-fm').hidden = !fm;
+  $('t-type').hidden = !typing;
+  $('t-typing').hidden = result !== 'time';
+  $('t-typing').setAttribute('aria-pressed', String(typing));
+  document.body.toggleAttribute('data-typing', typing);
   $('t-mbf').hidden = result !== 'multi';
   $('t-mbf-count').value = String(settings.mbfCount ?? 3);
   $('t-display').hidden = fm;
-  $('t-hint').hidden = fm;
+  $('t-hint').hidden = fm || typing;
   const last = solves.list(key()).at(-1);
   stopwatch.show(last && !fm ? last.t : 0);
 }
@@ -272,6 +285,16 @@ function initCubeTimer() {
     }
   });
   cubeReset();
+}
+
+/** Uložení složení na čas (stopky aplikace, chytrá kostka i ručně napsaný čas). */
+function saveTime(ms, p, r = null) {
+  const d = Date.now();
+  const comp = activeRound(key());
+  solves.add(key(), { t: ms, p: comp && p !== -1 ? roundPenalty(ms, p) : p, s: current, d, ...(r ? { r } : {}) });
+  if (r) recordAlgSteps({ s: current, r, d });
+  if (comp) recordAttempt(key(), d);
+  newScramble();
 }
 
 export function initTimer({ isActive }) {
@@ -368,7 +391,7 @@ export function initTimer({ isActive }) {
   stopwatch = new Stopwatch({
     pad: $('t-pad'),
     display: $('t-display'),
-    isActive: () => isActiveFn() && EVENT_BY_ID[settings.event].result === 'time',
+    isActive: () => isActiveFn() && EVENT_BY_ID[settings.event].result === 'time' && !settings.typing,
     inspection: () => settings.inspection || !!activeRound(key()),
     voice: () => !!settings.voice,
     onStop: (ms, p) => {
@@ -378,15 +401,10 @@ export function initTimer({ isActive }) {
         $('t-mbf-solved').focus();
         return;
       }
-      const d = Date.now();
-      const comp = activeRound(key());
       // chytrá kostka: tahy složení s časy (rozbor po krocích metody)
       const r = cube.recon;
       cube.recon = null;
-      solves.add(key(), { t: ms, p: comp ? roundPenalty(ms, p) : p, s: current, d, ...(r ? { r } : {}) });
-      if (r) recordAlgSteps({ s: current, r, d });
-      if (comp) recordAttempt(key(), d);
-      newScramble();
+      saveTime(ms, p, r);
     },
     onState: (s) => {
       $('t-hint').textContent = {
@@ -396,6 +414,36 @@ export function initTimer({ isActive }) {
       if (s === 'idle' || s === 'inspecting') cubeHint();
     },
   });
+
+  // ruční zadání: přepínač a formulář (Enter = uložit a další zamíchání)
+  $('t-typing').onclick = () => {
+    settings.typing = !settings.typing;
+    saveSettings();
+    syncMode();
+    $('t-typing').blur();
+    if (settings.typing) $('t-type-time').focus();
+  };
+  const typed = async (penalty) => {
+    const v = parseTime($('t-type-time').value);
+    if (!v) { $('t-type-read').textContent = 'Tohle jako čas nejde přečíst – napiš třeba 12.34, 1:02.45 nebo 1234'; $('t-type-read').classList.add('bad'); return; }
+    $('t-type-time').value = '';
+    await scrambleReady;
+    saveTime(v.t, penalty ?? v.p);
+    showRead();
+    $('t-type-time').focus();
+  };
+  const showRead = () => {
+    const raw = $('t-type-time').value;
+    const v = parseTime(raw);
+    $('t-type-read').classList.toggle('bad', !!raw.trim() && !v);
+    $('t-type-read').textContent = !raw.trim() ? '12.34 · 1:02.45 · jen číslice jako 1234 = 12,34 s · + na konci = +2 · d = DNF'
+      : !v ? 'Zatím to jako čas nejde přečíst'
+        : v.p === -1 ? 'Uloží se DNF' : `Uloží se ${formatTime(v.t)}${v.p > 0 ? ' + 2 = ' + formatTime(v.t + v.p) : ''}`;
+  };
+  $('t-type-time').oninput = showRead;
+  $('t-type').onsubmit = (e) => { e.preventDefault(); typed(); };
+  $('t-type-plus').onclick = () => typed(2000);
+  $('t-type-dnf').onclick = async () => { $('t-type-time').value = ''; await scrambleReady; saveTime(0, -1); showRead(); };
 
   $('t-fm').onsubmit = (e) => {
     e.preventDefault();
