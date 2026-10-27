@@ -183,10 +183,14 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     // krok „jen někdy“ (pevný algoritmus, např. parita) nic nového neskládá
     const fixed = config[st.id]?.solveBy === 'fixed' && !!clean(config[st.id]?.fixedAlg ?? '');
     if (!fixed && !Object.keys(parts).length && !st.rules?.length && !Object.keys(st.cells ?? {}).length) return;
-    const algs = st.set && !fixed ? setAlgs(st.set) : [];
-    const cfg = { ...stepDefaults(algs.length > 0), ...(config[st.id] ?? {}) };
+    const cfg0 = config[st.id] ?? {};
+    // intuitivní krok se skládá jen hledáním: žádné algoritmy ze sady, nic se neučí
+    const intuitive = !fixed && (cfg0.solveBy === 'intuitive' || cfg0.solveBy === 'fixed' || solveByOf({ ...stepDefaults(false), ...cfg0 }, st) === 'intuitive');
+    const algs = st.set && !fixed && !intuitive ? setAlgs(st.set) : [];
+    const cfg = { ...stepDefaults(algs.length > 0), ...cfg0 };
     if (fixed) cfg.on = true;
     else if (cfg.solveBy === 'fixed') cfg.solveBy = 'intuitive';
+    if (intuitive) { cfg.mode = 'search'; cfg.intuitive = true; }
     // algoritmy kroku vytvoří test: co najde, rovnou používá (sada roste během testu)
     cfg.learn = !fixed && solveByOf(cfg, st) === 'generate';
     if (cfg.learn && cfg.mode === 'search') cfg.mode = 'auto';
@@ -301,6 +305,6 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   // kolik různých míst kroku volnost nabízí (z výchozí orientace) – pro odhad délky hledání
   const choices = steps.map((x, i) => new Set((nextOf[i].values().next().value ?? [0]).map((j) => constraintsKey(variants[j].steps[i].parts))).size);
   // learn = algoritmy vytvoří test; cases = krok algoritmů (nalezená řešení se slučují po případech)
-  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, learn: x.cfg.learn || undefined, cases: x.cfg.learn || x.cfg.kind === 'alg' || x.algs.length > 0 || undefined, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0, maxLen: Number(x.cfg.maxLen) || 0 }));
+  const stepOpts = steps.map((x) => ({ mode: x.cfg.mode, view: x.cfg.view, learn: x.cfg.learn || undefined, cases: !x.cfg.intuitive && (x.cfg.learn || x.cfg.kind === 'alg' || x.algs.length > 0) || undefined, intuitive: x.cfg.intuitive || undefined, time: Math.max(500, Math.min(120000, (Number(x.cfg.time) || 3) * 1000)), recog: Number(x.cfg.recog) || 0, maxLen: Number(x.cfg.maxLen) || 0 }));
   return { plan: { lambda, ergonomics, variants, stepOpts, rotation, choices }, steps };
 }

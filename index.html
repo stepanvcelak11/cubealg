@@ -45,6 +45,11 @@
       <label class="check-row"><input type="checkbox" id="set-voice"> Hlásit 8 a 12 s v inspekci (hlasem)</label>
     </section>
     <section>
+      <h3>Hodnocení tahů podle mých rukou</h3>
+      <p class="hint">Jak pohodlné jsou tahy pro tebe, podle čeho se řadí a generují algoritmy. Doladíš ho tak, že si zatočíš dvojice algoritmů a vybereš lepší, nebo podle časů z trenažéru či chytré kostky.</p>
+      <button type="button" id="set-ergo" class="secondary small" data-icon="trainer" data-icon-size="16"><span>Doladit podle mých rukou</span></button>
+    </section>
+    <section>
       <h3>Lab</h3>
       <label class="check-row"><input type="checkbox" id="set-smart-paint"> Chytré vybarvování</label>
       <p class="hint">Doplní dílku poslední nálepku, když je jasná, a celý vybarvený dílek přenese i na druhou stranu. Vypnuté = obarví se jen nálepka, na kterou klepneš.</p>
@@ -165,7 +170,7 @@
         <select id="tr-set" aria-label="Trénovaná sada"></select>
         <button type="button" id="tr-library" class="icon-btn" data-icon="book" data-icon-size="20" title="Knihovna algoritmů – vestavěná sbírka nebo vložené z databází, seřazené podle tvých vah" aria-label="Knihovna algoritmů"></button>
         <button type="button" id="tr-open" class="icon-btn" data-icon="list" data-icon-size="20" title="Algoritmy v sadě" aria-label="Algoritmy v sadě"></button>
-        <button type="button" id="tr-next" class="primary" data-icon="next" data-icon-size="18"><span>Další případ</span></button>
+        <button type="button" id="tr-next" class="primary" data-icon="next" data-icon-size="18" title="Další případ"><span>Další</span></button>
       </div>
       <div class="segmented tr-mode" id="tr-mode" role="group" aria-label="Režim tréninku">
         <button type="button" data-mode="time" class="active">Čas provedení</button>
@@ -417,9 +422,9 @@
 
   <nav class="tabbar" aria-label="Sekce">
     <div class="rail-brand" aria-hidden="true"><span class="logo"></span><span>ErgoCube <span class="brand-lab">Lab</span></span></div>
-    <button type="button" data-tab="timer" aria-label="Timer" class="active" data-icon="timer"><span>Timer</span></button>
     <button type="button" data-tab="stats" aria-label="Statistiky" data-icon="stats"><span>Statistiky</span></button>
     <button type="button" data-tab="trainer" aria-label="Trenažér" data-icon="trainer"><span>Trenažér</span></button>
+    <button type="button" data-tab="timer" aria-label="Timer" class="active tab-main" data-icon="timer"><span>Timer</span></button>
     <button type="button" data-tab="lab" aria-label="Lab" data-icon="lab"><span>Lab</span></button>
     <button type="button" data-tab="method" aria-label="Metoda" data-icon="sim"><span>Metoda</span></button>
   </nav>

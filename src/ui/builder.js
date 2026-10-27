@@ -40,6 +40,21 @@ const FREE_TEXT = {
 };
 const MODE_TEXT = { auto: 'Najde se hledáním (jako bys improvizoval)', set: 'Počítá se jako chybějící (učím se jen sadu)' };
 const SOLVE_TEXT = { intuitive: 'intuitivně', generate: 'vygenerované algoritmy', own: 'moje algoritmy', fixed: 'pevný algoritmus, jen někdy' };
+// intuitivní krok „jak ho skládá člověk“: tahy, volnost a styl jedním klepnutím
+const HUMAN_PRESETS = [
+  { label: 'Páry jako člověk ⟨R U L F⟩', hint: 'Klasické F2L: pár do kteréhokoli slotu, otočení kostky ke slotu, zaběhnuté postupy (víc tahů než počítač)',
+    patch: { kind: 'intuitive', moves: 'custom', custom: ['R', 'U', 'L', 'F'], free: 'side', style: 'fluent' } },
+  { label: 'Bez rotací ⟨R U L⟩', hint: 'Po natočení hran (ZZ, EO-kříž): jen R, U a L, plynule bez otáčení kostky',
+    patch: { kind: 'intuitive', moves: 'custom', custom: ['R', 'U', 'L'], free: 'side', style: 'fluent' } },
+  { label: 'Bloky s plánem', hint: 'Roux, Petrus, ZZ bloky: víc dílků naráz, plánuje se dopředu (tempo a tahy bloků)',
+    patch: { kind: 'blocks', moves: 'faces', style: 'planned' } },
+  { label: 'Kříž z inspekce', hint: 'Krok naplánovaný celý v inspekci (kříž, X-kříž): skoro nejkratší cestou',
+    patch: { kind: 'intuitive', moves: 'faces', style: 'planned' } },
+  { label: 'Začátečník po kouscích', hint: 'Dílek po dílku jednoduchými postupy (o 40 % víc tahů než počítač)',
+    patch: { kind: 'intuitive', moves: 'faces', style: 'beginner' } },
+  { label: 'Jako počítač', hint: 'Nejkratší řešení, které test najde – horní mez, ne realita',
+    patch: { kind: 'intuitive', moves: 'faces', style: 'computer' } },
+];
 // kdy se dělá krok „jen někdy“ (sim/simulate.js fixedNeeded)
 const WHEN = {
   parity: 'když je parita (lichá permutace nahoře nebo dole)',
@@ -381,7 +396,14 @@ export function renderBuilder() {
         el('small', { textContent: nSet ? `${algWord(nSet)} v sadě. Chybějící případy test označí – tlačítkem je doplníš vygenerovanými.` : 'Vyber sadu, nebo založ novou (+ Nová sada…).' }),
         el('div', { className: 'row-btns' }, nSet ? makeAlgs('Doplnit chybějící vygenerovanými') : null,
           nSet && deps.train ? btn('trainer', 'Trénovat sadu', () => deps.train(set.id), 'secondary small') : null))
-      : el('small', { className: 'hint', textContent: 'Test u každého zamíchání najde nejlepší řešení kroku povolenými tahy (Omezení níže – např. ⟨R, U, L⟩ pro F2L, jak ho skládá člověk s otočením kostky ke slotu). Kolik tahů navíc proti testu uděláš ty, nastavíš ve Stylu skládání.' });
+      : el('div', { className: 'bld-human' },
+        el('b', { className: 'bld-sub', textContent: 'Jak to skládá člověk (rychlá volba)' }),
+        el('div', { className: 'bld-presets' }, ...HUMAN_PRESETS.map((p) => {
+          const on = Object.entries(p.patch).every(([key, v]) => JSON.stringify(cfg[key] ?? null) === JSON.stringify(v ?? null));
+          return el('button', { type: 'button', className: `bld-preset${on ? ' on' : ''}`, title: p.hint, onclick: () => patch({ solveBy: 'intuitive', mode: 'search', ...p.patch }) },
+            el('b', { textContent: p.label }), el('small', { textContent: p.hint }));
+        })),
+        el('small', { className: 'hint', textContent: 'Volba nastaví povolené tahy, volnost (kam krok smí skončit) a styl skládání najednou – jednotlivě je změníš níže v Omezení a ve Stylu skládání. Test pak krok skládá hledáním jen těmito tahy, ne algoritmy.' }));
     const style = solveBy === 'fixed' ? null : field('Styl skládání', select(Object.fromEntries(Object.entries(STYLES).map(([id, x]) => [id, x.label])), cfg.style ?? 'auto', `Styl skládání – krok ${k}`, (v) => patch({ style: v === 'auto' ? undefined : v })),
       `${STYLES[cfg.style ?? 'auto']?.hint ?? ''}. Mění počet tahů v odhadu (test, porovnání i vylepšení metody).`);
     // kolik případů krok má (= kolik algoritmů se naučit) – dopočítá se ve workeru

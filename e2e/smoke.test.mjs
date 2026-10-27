@@ -1026,7 +1026,17 @@ test('simulátor metody: nastavení kroků, souběžné skládání, navázání
   assert.match(await p.locator('.sim-hero').innerText(), /Odhad času složení[\s\S]*\d+,\d+ s[\s\S]*Tahů na složení[\s\S]*\d+,\d/i);
   // co znamenají čísla + použité algoritmy u kroku
   assert.match(await p.locator('.sim-results .sim-explain').textContent(), /Tahů na složení[\s\S]*Ergonomie/);
-  assert.match(await p.locator('.sim-used').first().textContent(), /Použité algoritmy[\s\S]*nalezený/);
+  // intuitivní krok: ukázky řešení, ne algoritmy k naučení
+  assert.match(await p.locator('.sim-used').first().textContent(), /Ukázky řešení[\s\S]*nejsou algoritmy k naučení[\s\S]*nalezený/);
+  assert.equal(await p.locator('.sim-harvest').count(), 0);
+  // podrobné hodnocení: index proti CFOP, srovnání s vestavěnými, úrovně, rozptyl, rezervy
+  const quality = await p.locator('.sim-quality').innerText();
+  // zkušební metoda skládá jen kousek kostky: bez indexu a pořadí proti CFOP
+  assert.match(quality, /Jak dobrá je metoda[\s\S]*neskládá celou kostku/i);
+  assert.match(quality, /CFOP[\s\S]*Roux[\s\S]*ZZ[\s\S]*Pořadí/);
+  assert.doesNotMatch(quality, /\d\. z 4/);
+  assert.match(quality, /Čas podle úrovně skladače[\s\S]*Medián[\s\S]*Kde je rezerva/);
+  assert.equal(await p.locator('.sim-q-level').count(), 3);
   assert.equal(await p.locator('.sim-res-row').count(), 2);
   assert.ok(await p.locator('.sim-res-row.worst').count() >= 1);
   const hist = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.sim.history')));

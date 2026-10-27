@@ -49,6 +49,13 @@ function showPage(name, opts = {}) {
 
 hydrateIcons();
 for (const b of document.querySelectorAll('.tabbar button')) b.onclick = () => { showPage(b.dataset.tab); b.blur(); };
+// Nastavení → Doladit hodnocení tahů: Lab, krok Tahy a váhy, porovnávání dvojic
+document.getElementById('set-ergo').onclick = () => {
+  document.getElementById('settings-dialog').close();
+  showPage('lab');
+  document.querySelector('.lab-head .steps button[data-sub="moves"]')?.click();
+  requestAnimationFrame(() => document.getElementById('ergo-compare-box')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+};
 
 initMethods({
   labTask,

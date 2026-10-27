@@ -14,8 +14,10 @@ npm test    # node --test
 npm run e2e # testy v prohlížeči (potřebují playwright a Chromium)
 ```
 
-Vzhled („Sticker“) je celý ve `styles.css`: barvy jako proměnné na `:root` (světlý i tmavý
-režim), písma Bricolage Grotesque (nadpisy, časy), Manrope (text) a JetBrains Mono (algoritmy)
+Vzhled („Dílna“ – inkoust a limetka) je celý ve `styles.css`: teplý papírový podklad, karty
+s tenkou linkou, jediná výrazná barva (limetka) pro to, co je aktivní, hlavní tlačítka
+inkoustová (v tmavém režimu limetková); na mobilu ukotvená spodní lišta s popisky, na širokém
+displeji boční panel. Barvy jsou proměnné na `:root` (světlý i tmavý režim), písma Bricolage Grotesque (nadpisy, časy), Manrope (text) a JetBrains Mono (algoritmy)
 jsou přibalená ve `fonts/`, takže fungují i offline.
 
 ## Jak se používá
@@ -351,6 +353,21 @@ U každého kroku jde v Sestavit nastavit **povolené tahy** (např. ⟨R, U, L,
 skládá člověk s otočením kostky ke slotu – tak ho skládá i vestavěná CFOP) a **styl skládání**
 (jako test / s plánem dopředu / plynule bez plánování / začátečnicky) – kolik tahů navíc proti
 testu uděláš. Bez stylu se řídí úrovní skladače v Otestovat (špička, kolem 10 s, kolem 20 s).
+U intuitivního kroku jsou **rychlé volby „Jak to skládá člověk“** (páry ⟨R U L F⟩ s otočením ke
+slotu, bez rotací ⟨R U L⟩, bloky s plánem, kříž z inspekce, začátečník, jako počítač) – nastaví
+tahy, volnost a styl jedním klepnutím. Intuitivní krok test skládá **jen hledáním**: nepoužije
+sadu algoritmů, nic se z něj neučí a jeho řešení se nenabízí uložit jako algoritmy (výsledek je
+ukazuje jako „Ukázky řešení“); algoritmy hledá a používá jen u kroků „Algoritmy – vygenerovat /
+moje sada“.
+
+**Jak dobrá je metoda** (výsledek testu, `sim/report.js`): index rychlosti (CFOP = 100), krátké
+shrnutí, tabulka proti CFOP, Roux a ZZ spočteným stejným modelem skladače (čas, tahy skladače,
+pauzy na rozpoznání, ergonomie, počet zastavení, algoritmy k naučení – s pořadím), čas na třech
+úrovních skladače (špička, ~10 s, ~20 s), jednotlivá složení (nejlepší, 1 z 10, medián, 9 z 10,
+nejhorší, histogram, jak často porazí průměrné CFOP), přesnost průměru (kolik zamíchání na
+± 0,05 s) a „Kde je rezerva“ – nejpomalejší kroky rozložené na rozpoznání a provedení s tím, kolik
+ušetří o 10 % méně tahů nebo poloviční rozpoznání. Metodu, která ještě nesloží celou kostku,
+se vestavěnými nesrovnává.
 
 ## Vymyslet metodu
 

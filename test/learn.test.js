@@ -100,3 +100,17 @@ test('sada kroku: víc algoritmů na tentýž případ = jeden případ; algorit
   learner.seed(6, step.candidates);
   assert.equal(learner.cases(6), 3);
 });
+
+test('plán: intuitivní krok nepoužívá sadu algoritmů ani se z něj nic neučí', async () => {
+  const { buildPlan } = await import('../src/sim/plan.js');
+  const guide = { steps: [{ id: 'a', title: 'Kříž', parts: { DF: 'solved', DB: 'solved', DL: 'solved', DR: 'solved' }, set: 's1' }] };
+  const setAlgs = () => [{ alg: "R U R'", task: null }];
+  const intu = buildPlan({ guide, config: { a: { solveBy: 'intuitive', kind: 'intuitive' } }, setAlgs });
+  assert.equal(intu.steps[0].algs.length, 0);
+  assert.equal(intu.plan.stepOpts[0].mode, 'search');
+  assert.ok(!intu.plan.stepOpts[0].cases && !intu.plan.stepOpts[0].learn);
+  assert.equal(intu.plan.stepOpts[0].intuitive, true);
+  // krok algoritmů: sada se použije a případy se sledují
+  const alg = buildPlan({ guide, config: { a: { solveBy: 'own', kind: 'alg' } }, setAlgs });
+  assert.ok(!alg.plan.stepOpts[0].intuitive);
+});

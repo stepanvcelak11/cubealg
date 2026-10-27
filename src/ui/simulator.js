@@ -12,7 +12,7 @@
 import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
-import { describeParts, stepParts } from './parts.js';
+import { describeParts, stepParts, mergeParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
 import { caseCounter } from './casecounter.js';
 import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, STYLES } from '../sim/simulate.js';
@@ -22,6 +22,7 @@ import { solve as twoPhase } from '../timer/twophase.js';
 import { keepAwake, askNotify, notify, titleProgress } from './longrun.js';
 import { toast } from './share.js';
 import { REFERENCES, REFERENCE_NOTE } from '../sim/references.js';
+import { methodReport } from '../sim/report.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } from './stepcfg.js';
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
@@ -486,6 +487,75 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     return out;
   }
 
+  /**
+   * „Jak dobrá je metoda“: index proti CFOP, srovnání s vestavěnými metodami, čas na různých
+   * úrovních skladače, rozptyl složení a kde je rezerva (sim/report.js). Počet algoritmů se
+   * dopočítá ve workeru – karta se pak překreslí.
+   */
+  function qualityCard(solves, meta, timing) {
+    const box = el('section', { className: 'sim-quality' });
+    // skládá metoda celou kostku? (kroky s pravidly pro skupiny dílků se berou jako celé)
+    const g = guides.get(method);
+    const done = g.steps.reduce((acc, st) => mergeParts(acc, stepParts(st)), {});
+    const partial = !g.steps.some((st) => st.rules?.length) && !SLOTS.filter((s) => s.type !== 'center').every((s) => done[s.name] === 'solved');
+    const draw = (algCount) => {
+      const r = methodReport({ solves, stepCount: meta.stepTitles.length, timing, titles: meta.stepTitles, algCount, partial });
+      if (!r) { box.replaceChildren(); return; }
+      const f2 = (v) => fmt(v, 2);
+      const show = (m, v) => (Number.isFinite(v) ? (m.unit ? `${fmt(v, m.digits)} ${m.unit}` : fmt(v, m.digits)) : '–');
+      const refNames = r.metrics[0].refs.map((x) => x.name);
+      const best = (m) => Math.min(...[m.mine, ...m.refs.map((x) => x.value)].filter(Number.isFinite));
+      const d = r.dist;
+      const maxH = Math.max(...d.hist.map((h) => h.n), 1);
+      const cfopT = r.ref.cfop?.time;
+      box.replaceChildren(
+        el('div', { className: 'sim-q-head' },
+          el('div', { className: 'sim-q-index' }, el('b', { textContent: r.index ?? '–' }), el('small', { textContent: 'index rychlosti · CFOP = 100' })),
+          el('div', {}, el('b', { className: 'sim-q-title', textContent: 'Jak dobrá je metoda' }),
+            el('ul', { className: 'sim-q-verdict' }, ...r.verdict.map((t) => el('li', { textContent: t }))))),
+        // srovnávací tabulka
+        el('div', { className: 'sim-q-scroll' }, el('table', { className: 'compare sim-q-table' },
+          el('thead', {}, el('tr', {}, el('th', {}), el('th', { className: 'mine', textContent: 'Tvoje' }), ...refNames.map((n) => el('th', { textContent: n })), el('th', { textContent: 'Pořadí' }))),
+          el('tbody', {}, ...r.metrics.map((m) => el('tr', {},
+            el('td', { textContent: m.label }),
+            el('td', { className: `mine${Number.isFinite(m.mine) && m.mine <= best(m) + 1e-9 ? ' win' : ''}`, textContent: show(m, m.mine) }),
+            ...m.refs.map((x) => el('td', { className: Number.isFinite(x.value) && x.value <= best(m) + 1e-9 ? 'win' : '', textContent: show(m, x.value) })),
+            el('td', { className: 'sim-q-rank', textContent: m.rank ? `${m.rank}. z ${m.of}` : r.partial ? '–' : '…' })))))),
+        // úrovně skladače
+        el('b', { className: 'sim-cmp-sub', textContent: 'Čas podle úrovně skladače' }),
+        el('div', { className: 'sim-q-levels' }, ...r.levels.map((l) => el('div', { className: `sim-q-level${l.level === r.level ? ' on' : ''}` },
+          el('small', { textContent: l.label }),
+          el('b', { textContent: `${f2(l.time)} s` }),
+          el('span', { textContent: `CFOP ${f2(l.refs.cfop)} · Roux ${f2(l.refs.roux)} · ZZ ${f2(l.refs.zz)}` }),
+          r.partial ? null : el('i', { className: l.index >= 100 ? 'good' : 'bad', textContent: `index ${l.index}` })))),
+        // rozptyl složení
+        el('b', { className: 'sim-cmp-sub', textContent: 'Jednotlivá složení (odhad času)' }),
+        el('div', { className: 'sim-q-dist' },
+          ...[['Nejlepší', d.best], ['1 z 10 pod', d.p10], ['Medián', d.median], ['9 z 10 pod', d.p90], ['Nejhorší', d.worst]].map(([k, v]) => el('div', {}, el('small', { textContent: k }), el('b', { textContent: `${f2(v)} s` })))),
+        d.hist.length > 1 ? el('div', { className: 'sim-hist sim-q-hist', role: 'img', ariaLabel: 'Rozložení odhadu času složení' },
+          ...d.hist.map((h) => el('div', { className: `sim-hist-col${cfopT && h.to <= cfopT ? ' fast' : ''}`, title: `${f2(h.from)}–${f2(h.to)} s: ${h.n}×` },
+            el('i', { style: `height: ${(h.n / maxH) * 100}%` }), el('small', { textContent: fmt(h.from, 1) })))) : null,
+        el('p', { className: 'hint', textContent: `Rozptyl ± ${f2(d.sd)} s na složení${d.beatsCfop != null && !r.partial ? ` · v ${pct(d.beatsCfop)} složení rychlejší než průměrné CFOP (${f2(cfopT)} s)` : ''}. Přesnost průměru ± ${f2(d.ci)} s${d.ci > 0.06 ? ` – na ± 0,05 s by bylo potřeba asi ${d.needFor} zamíchání` : ''}.` }),
+        // kde je rezerva
+        el('b', { className: 'sim-cmp-sub', textContent: 'Kde je rezerva' }),
+        el('div', { className: 'sim-q-steps' }, ...r.steps.slice(0, 5).map((s) => el('div', { className: 'sim-q-step' },
+          el('div', { className: 'sim-q-step-head' }, el('b', { textContent: s.title }), el('span', { textContent: `${f2(s.time)} s · ${pct(s.share)} času` })),
+          el('div', { className: 'sim-q-split', role: 'img', ariaLabel: `rozpoznání ${f2(s.recog)} s, provedení ${f2(s.exec)} s` },
+            el('i', { className: 'recog', style: `width: ${(s.recog / s.time) * 100}%` }), el('i', { className: 'exec', style: `width: ${(s.exec / s.time) * 100}%` })),
+          el('small', { textContent: `rozpoznání ${f2(s.recog)} s + provedení ${f2(s.exec)} s (${fmt(s.moves)} tahů při ${fmt(s.tps)} tahů/s)${s.skipped > 0.02 ? ` · přeskočeno v ${pct(s.skipped)}` : ''}` }),
+          el('small', { className: 'sim-q-save', textContent: `o 10 % méně tahů ušetří ${f2(s.saveMoves)} s${s.saveRecog > 0.005 ? ` · poloviční rozpoznání ${f2(s.saveRecog)} s` : ''}` })))),
+        el('p', { className: 'hint', textContent: `Vestavěné metody jsou spočtené stejným modelem skladače (${levelText()}), takže srovnání je férové. Algoritmů k naučení: kroky algoritmů – počet různých případů${Number.isFinite(algCount) ? '' : ' (počítá se…)'}.` }));
+    };
+    draw(null);
+    // algoritmy k naučení: součet případů kroků algoritmů (worker)
+    const idx = meta.stepIds.map((id, i) => [id, i]).filter(([id, i]) => {
+      const cfg = config[id];
+      return plan && cfg?.kind === 'alg' && cfg.solveBy !== 'intuitive' && cfg.solveBy !== 'fixed' && !plan.variants[0].steps[i]?.fixed;
+    }).map(([, i]) => i);
+    Promise.all(idx.map((i) => counter.count(plan, i))).then((list) => draw(list.reduce((a, x) => a + (x?.cases ?? 0), 0)), () => {});
+    return box;
+  }
+
   function renderResults(solves, meta) {
     const timing = { tps: Number(tps.value) || 4, recog: meta.stepIds.map((id) => Number(config[id]?.recog) || 0), kinds: meta.stepIds.map((id) => config[id]?.kind ?? 'intuitive'), styles: meta.stepIds.map((id) => config[id]?.style), level: lvl() };
     const sum = summarize(solves, meta.stepTitles.length, timing);
@@ -539,6 +609,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         el('div', {}, el('span', { className: 'tile-label', textContent: 'Tahů na složení' }), el('b', { textContent: fmt(sum.human) }),
           el('small', { textContent: `odhad skutečného skladače · simulace ${fmt(sum.moves)} (± ${fmt(sum.ci)}, od ${sum.min} do ${sum.max})` })),
         prev ? el('small', { className: 'sim-hero-prev', textContent: `Minulý test (${when(prev.at)}, ${prev.label ?? ''}): ${fmt(prev.moves)} tahů simulace` }) : null),
+      qualityCard(solves, meta, timing),
       Object.keys(sum.variants).length > 1 || meta.variants.length > 1
         ? el('p', { className: 'hint', textContent: `Orientace: ${Object.entries(sum.variants).map(([v, n]) => `${meta.variants[v]} ${pct(n / sum.count)}`).join(' · ')}` }) : null,
       el('div', { className: 'sim-res' }, ...rows),
@@ -577,9 +648,10 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         + `${cfg.mode !== 'search' ? ' Algoritmy ze sady kroku mají přednost, když případ vyřeší (i s natočením vrstvy před a po).' : ''}`;
     const src = { set: 'ze sady', search: 'nalezený', fixed: 'pevný' };
     const list = [...m].sort((a, b) => b[1].n - a[1].n).slice(0, 40);
+    const intuitive = plan?.stepOpts[i]?.intuitive;
     return el('details', { className: 'sim-used' },
-      el('summary', { textContent: `Použité algoritmy (${m.size}${m.size >= USED_MAX ? '+' : ''} různých)` }),
-      el('p', { className: 'hint', textContent: why }),
+      el('summary', { textContent: intuitive ? `Ukázky řešení (${m.size}${m.size >= USED_MAX ? '+' : ''} různých)` : `Použité algoritmy (${m.size}${m.size >= USED_MAX ? '+' : ''} různých)` }),
+      el('p', { className: 'hint', textContent: intuitive ? 'Intuitivní krok: test ho skládá hledáním povolenými tahy, jak by ho skládal člověk – tohle nejsou algoritmy k naučení, nesbírají se do sady a nepočítají do algoritmů metody.' : why }),
       el('table', { className: 'sim-used-table' },
         el('thead', {}, el('tr', {}, el('th', { textContent: 'Algoritmus' }), el('th', { textContent: 'Použit' }), el('th', { textContent: 'Tahů' }), el('th', { textContent: 'Ergonomie' }), el('th', { textContent: 'Odkud' }))),
         el('tbody', {}, ...list.map(([alg, u]) => el('tr', {},

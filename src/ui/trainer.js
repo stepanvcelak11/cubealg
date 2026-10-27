@@ -216,7 +216,6 @@ function setMode(m) {
   mode = m;
   storage.set('ergocube.trainer.mode', m);
   for (const b of $('tr-mode').querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === m);
-  $('tr-next').querySelector('span').textContent = m === 'recog' ? 'Další' : 'Další případ';
   if (m === 'recog') nextRecog(); else showCase();
 }
 
