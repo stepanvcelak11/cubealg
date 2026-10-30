@@ -85,3 +85,24 @@ test('zadání jako v metodě: víc barev na nálepce → skupinová pravidla, v
   const startOk = compileGoal(task.before, P.solved(), P).test;
   assert.ok(r.cases.every((c) => startOk(c.rep)));
 });
+
+test('zadání jako v metodě: bílá/žlutá kdekoli nahoře i dole → oddělit barvy = 336 případů, bez limitu', async () => {
+  const { cellsLabTask } = await import('../src/ui/celleditor.js');
+  const { enumerateCases } = await import('../src/core/cases.js');
+  const WY = ['U', 'D'];
+  const before = {}, after = {};
+  for (const s of P.slots) {
+    if (s.facelets.length === 1) continue;
+    const f = s.name.includes('U') ? 'U' : s.name.includes('D') ? 'D' : null;
+    if (!f) { before[s.name] = { own: 'solved' }; continue; }
+    before[s.name] = { colors: { [f]: WY } };
+    after[s.name] = { colors: { [f]: [f] } };
+  }
+  const t0 = Date.now();
+  const r = enumerateCases(P, cellsLabTask(before, after, { down: 'D', front: 'F' }), { auf: true, adf: true });
+  assert.ok(!r.tooMany && !r.error);
+  // rohy i hrany: C(8,4)² = 4900 rozložení, po natočení U a D 336 (Burnside)
+  assert.equal(r.states, 4900);
+  assert.equal(r.cases.length, 336);
+  assert.ok(Date.now() - t0 < 5000, `${Date.now() - t0} ms`);
+});

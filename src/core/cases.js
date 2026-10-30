@@ -73,6 +73,40 @@ function puzzleInfo(P) {
 }
 
 /**
+ * Pravidla Startu (task.before) pro jeden dílek na jednom místě: může tam být s tímhle
+ * natočením? Jen nutná podmínka (jednotlivé dílky a skupinová pravidla, jejichž místo leží
+ * v tomhle slotu) – zbytek ověří celý test Startu. Bez toho by „bílá nebo žlutá nahoře“
+ * nechalo dílky kdekoli a výčet by se utopil ve stavech, které Start stejně vyřadí.
+ */
+function placementFilter(P, before) {
+  const per = new Map(); // dílek → omezení
+  for (const [name, c] of Object.entries(before)) if (!name.startsWith('#') && c && c !== 'ignore') per.set(name, c);
+  const classes = (before['#classes'] ?? []).map((c) => ({
+    tracked: new Map(c.pieces.map((name, i) => [name, c.stickers[i]])),
+    places: c.places.map((pl) => ({ slot: P.SLOT_OF[pl[0]], set: new Set(pl) })),
+  }));
+  return (piece, slot, t) => {
+    const n = piece.facelets.length;
+    const at = (i) => slot.facelets[(i + t) % n]; // kam míří i-tá nálepka dílku
+    const c = per.get(piece.name);
+    if (c === 'solved' && (slot.id !== piece.id || t !== 0)) return false;
+    if (c === 'permutation' && slot.id !== piece.id) return false;
+    if (c === 'orientation' && P.ORI_AT[at(0)] !== P.ORI_AT[piece.facelets[0]]) return false;
+    if (c && typeof c === 'object' && c.allow && !c.allow.includes(at(0))) return false;
+    const s = P.SLOT_OF[slot.facelets[0]];
+    for (const cl of classes) {
+      for (const pl of cl.places) {
+        if (pl.slot !== s) continue;
+        // místo v tomhle slotu může pokrýt jen dílek, který v něm je
+        const st = cl.tracked.get(piece.name);
+        if (!st || !st.some((i) => pl.set.has(at(i)))) return false;
+      }
+    }
+    return true;
+  };
+}
+
+/**
  * Výčet případů.
  * @param {object} P hlavolam (permutační)
  * @param {object} task { colorsA, colorsB, constraints, marks }
@@ -121,6 +155,8 @@ export function enumerateCases(P, task, { auf = true, adf = false, rotations = [
   // ho nesplňují, se vynechají (na podpisu nezávisí: cíl obsahuje i Start)
   const startOk = task.before && Object.keys(task.before).length ? compileGoal(task.before, P.solved(), P).test : null;
 
+  const startFits = task.before && Object.keys(task.before).length ? placementFilter(P, task.before) : null;
+
   // Start: povolené (slot, natočení) pro každý dílek
   const canon = new Map();
   for (const group of interchange) for (const c of group) canon.set(c, group[0]);
@@ -141,7 +177,7 @@ export function enumerateCases(P, task, { auf = true, adf = false, rotations = [
           const c = cs[(i + t) % n];
           ok = c === EMPTY || cn(c) === cn(FACE[piece.facelets[i]]);
         }
-        if (ok) list.push([info.slotIndex.get(slot.id), t]);
+        if (ok && (!startFits || startFits(piece, slot, t))) list.push([info.slotIndex.get(slot.id), t]);
       }
     }
     if (!list.length) return { cases: [], states: 0, error: `Dílek ${piece.name} se podle Startu nikam nevejde (zkontroluj barvy)` };
@@ -295,15 +331,18 @@ export function enumerateCases(P, task, { auf = true, adf = false, rotations = [
     const postLayers = layers.filter((l) => turns([l]).every((u) => anyAdjust(P, goal, Uint8Array.from(target, (_, i) => target[u[i]]), layers)));
     const pres = [null, ...turns(layers)];
     const posts = [null, ...turns(postLayers)];
+    // natočení před i po tvoří grupu: dráha stavu je celá známá z jednoho člena, ostatní se přeskočí
+    const seen = new Set();
+    const x = new Uint8Array(P.size);
     for (const sig of sigs) {
+      if (seen.has(sig)) continue;
       const loc = reps.get(sig);
       for (const pre of pres) for (const post of posts) {
         if (!pre && !post) continue;
-        let x = loc;
-        if (post) x = Uint8Array.from(x, (_, i) => x[post[i]]); // natočení před stavem (pravé násobení)
-        if (pre) x = Uint8Array.from(x, (v) => pre[v]);           // natočení po stavu (= před algoritmem)
+        // post: natočení před stavem (pravé násobení), pre: po stavu (= před algoritmem)
+        for (let i = 0; i < x.length; i++) { const v = post ? loc[post[i]] : loc[i]; x[i] = pre ? pre[v] : v; }
         const other = sigOf(x);
-        if (parent.has(other)) union(sig, other);
+        if (parent.has(other)) { union(sig, other); seen.add(other); }
       }
     }
   }
