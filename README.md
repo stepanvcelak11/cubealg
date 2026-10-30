@@ -323,6 +323,17 @@ ukáže stejně natočenou. Trenažér u každého případu ověří, že algor
 vyřeší; když ne (např. případ uložený ze staršího zadání), ukáže upozornění s tlačítkem
 **Otevřít v Labu**. Zadání, které nejde sestavit, se nekreslí obrázkem předchozího případu.
 
+## Známé sady algoritmů v metodě
+
+Sestavit → krok → Jak se krok řeší → **Algoritmy – známá sada** (`sim/knownsets.js`): standardní
+**OLL** (57) nebo **PLL** (21) algoritmy, aniž by je skladač musel mít v aplikaci. Test metody
+je bere stejně jako tvou sadu (natočení vrstev před a po, rotace uprostřed algoritmu se převedou
+na tahy); „Když na případ algoritmus nemá“ rozhodne, jestli se jiný případ dohledá. V učebnici
+metody se u kroku algoritmy nevypisují – jen „použij standardní OLL algoritmy“. Algoritmy i to,
+že pokryjí všechny případy, hlídá `test/knownsets.test.js`.
+
+Obrázky v učebnici (krok i případy algoritmů) jsou rozložená kostka – všech 6 stran.
+
 ## Lab: zadání jako v metodě
 
 Lab → Zadání → **Jako v metodě** (3×3, vedle Barvy a Šipky): krok se zadá stejným editorem jako

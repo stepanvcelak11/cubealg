@@ -18,6 +18,7 @@ import { ruleNetSvg } from './ruleeditor.js';
 import { cellsNetSvg, cellLooks, cellsBefore, freshCells } from './celleditor.js';
 import { netSvg } from './netsvg.js';
 import { teachStep, notationOf, exampleSolve } from './teach.js';
+import { KNOWN_SETS } from '../sim/knownsets.js';
 
 const HEX = { U: '#fafaf7', R: '#e5383b', F: '#22b455', D: '#ffd60a', L: '#ff8a1f', B: '#2f6bff' };
 const GREY = '#8a8f9c';
@@ -58,10 +59,11 @@ function stepSvg(before, now, hold) {
     if (piece.type === 'center') return { color: f.face };
     const name = piece.name;
     if (now[name] && before[name] !== now[name]) return { color: now[name] === 'orientation' && f.face !== 'U' && f.face !== 'D' ? null : f.face };
-    if (before[name]) return { color: f.face, pale: 0.6 };
+    if (before[name]) return { color: f.face, style: 'faint' };
     return { color: null };
   });
-  return cubeSvg(stickers, hold);
+  // rozložená kostka (všech 6 stran) – z pohledu na tři strany nejde případ poznat
+  return netSvg(stickers, hold, 150);
 }
 
 /** Obrázek případu algoritmu (výchozí stav zadání z Labu). */
@@ -72,7 +74,7 @@ function caseSvg(task) {
     const side = model.deserialize(task.colorsA);
     if (!side) return '';
     const st = model.stickers(side, task.constraints ?? {});
-    return cubeSvg(st.map((x) => ({ color: x.style === 'none' || x.style === 'faded' ? null : x.color })), task.hold ?? '', 96);
+    return netSvg(st.map((x) => ({ color: x.style === 'none' || x.style === 'faded' ? null : x.color })), task.hold ?? '', 132);
   } catch { return ''; }
 }
 
@@ -87,7 +89,7 @@ const freeText = (cfg) => {
 
 /** Barva středu v 1. pádě rodu mužského (bílý, žlutý…). */
 const centerName = (face) => COLOR_NAME[face].replace(/á$/, 'ý');
-const KIND_LABEL = { intuitive: 'intuitivně', generate: 'algoritmy', own: 'algoritmy', fixed: 'jen někdy' };
+const KIND_LABEL = { intuitive: 'intuitivně', generate: 'algoritmy', own: 'algoritmy', known: 'známé algoritmy', fixed: 'jen někdy' };
 const list = (items) => (items.length ? `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '');
 
 /** HTML učebnice metody. */
@@ -116,7 +118,9 @@ export function learningHtml(method = methods.active()) {
     const cfg = sim[st.id];
     const solveBy = solveByOf(cfg, st);
     const res = last?.steps.find((x) => x.id === st.id);
-    const set = st.set ? sets.get(st.set) : null;
+    // známá sada (OLL, PLL…): algoritmy se nevypisují, jen „použij OLL algoritmy“
+    const known = solveBy === 'known' ? KNOWN_SETS[cfg.knownSet] : null;
+    const set = !known && st.set ? sets.get(st.set) : null;
     if (set) used.add(set.id);
     const algList = set ? setAlgs(set.id) : [];
     const cellsPrev = cellsBefore(guide.steps, i);
@@ -127,7 +131,7 @@ export function learningHtml(method = methods.active()) {
       ['Volnost', freeText(cfg)],
       ['Tahy', cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : STEP_MOVES[cfg.moves]?.label],
       ['Vybírat podle', VIEWS[cfg.view]?.label],
-      algList.length ? ['Natočení vrstev', ADJUST[cfg.adjust]] : null,
+      algList.length || known ? ['Natočení vrstev', ADJUST[cfg.adjust]] : null,
       cfg.helpers ? ['Pomocné algoritmy', cfg.helpers] : null,
     ].filter((x) => x && x[1]) : [];
     return `<section class="step" id="krok-${i + 1}">
@@ -142,6 +146,7 @@ export function learningHtml(method = methods.active()) {
   ${st.task?.alg ? `<p>Ukázka: <code>${esc(st.task.alg)}</code></p>` : ''}
   ${st.rules?.length ? `<ul class="rules">${st.rules.map((r) => `<li>${ruleNetSvg(r, frame, 96)}<span>${esc(describeRule(r, map))}</span></li>`).join('')}</ul>` : ''}
   ${settings.length ? `<details class="tech"><summary>Nastavení kroku pro test</summary><dl>${settings.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
+  ${known ? `<p class="known"><b>Algoritmy:</b> ${esc(known.text)}</p>` : ''}
   ${algList.length ? algTable(set.name, algList, time) : ''}
 </section>`;
   });
@@ -152,7 +157,7 @@ export function learningHtml(method = methods.active()) {
   const data = JSON.stringify(exportMethod(method)).replace(/</g, '\\u003c');
   const notation = notationOf(method, guide);
   const example = exampleSolve(method, guide);
-  const algSteps = guide.steps.filter((st) => ['generate', 'own'].includes(solveByOf(sim[st.id], st)));
+  const algSteps = guide.steps.filter((st) => ['generate', 'own', 'known'].includes(solveByOf(sim[st.id], st)));
   const intuitive = guide.steps.filter((st) => solveByOf(sim[st.id], st) === 'intuitive');
   return `<!doctype html>
 <html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -195,6 +200,7 @@ dt { color: var(--muted); } dd { margin: 0; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 h3 { font-size: 1rem; margin: 14px 0 8px; }
 .algs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+.known { background: #ececff; border-radius: 14px; padding: 10px 14px; margin: 10px 0 0; }
 .alg { display: flex; gap: 8px; align-items: center; padding: 8px; border-radius: 14px; background: var(--soft); break-inside: avoid; }
 .alg div { min-width: 0; flex: 1; } .alg b { display: block; font-size: 0.86rem; }
 .alg code { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
@@ -238,7 +244,8 @@ ${guide.steps.map((st, i) => {
     const solveBy = solveByOf(sim[st.id], st);
     const set = st.set ? sets.get(st.set) : null;
     const nAlgs = set ? setAlgs(set.id).length : 0;
-    const how = solveBy === 'intuitive' ? 'intuitivně' : solveBy === 'fixed' ? 'jen někdy' : nAlgs ? `${nAlgs} ${nAlgs === 1 ? 'algoritmus' : nAlgs < 5 ? 'algoritmy' : 'algoritmů'}` : 'algoritmy (vytvoří test)';
+    const known = solveBy === 'known' ? KNOWN_SETS[sim[st.id].knownSet] : null;
+    const how = known ? `${known.short} algoritmy (${known.cases})` : solveBy === 'intuitive' ? 'intuitivně' : solveBy === 'fixed' ? 'jen někdy' : nAlgs ? `${nAlgs} ${nAlgs === 1 ? 'algoritmus' : nAlgs < 5 ? 'algoritmy' : 'algoritmů'}` : 'algoritmy (vytvoří test)';
     return `<tr><td>${i + 1}</td><td><a href="#krok-${i + 1}">${esc(st.title || `Krok ${i + 1}`)}</a></td><td>${esc(teach[i].title)}</td><td>${esc(how)}</td>${last ? `<td>${res ? fmt(res.moves) : '–'}</td>` : ''}</tr>`;
   }).join('')}
 </tbody></table>

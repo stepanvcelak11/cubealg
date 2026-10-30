@@ -9,6 +9,7 @@
 // průběžně se ukládá, po zavření jde navázat a výsledky se doplňují. Stejné semínko
 // = stejná zamíchání, takže změny nastavení i metody jde férově porovnat.
 
+import { KNOWN_SETS } from '../sim/knownsets.js';
 import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
@@ -164,13 +165,13 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   function renderSteps() {
     stepList.replaceChildren(...stepsWithParts.map(({ st, i, parts }) => {
       const cfg = config[st.id];
-      const n = st.set ? setAlgs(st.set).length : 0;
+      const n = cfg.solveBy === 'known' && KNOWN_SETS[cfg.knownSet] ? KNOWN_SETS[cfg.knownSet].algs.length : st.set ? setAlgs(st.set).length : 0;
       const at = planSteps.findIndex((x) => x.st.id === st.id);
       const places = at >= 0 ? plan?.choices?.[at] ?? 1 : 1;
       const info = cfg.solveBy === 'fixed' ? `jen někdy: ${cfg.fixedAlg} (${cfg.when === 'always' ? 'vždy' : 'když je parita'})` : cfg.on === false ? 'v testu spojený s dalším krokem' : [
         st.cells && Object.keys(st.cells).length ? cellsSummary(st.cells) : [Object.keys(parts).length ? describeParts(parts) : null, st.rules?.length ? `${st.rules.length}× pravidlo` : null].filter(Boolean).join(' + '),
         cfg.free && cfg.free !== 'fixed' ? `${FREEDOM[cfg.free]?.label.replace(/ \(.*\)|…/g, '').toLowerCase()} (${places} míst)` : 'přesně tady',
-        n && cfg.mode !== 'search' ? `${cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání',
+        n && cfg.mode !== 'search' ? `${cfg.solveBy === 'known' ? KNOWN_SETS[cfg.knownSet].short : cfg.mode === 'set' ? 'jen sada' : 'sada'} (${n})` : 'hledání',
         cfg.moves === 'custom' ? `<${(cfg.custom ?? []).join(', ')}>` : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).label,
         cfg.style && STYLES[cfg.style] ? STYLES[cfg.style].label.toLowerCase() : null,
       ].filter(Boolean).join(' · ');
@@ -613,7 +614,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
         cover ? el('small', { className: 'sim-cover', textContent: cover }) : null,
         learned(i) ? el('small', { className: 'sim-cover', textContent: learned(i) }) : null,
         casesOf(i, id),
-        harvest.get(i)?.size ? el('button', { type: 'button', className: 'secondary small sim-harvest',
+        harvest.get(i)?.size && config[id]?.solveBy !== 'known' ? el('button', { type: 'button', className: 'secondary small sim-harvest',
           textContent: `Uložit ${harvest.get(i).size} nalezených řešení jako algoritmy kroku`,
           title: 'Řešení, která test u tohoto kroku našel, se uloží do sady kroku (případ + algoritmus). Další test je bude používat; najdeš je i v Trenažéru.',
           onclick: () => saveHarvest(i, meta) }) : null,

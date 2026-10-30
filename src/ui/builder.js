@@ -22,6 +22,7 @@ import { toFacelets } from '../core/cube.js';
 import { netSvg } from './netsvg.js';
 import { holdFromFaces } from '../core/hold.js';
 import { VIEWS } from '../ergonomics/style.js';
+import { KNOWN_SETS } from '../sim/knownsets.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
 import { cellEditor, cellsBefore, cellsSummary, cellsNetSvg, cellLooks, cellsLabTask } from './celleditor.js';
@@ -39,7 +40,7 @@ const FREE_TEXT = {
   all: ['Kdekoli, libovolnou barvou', 'Plná barevná neutralita – na kterékoli straně kostky.'],
 };
 const MODE_TEXT = { auto: 'Najde se hledáním (jako bys improvizoval)', set: 'Počítá se jako chybějící (učím se jen sadu)' };
-const SOLVE_TEXT = { intuitive: 'intuitivně', generate: 'vygenerované algoritmy', own: 'moje algoritmy', fixed: 'pevný algoritmus, jen někdy' };
+const SOLVE_TEXT = { intuitive: 'intuitivně', generate: 'vygenerované algoritmy', own: 'moje algoritmy', known: 'známá sada algoritmů', fixed: 'pevný algoritmus, jen někdy' };
 // intuitivní krok „jak ho skládá člověk“: tahy, volnost a styl jedním klepnutím
 const HUMAN_PRESETS = [
   { label: 'Páry jako člověk ⟨R U L F⟩', hint: 'Klasické F2L: pár do kteréhokoli slotu, otočení kostky ke slotu, zaběhnuté postupy (víc tahů než počítač)',
@@ -128,7 +129,8 @@ function stepState(method, st) {
     : Object.keys(st.cells ?? {}).length > 0 || Object.keys(stepParts(st)).length > 0 || (st.rules?.length ?? 0) > 0;
   // vygenerované algoritmy si vytvoří test sám; chybí jen vlastní sada
   const gen = solveBy === 'generate' ? generatedState(method, guides.get(method), st) : null;
-  return { cfg, set, nSet, hasGoal, solveBy, gen, needAlgs: solveBy === 'own' && !nSet };
+  const known = solveBy === 'known' ? KNOWN_SETS[cfg.knownSet] : null;
+  return { cfg, set, nSet, hasGoal, solveBy, gen, known, needAlgs: solveBy === 'own' && !nSet };
 }
 
 /** @param {HTMLElement} root @param {{onTest, practice, train, labTask}} d */
@@ -203,6 +205,7 @@ export function renderBuilder() {
         !s.hasGoal ? el('span', { className: 'bld-badge warn', textContent: 'nic nezadáno' }) : null,
         s.solveBy === 'intuitive' ? el('span', { className: 'bld-badge', textContent: 'intuitivně' })
           : s.solveBy === 'fixed' ? el('span', { className: 'bld-badge', textContent: 'jen někdy' })
+            : s.solveBy === 'known' ? el('span', { className: 'bld-badge good', textContent: s.known?.short ?? 'známá sada' })
             : s.solveBy === 'generate' ? el('span', { className: `bld-badge${s.gen === 'fresh' ? ' good' : ''}`, textContent: s.gen === 'fresh' ? `${s.nSet} alg.` : 'algoritmy vytvoří test' })
               : s.nSet ? el('span', { className: 'bld-badge good', textContent: `${s.nSet} alg.` })
                 : el('span', { className: 'bld-badge warn', textContent: 'chybí algoritmy' }),
@@ -361,7 +364,8 @@ export function renderBuilder() {
       const r = Object.assign(el('input', { type: 'radio', name: `how-${st.id}`, value: id }), { checked: solveBy === id });
       r.onchange = () => patch(id === 'intuitive' ? { solveBy: id, mode: 'search', kind: cfg.kind === 'blocks' ? 'blocks' : 'intuitive' }
         : id === 'fixed' ? { solveBy: id, kind: 'alg', fixedAlg: cfg.fixedAlg || 'M2 U2 M2', when: cfg.when || 'parity' }
-          : { solveBy: id, mode: 'auto', kind: 'alg' });
+          : id === 'known' ? { solveBy: id, mode: 'auto', kind: 'alg', knownSet: cfg.knownSet && KNOWN_SETS[cfg.knownSet] ? cfg.knownSet : Object.keys(KNOWN_SETS)[0] }
+            : { solveBy: id, mode: 'auto', kind: 'alg' });
       return el('label', { className: `rule-opt bld-how-opt${solveBy === id ? ' on' : ''}` }, r, el('span', {}, el('b', { textContent: label }), el('small', { textContent: hint })));
     };
     const setSel = select(setOpts(), st.set ?? '', `Sada algoritmů – krok ${k}`, (v) => {
@@ -389,6 +393,11 @@ export function renderBuilder() {
         : 'Při každém testu metody aplikace u tohoto kroku najde na každý případ dobrý algoritmus a uloží je jako sadu kroku (pak je najdeš v Trenažéru). Když krok později změníš, při dalším testu se vytvoří znovu. Delší test = víc případů.' }),
       el('div', { className: 'row-btns' }, makeAlgs(gen === 'fresh' ? 'Otestovat a doplnit chybějící' : 'Otestovat a vytvořit algoritmy'),
         gen === 'fresh' && deps.train ? btn('trainer', 'Učit se je (Trenažér)', () => deps.train(set.id), 'secondary small') : null))
+      : solveBy === 'known' ? el('div', { className: 'bld-algs' },
+        el('div', { className: 'grid-fields' },
+          field('Známá sada', select(Object.fromEntries(Object.entries(KNOWN_SETS).map(([id, x]) => [id, x.label])), cfg.knownSet, `Známá sada – krok ${k}`, (v) => patch({ knownSet: v })), 'Standardní algoritmy – nemusíš je mít v aplikaci uložené'),
+          field('Když na případ algoritmus nemá', select(MODE_TEXT, cfg.mode === 'set' ? 'set' : 'auto', `Chybějící případ – krok ${k}`, (v) => patch({ mode: v })), 'Když krok není přesně OLL / PLL (např. jiný cíl), chybějící případy se najdou hledáním')),
+        el('small', { textContent: `Test krok skládá standardními algoritmy ${KNOWN_SETS[cfg.knownSet]?.short ?? ''} (${KNOWN_SETS[cfg.knownSet]?.cases ?? ''} případů) i s natočením horní vrstvy před a po. V učebnici metody bude místo seznamu jen „použij ${KNOWN_SETS[cfg.knownSet]?.short ?? ''} algoritmy“.` }))
       : solveBy === 'own' ? el('div', { className: `bld-algs${nSet ? '' : ' todo'}` },
         el('div', { className: 'grid-fields' },
           field('Moje sada', setSel, 'Sada s tvými algoritmy (sady spravuješ v Trenažéru, nové algoritmy přidáš z Labu)'),
@@ -407,7 +416,7 @@ export function renderBuilder() {
     const style = solveBy === 'fixed' ? null : field('Styl skládání', select(Object.fromEntries(Object.entries(STYLES).map(([id, x]) => [id, x.label])), cfg.style ?? 'auto', `Styl skládání – krok ${k}`, (v) => patch({ style: v === 'auto' ? undefined : v })),
       `${STYLES[cfg.style ?? 'auto']?.hint ?? ''}. Mění počet tahů v odhadu (test, porovnání i vylepšení metody).`);
     // kolik případů krok má (= kolik algoritmů se naučit) – dopočítá se ve workeru
-    const cases = solveBy === 'generate' || solveBy === 'own' ? el('small', { className: 'bld-cases hint', textContent: 'Počítám, kolik případů krok má…' }) : null;
+    const cases = solveBy === 'generate' || solveBy === 'own' || solveBy === 'known' ? el('small', { className: 'bld-cases hint', textContent: 'Počítám, kolik případů krok má…' }) : null;
     if (cases) {
       try {
         const g = guides.get(method);
@@ -423,6 +432,7 @@ export function renderBuilder() {
         how('intuitive', 'Intuitivně', 'Řešení se pokaždé vymýšlí (kříž, páry, bloky).'),
         how('generate', 'Algoritmy – vygenerovat', 'Aplikace najde algoritmy na případy kroku a uloží je jako sadu.'),
         how('own', 'Algoritmy – moje sada', 'Tvoje algoritmy; chybějící případy doplní vygenerované.'),
+        how('known', 'Algoritmy – známá sada', 'Standardní OLL nebo PLL – nic nevytváříš, test je použije sám.'),
         how('fixed', 'Jen někdy – pevný algoritmus', 'Např. parita: M2 U2 M2, jen když je potřeba.')),
       howBody, cases, style ? el('div', { className: 'grid-fields' }, style) : null);
 

@@ -1838,3 +1838,30 @@ test('lab: zadání jako v metodě jde na počítači posunout kolečkem až dol
   await p.waitForFunction(() => { const r = document.querySelector('#cells-clear').getBoundingClientRect(); return r.bottom > 0 && r.bottom <= innerHeight; });
   await ctx.close();
 });
+
+test('sestavení metody: krok se známou sadou OLL/PLL – test ji použije, učebnice napíše „použij OLL“', async () => {
+  const top = ['UF', 'UR', 'UB', 'UL', 'UFR', 'UFL', 'UBR', 'UBL'];
+  const f2l = ['DF', 'DR', 'DB', 'DL', 'FR', 'FL', 'BR', 'BL', 'DFR', 'DFL', 'DBR', 'DBL'];
+  const guides = { default: { intro: '', frame: { down: 'D', front: 'F' }, steps: [
+    { id: 'f', title: 'F2L', text: '', cells: Object.fromEntries(f2l.map((n) => [n, { own: 'solved' }])) },
+    { id: 'o', title: 'OLL', text: '', cells: Object.fromEntries(top.map((n) => [n, { colors: { U: ['U'] } }])) },
+    { id: 'p', title: 'PLL', text: '', cells: Object.fromEntries(top.map((n) => [n, { own: 'solved' }])) },
+  ] } };
+  const { p, ctx, errors } = await open('method', { 'ergocube.guides': guides });
+  await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
+  await p.locator('.bld-tl-item', { hasText: 'OLL' }).tap();
+  await p.locator('.bld-step.open .bld-how-opt', { hasText: 'Algoritmy – známá sada' }).tap();
+  assert.equal(await p.locator('.bld-step.open select[aria-label^="Známá sada"]').inputValue(), 'OLL');
+  assert.match(await p.locator('.bld-step.open .bld-algs').innerText(), /standardními algoritmy OLL \(57 případů\)/);
+  assert.match(await p.locator('.bld-tl-item[data-step="o"]').textContent(), /OLL/);
+  await p.locator('.bld-tl-item[data-step="p"]').evaluate((e) => e.click());
+  await p.waitForSelector('.bld-step.open[data-step="p"], .bld-step.open');
+  await p.locator('.bld-step.open .bld-how-opt', { hasText: 'Algoritmy – známá sada' }).tap();
+  await p.locator('.bld-step.open select[aria-label^="Známá sada"]').selectOption('PLL');
+  const html = await p.evaluate(async () => (await import('./src/ui/learnexport.js')).learningHtml());
+  assert.match(html, /OLL algoritmy \(57\)[\s\S]*PLL algoritmy \(21\)/);
+  assert.match(html, /použij standardní OLL algoritmy[\s\S]*použij standardní PLL algoritmy/);
+  assert.doesNotMatch(html, /OLL 27|T-perm/);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

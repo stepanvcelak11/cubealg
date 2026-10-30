@@ -6,6 +6,7 @@
 // Výsledek je čistě datový (viz stepsolver.js), aby šel poslat do workerů.
 
 import { KNOWN_SETS, knownAlgs } from './knownsets.js';
+import { withoutRotations } from '../ergonomics/algdb.js';
 import { stepParts, partsBefore, mergeParts, frameMap, validFrame, DEFAULT_FRAME } from '../ui/parts.js';
 import { slotByName, SLOTS } from '../core/geometry.js';
 import { holdOf, holdFromFaces } from '../core/hold.js';
@@ -281,7 +282,8 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
             // (algoritmus z Knihovny nebo Labu bez držení je psaný obvykle: žlutá nahoře)
             const own = a.task?.hold ?? '';
             // známá sada je psaná vůči držení kroku (horní vrstva nahoře)
-            let model = !a.known && v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
+            let model = !a.known && v === 0 && !holds.has(own) ? holdOf(own).toModelString(display)
+              : toModel(a.known ? withoutRotations(display) : display); // rotace uprostřed (V-perm: y) → tahy, kostka nezůstane otočená
             if (!a.known && keeps && v === 0 && !holds.has(own) && !keeps(model)) {
               const held = toModel(display);
               if (keeps(held)) model = held;
