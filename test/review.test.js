@@ -68,3 +68,19 @@ test('prstoklad: ruce se střídají, když to jde, a můj prstoklad má předno
   assert.ok(FINGER_MOVES.includes("U'"));
   assert.match(defaultFinger("U'")[0], /levý ukazováček/);
 });
+
+test('hledání: zakázaný tah složený z povolených (R2 r2 = M2) se nepoužije', async () => {
+  const { getPuzzle } = await import('../src/puzzles/index.js');
+  const { hiddenMove } = await import('../src/search/improve.js');
+  const P = getPuzzle('333');
+  const mv = (bases, amounts = [1, -1, 2]) => bases.flatMap((base) => amounts.map((amount) => ({ base, amount })));
+  const noM = mv(['R', 'U', 'F', 'L', 'D', 'B', 'r']);
+  assert.equal(hiddenMove(P, noM, 'R2 r2 U'), 'M2');
+  assert.equal(hiddenMove(P, noM, "U R r'"), 'M');
+  assert.equal(hiddenMove(P, noM, 'R R U'), null); // jen jinak zapsané R2
+  assert.equal(hiddenMove(P, noM, "R U r2 U'"), null);
+  assert.equal(hiddenMove(P, mv(['R', 'U', 'r', 'M']), 'R2 r2'), null); // M povolené
+  const noM2 = [...mv(['R', 'U', 'r']), { base: 'M', amount: 1 }, { base: 'M', amount: -1 }];
+  assert.equal(hiddenMove(P, noM2, 'R2 r2'), 'M2');
+  assert.equal(hiddenMove(P, noM2, "R r'"), null);
+});

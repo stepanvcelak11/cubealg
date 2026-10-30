@@ -209,10 +209,11 @@ export const algs = {
   /** Algoritmy všech sad metody (výchozí = aktivní). */
   inMethod(method = methods.active()) { return algsData.filter((a) => setMethod(a.set) === method); },
   /** @param {{alg:string, task:object, name?:string, set?:string}} entry */
-  add({ alg, task, name, set = defaultSetId() }) {
+  /** look: natočení pohledu na kostku při uložení (jak ji skladač v Labu viděl), jen pro zobrazení. */
+  add({ alg, task, name, set = defaultSetId(), look }) {
     const id = `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const count = this.inSet(set).length;
-    algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now() });
+    algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now(), ...(look ? { look } : {}) });
     this.save();
     return id;
   },

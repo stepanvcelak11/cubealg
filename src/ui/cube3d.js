@@ -114,6 +114,13 @@ export class Cube3D {
     return holdFromFaces(upFace, best(front, [...axis]));
   }
 
+  /** Pohled natočený jako držení `rot` (jen pohled – zápis tahů a držení se nemění). */
+  setLook(rot) {
+    const [c1, c2, c3] = holdOf(rot).linear();
+    this.view = defaultMatrix().multiply(new DOMMatrix([...c1, 0, ...c2, 0, ...c3, 0, 0, 0, 0, 1]));
+    this.applyView();
+  }
+
   resetView() {
     this.view = this.homeMatrix();
     this.cube.style.transition = 'transform 250ms ease-out';

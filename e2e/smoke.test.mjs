@@ -1642,3 +1642,47 @@ test('trenažér: ohodnocení vlastních algoritmů (známka, srovnání, ulože
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab → trenažér: pohled natočený jako v Labu, upozornění když algoritmus nesedí s případem', async () => {
+  const { p, ctx, errors } = await open('lab');
+  const T = "R U R' U' R' F R2 U' R' U' R U R' F'";
+  await p.evaluate(async (T) => {
+    const lab = await import('./src/ui/lab.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    lab.openTask({ colorsA: m.applyMoves(home, m.invertAlg(T)), colorsB: home, constraints: Object.fromEntries(m.pieceNames.map((n) => [n, 'solved'])) });
+  }, T);
+  await p.locator('.segmented button[data-sub="results"]').tap();
+  await p.locator('#alg').fill(T);
+  await p.locator('#alg').press('Enter');
+  // kostku v přehrávači otočit „vzhůru nohama“ tažením
+  const box = await p.locator('#cube-p').boundingBox();
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height * 0.2);
+  await p.mouse.down();
+  for (let i = 1; i <= 10; i++) await p.mouse.move(box.x + box.width / 2, box.y + box.height * (0.2 + i * 0.07));
+  await p.mouse.up();
+  await p.locator('#p-save').tap();
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')));
+  assert.equal(saved.length, 1);
+  assert.ok(saved[0].look, 'natočení pohledu se uloží');
+  // trenažér: stejný případ, natočený jako v Labu, algoritmus sedí
+  await p.evaluate(() => localStorage.setItem('ergocube.page', '"trainer"'));
+  await p.reload();
+  await p.waitForSelector('#tr-cube .sticker3d');
+  const tf = await p.evaluate(() => document.querySelector('#tr-cube .cube3d, #tr-cube [style*="matrix"]')?.style.transform ?? '');
+  assert.ok(tf.includes('matrix'), tf);
+  assert.equal(await p.locator('.tr-mismatch').count(), 0);
+  // rozbitý případ (algoritmus neřeší uložený Start) → upozornění s opravou v Labu
+  await p.evaluate(() => {
+    const list = JSON.parse(localStorage.getItem('ergocube.algs'));
+    list[0].alg = "R U R' U'";
+    localStorage.setItem('ergocube.algs', JSON.stringify(list));
+  });
+  await p.reload();
+  await p.waitForSelector('.tr-mismatch');
+  await p.locator('.tr-mismatch button', { hasText: 'Otevřít v Labu' }).tap();
+  await p.waitForSelector('.page[data-page="lab"]:not([hidden])');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

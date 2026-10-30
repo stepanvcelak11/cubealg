@@ -170,6 +170,47 @@ export function simplify(puzzle, moves, alg) {
   return out.map((i) => puzzle.moveToString(moves[i])).join(' ');
 }
 
+// Osy kostky: tahy na stejné ose se dají složit (R2 r2 = M2, R r' = M, U u' = E'…).
+const AXIS = { R: 'x', L: 'x', r: 'x', l: 'x', M: 'x', x: 'x', U: 'y', D: 'y', u: 'y', d: 'y', E: 'y', y: 'y', F: 'z', B: 'z', f: 'z', b: 'z', S: 'z', z: 'z' };
+const hiddenCache = new WeakMap();
+
+/**
+ * Zakázaný tah složený z povolených: dva a víc tahů po sobě na stejné ose, které dohromady
+ * dělají jiný tah, než je v nich (R2 r2 = M2, R r' = M, L' l = M…). Když ten tah v sadě
+ * není (např. skladač zakázal M2), skladač by ho stejně musel točit – řešení se zahodí.
+ * @returns {string|null} zápis skrytého tahu, nebo null
+ */
+export function hiddenMove(puzzle, moves, alg) {
+  if (!alg || puzzle.id !== '333') return null;
+  let info = hiddenCache.get(moves);
+  if (!info) {
+    const allowed = new Set(moves.map((m) => `${m.base}${m.amount}`));
+    const key = (seq) => puzzle.applyAlg(puzzle.solved(), seq).join(',');
+    // tahy, které v sadě nejsou: podle permutace
+    const banned = new Map();
+    for (const base of puzzle.bases) {
+      if (!AXIS[base]) continue;
+      for (const amount of puzzle.amountsOf(base)) {
+        if (allowed.has(`${base}${amount}`)) continue;
+        try { banned.set(key([{ base, amount }]), { base, amount }); } catch { /* tah nejde */ }
+      }
+    }
+    info = { banned, key };
+    hiddenCache.set(moves, info);
+  }
+  if (!info.banned.size) return null;
+  const seq = puzzle.parseAlg(alg);
+  for (let i = 0; i < seq.length; i++) {
+    for (let j = i + 1; j < seq.length && AXIS[seq[j].base] === AXIS[seq[i].base] && AXIS[seq[i].base]; j++) {
+      const run = seq.slice(i, j + 1);
+      const m = info.banned.get(info.key(run));
+      // R R = R2 je jen jinak zapsaný stejný tah – vadí jen tah s jiným základem (M z R a r)
+      if (m && !run.some((x) => x.base === m.base)) return puzzle.moveToString(m);
+    }
+  }
+  return null;
+}
+
 /**
  * Vylepšování algoritmu podle cíle `value` (nižší = lepší; pole se porovnává
  * lexikograficky). Iterované lokální hledání: stoupá k lepším sousedům (výměna

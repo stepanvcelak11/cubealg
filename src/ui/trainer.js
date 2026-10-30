@@ -59,6 +59,32 @@ function pickNext() {
 let mode = storage.get('ergocube.trainer.mode') === 'recog' ? 'recog' : 'time';
 
 /** Vykreslí případ algoritmu (volitelně po natočení horní vrstvy o auf čtvrtotáček). */
+let lookedAt = null; // případ, u kterého je pohled nastavený (tažením si ho jde natočit)
+const checked = new Map(); // id → { alg, ok } – řeší algoritmus zobrazený případ?
+let openLabFn = null;
+
+/** Řeší uložený algoritmus případ, jak ho trenažér ukazuje? (null = nejde ověřit) */
+function solvesCase(a) {
+  const c = checked.get(a.id);
+  if (c && c.alg === a.alg && c.task === a.task) return c.ok;
+  let ok = null;
+  try {
+    const model = labModel(a.task.puzzle ?? '333');
+    if (model.kind === 'perm') {
+      const b = model.buildTask(model.deserialize(a.task.colorsA), model.deserialize(a.task.colorsB), a.task.constraints, a.task.marks);
+      if (!b.loc) ok = false;
+      else {
+        const held = a.task.hold ? holdFor(model, a.task.hold) : null;
+        const steps = model.steps(a.alg.replace(/[()]/g, ' '));
+        const goal = model.goal(b.constraints, b.target);
+        ok = goal.test(model.applySteps(b.loc, held ? held.toModel(steps) : steps));
+      }
+    }
+  } catch { ok = false; }
+  checked.set(a.id, { alg: a.alg, task: a.task, ok });
+  return ok;
+}
+
 function drawCase(a, auf = 0) {
   const model = labModel(a.task.puzzle ?? '333');
   if (cubePuzzle !== model.id) {
@@ -69,13 +95,23 @@ function drawCase(a, auf = 0) {
       : new NetView($('tr-cube'), { label: 'Případ', fill: true, viewBox: v.viewBox, polys: v.polys });
     cubePuzzle = model.id;
   }
-  // případ se ukáže tak, jak byla kostka držená při hledání algoritmu
+  // případ se ukáže tak, jak byla kostka držená při hledání algoritmu – a natočená tak,
+  // jak se na ni skladač v Labu díval při uložení (look)
   if (cube.setHold && cube.hold !== (a.task.hold ?? '')) cube.setHold(a.task.hold ?? '');
+  if (lookedAt !== a.id) {
+    lookedAt = a.id;
+    if (a.look && cube.setLook) cube.setLook(a.look);
+    else if (cube.resetView) cube.resetView();
+  }
   const side = model.deserialize(a.task.colorsA);
   const sideB = model.deserialize(a.task.colorsB);
   const built = side && sideB ? model.buildTask(side, sideB, a.task.constraints, a.task.marks) : side ? model.build(side, a.task.constraints) : { loc: null };
   let { loc } = built;
-  if (!loc) return;
+  if (!loc) {
+    // zadání nejde sestavit: prázdná kostka (ne obrázek předchozího případu)
+    cube.render(Array.from({ length: model.P?.size ?? 54 }, () => ({ color: 'X', style: 'none' })));
+    return;
+  }
   if (auf) {
     // natočení horní vrstvy v rámci držení (U = stěna nahoře)
     const held = a.task.hold ? holdFor(model, a.task.hold) : null;
@@ -103,7 +139,19 @@ function showCase() {
   drawCase(a);
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';
   renderReveal(a);
+  renderMismatch(a);
   if (smart.id !== a.id || smart.phase === 'off') smartPrepare();
+}
+
+/** Upozornění, když algoritmus neřeší zobrazený případ (s opravou v Labu). */
+function renderMismatch(a) {
+  const box = $('tr-reveal');
+  box.querySelector('.tr-mismatch')?.remove();
+  if (solvesCase(a) !== false) return;
+  const fix = openLabFn ? el('button', { type: 'button', className: 'secondary small', textContent: 'Otevřít v Labu' }) : null;
+  if (fix) fix.onclick = () => openLabFn({ ...a.task, ...(a.task.puzzle ? {} : { puzzle: '333' }) }, a.alg);
+  box.prepend(el('div', { className: 'tr-mismatch' },
+    el('span', { textContent: '⚠ Algoritmus neřeší případ, jak je uložený – obrázek s ním nesedí. Otevři ho v Labu, zkontroluj Start a ulož znovu.' }), fix));
 }
 
 let showSetup = false;
@@ -123,7 +171,7 @@ function renderReveal(a) {
     const sb = el('button', { type: 'button', className: `secondary small${showSetup ? ' on' : ''}` });
     sb.innerHTML = icon('shuffle', { size: 16 });
     sb.append(el('span', { textContent: 'Nastavení' }));
-    sb.onclick = () => { showSetup = !showSetup; renderReveal(a); };
+    sb.onclick = () => { showSetup = !showSetup; renderReveal(a); renderMismatch(a); };
     box.replaceChildren(...[el('div', { className: 'row-btns' }, b, sb), setup].filter(Boolean));
     return;
   }
@@ -467,6 +515,7 @@ function initSmartTrainer() {
 
 export function initTrainer({ isActive, openLab }) {
   isActiveFn = isActive;
+  openLabFn = openLab ?? null;
   cube = new Cube3D($('tr-cube'), { label: 'Případ', fill: true });
   cubePuzzle = '333';
   stopwatch = new Stopwatch({

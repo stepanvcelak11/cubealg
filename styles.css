@@ -2048,3 +2048,4 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .ergo-finger b { font-family: var(--mono); }
 .ergo-finger select { min-height: 38px; font-size: 0.8rem; }
 .ergo-finger small { grid-column: 2; color: var(--muted); font-size: 0.68rem; margin-top: -3px; }
+.tr-mismatch { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--bad-soft); color: var(--bad); font-size: 0.8rem; font-weight: 600; }

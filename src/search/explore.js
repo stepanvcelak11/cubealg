@@ -7,7 +7,7 @@ import { ergoStep, ERGO_START, fullConfig } from '../ergonomics/score.js';
 import { moveWeight } from '../ergonomics/weights.js';
 import { mirrorMove, MOVE_DEFS } from '../core/notation.js';
 import { styleMetrics, speedKey, balancedValue, MOVE_TIME } from '../ergonomics/style.js';
-import { buildTable, improve, simplify } from './improve.js';
+import { buildTable, improve, simplify, hiddenMove } from './improve.js';
 import { stagedSolve } from './staged.js';
 import { makeResolver } from './resolve.js';
 import { searchLibrary, blocksOf, blockPuzzle } from './library.js';
@@ -183,6 +183,8 @@ export function explore({ P, start, target, constraints, moves, held, auf, shard
   const emit = (alg, pre, post) => {
     alg = simplify(P, moves, alg);
     if (!alg) return;
+    // zakázaný tah složený z povolených (R2 r2 = M2, když M2 v sadě není)
+    if (hiddenMove(P, moves, alg)) return;
     if (aufBase) {
       const t = alg.split(' ');
       while (t.length > 1 && P.parseAlg(t[0])[0].base === aufBase) pre = aufName(amountOf(pre) + amountOf(t.shift()));

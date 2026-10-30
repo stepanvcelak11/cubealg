@@ -315,6 +315,14 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Z Labu do trenažéru
+
+Uložený algoritmus nese zadání případu (Start, Cíl, omezení, držení) a i natočení, ve kterém
+skladač kostku v Labu zrovna měl (`look`, když ji otočil tažením a nezamkl držení) – trenažér ji
+ukáže stejně natočenou. Trenažér u každého případu ověří, že algoritmus zobrazený případ opravdu
+vyřeší; když ne (např. případ uložený ze staršího zadání), ukáže upozornění s tlačítkem
+**Otevřít v Labu**. Zadání, které nejde sestavit, se nekreslí obrázkem předchozího případu.
+
 ## Hodnocení vlastních algoritmů
 
 Trenažér → ikona budíku (`ui/review.js`, logika `ergonomics/review.js`): algoritmy napsané
@@ -552,6 +560,10 @@ s povolenými tahy – je tedy přípustná a respektuje omezení tahů.
 Hledání neskončí u optima: projde délky *optimum … optimum + N* a vrátí všechny
 nalezené sekvence (bez redundantních pořadí tahů na stejné ose a bez zbytečných
 koncových tahů). Ty se pak seřadí podle Discomfort Score.
+
+Zakázaný tah se nepropašuje složením z povolených: když v sadě chybí třeba M2, řešení s
+R2 r2 (= M2), R r' (= M) nebo L' l se zahodí (`hiddenMove` v `src/search/improve.js`) – stejně
+pro E, S, rotace i široké tahy. R R (= R2) zůstává, to je jen jinak zapsaný stejný tah.
 
 Zlepšování (`src/search/explore.js`) střídá úlohy: menší sady tahů, úplné
 hledání (důkaz nejkratšího), přeřešení úseků a dále

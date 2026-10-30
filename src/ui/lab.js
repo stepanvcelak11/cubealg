@@ -1448,7 +1448,13 @@ const savedFor = (alg) => algs.find(alg, taskSnapshot(), saveSet);
 function toggleSave(alg) {
   const existing = savedFor(alg);
   if (existing) algs.remove(existing.id);
-  else algs.add({ alg, task: taskSnapshot(), set: saveSet });
+  else algs.add({ alg, task: taskSnapshot(), set: saveSet, look: currentLook() });
+}
+
+/** Jak má skladač kostku v Labu zrovna natočenou (když jinak než držení) – trenažér ji ukáže stejně. */
+function currentLook(view = ui.sub === 'results' ? cubeP : cubeA) {
+  const look = view?.nearestHold?.();
+  return look != null && look !== (ui.hold ?? '') ? look : undefined;
 }
 
 function renderResults() {
@@ -1993,6 +1999,7 @@ function generateSet() {
     // na čem závisí výsledky hledání (kromě případu): hlavolam, držení, tahy, hodnocení, AUF
     signature: JSON.stringify([model.id, ui.hold, moveSet.engineMoves, progressSig(useAuf)]),
     library: libraryAlgs,
+    look: () => currentLook(cubeA),
     onOpenSet: (id) => onOpenSet(id),
   });
 }
