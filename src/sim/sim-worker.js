@@ -23,6 +23,19 @@ function missOf(state, goal, variant) {
   return { a: colorsOfState(P, state, goal).join(''), b: colorsOfState(P, P.solved(), fixed).join(''), goal, hold: plan.variants[variant]?.hold ?? '' };
 }
 
+/** Je každá strana jednou barvou (kostka složená v jakékoli orientaci)? */
+function wholeSolved(loc) {
+  const at = new Array(loc.length);
+  for (let k = 0; k < loc.length; k++) at[loc[k]] = P.stickerFace[k];
+  const faces = new Map();
+  for (let pos = 0; pos < loc.length; pos++) {
+    const f = P.stickerFace[pos];
+    if (!faces.has(f)) faces.set(f, at[pos]);
+    else if (faces.get(f) !== at[pos]) return false;
+  }
+  return true;
+}
+
 const kernel = initKernel();
 let plan = null;
 let solver = null;
@@ -64,7 +77,9 @@ self.onmessage = async ({ data }) => {
       state = after;
       return out;
     });
-    self.postMessage({ type: 'solved', id: data.id, solve: { ...solve, start: Array.from(solve.start), steps, end: colors(state) } });
+    // celá kostka složená (každá strana jednou barvou, jakkoli natočená) – metoda je úplná
+    const full = solve.ok && wholeSolved(state);
+    self.postMessage({ type: 'solved', id: data.id, solve: { ...solve, start: Array.from(solve.start), steps, end: colors(state), full } });
   } catch (e) {
     self.postMessage({ type: 'error', id: data.id, message: e.message });
   }

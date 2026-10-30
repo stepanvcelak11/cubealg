@@ -30,6 +30,7 @@ import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } f
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
 import { netSvg } from './netsvg.js';
+import { isGroupCell } from '../core/cells.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { makeLearner } from '../sim/learn.js';
 
@@ -282,7 +283,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     return (k) => { while (list.length <= k) list.push(practiceState({}, rand)); return list[k]; };
   }
   const compact = (solve, k) => ({
-    k, ok: solve.ok, variant: solve.variant,
+    k, ok: solve.ok, variant: solve.variant, full: solve.full,
     start: k < KEEP_DISPLAY ? solve.start : undefined,
     steps: solve.steps.map((x) => ({
       length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation, adjust: x.adjust || undefined, alt: x.alt,
@@ -527,7 +528,11 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     // skládá metoda celou kostku? (kroky s pravidly pro skupiny dílků se berou jako celé)
     const g = guides.get(method);
     const done = g.steps.reduce((acc, st) => mergeParts(acc, stepParts(st)), {});
-    const partial = !g.steps.some((st) => st.rules?.length) && !SLOTS.filter((s) => s.type !== 'center').every((s) => done[s.name] === 'solved');
+    // podle výsledku testu: složila zamíchání celou kostku? (starší běhy bez údaje: podle kroků)
+    const known = solves.filter((x) => x.ok && typeof x.full === 'boolean');
+    const partial = known.length
+      ? known.filter((x) => x.full).length < known.length * 0.9
+      : !g.steps.some((st) => st.rules?.length || Object.values(st.cells ?? {}).some(isGroupCell)) && !SLOTS.filter((s) => s.type !== 'center').every((s) => done[s.name] === 'solved');
     const draw = (algCount, knownAlgs = null) => {
       const r = methodReport({ solves, stepCount: meta.stepTitles.length, timing, titles: meta.stepTitles, algCount, knownAlgs, partial });
       if (!r) { box.replaceChildren(); return; }
