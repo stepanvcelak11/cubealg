@@ -5,11 +5,13 @@
 import { storage } from './dom.js';
 import { algs } from './store.js';
 import { stepDefaults, solveByOf } from '../sim/plan.js';
+import { KNOWN_SETS } from '../sim/knownsets.js';
 
 /** Úplné nastavení kroku (výchozí hodnoty + uložené). */
 export function stepConfig(method, st) {
   const legacy = storage.get('ergocube.sim.options')?.steps?.[method]?.[st.id];
-  const hasSet = st.set ? algs.inSet(st.set).length > 0 : false;
+  const known = st.sim?.solveBy === 'known' && !!KNOWN_SETS[st.sim?.knownSet];
+  const hasSet = known || (st.set ? algs.inSet(st.set).length > 0 : false);
   const cfg = { ...stepDefaults(hasSet), ...(legacy ?? {}), ...(st.sim ?? {}) };
   if (!hasSet) cfg.mode = 'search';
   return cfg;

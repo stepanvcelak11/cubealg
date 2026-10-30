@@ -1825,3 +1825,16 @@ test('lab: zadání jako v metodě – víc barev na nálepce, hledání jednoho
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: zadání jako v metodě jde na počítači posunout kolečkem až dolů', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+  const p = await ctx.newPage();
+  await p.addInitScript(() => { if (!sessionStorage.getItem('init')) { sessionStorage.setItem('init', '1'); localStorage.clear(); localStorage.setItem('ergocube.page', '"lab"'); } });
+  await p.goto(base);
+  await p.locator('#task-mode button[data-mode="cells"]').click();
+  const box = await p.locator('#cells-panel').boundingBox();
+  await p.mouse.move(box.x + box.width / 2, box.y + 100);
+  await p.mouse.wheel(0, 4000);
+  await p.waitForFunction(() => { const r = document.querySelector('#cells-clear').getBoundingClientRect(); return r.bottom > 0 && r.bottom <= innerHeight; });
+  await ctx.close();
+});

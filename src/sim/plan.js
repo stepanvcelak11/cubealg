@@ -5,6 +5,7 @@
 // a vpředu), ve kterých se krok smí složit; další kroky pak pokračují v té zvolené.
 // Výsledek je čistě datový (viz stepsolver.js), aby šel poslat do workerů.
 
+import { KNOWN_SETS, knownAlgs } from './knownsets.js';
 import { stepParts, partsBefore, mergeParts, frameMap, validFrame, DEFAULT_FRAME } from '../ui/parts.js';
 import { slotByName, SLOTS } from '../core/geometry.js';
 import { holdOf, holdFromFaces } from '../core/hold.js';
@@ -61,6 +62,7 @@ export const stepDefaults = (hasSet) => ({
  * naučené algoritmy (OLL, PLL…) „vygenerovat“, jinak intuitivně.
  */
 export function solveByOf(cfg, st) {
+  if (cfg.solveBy === 'known' && !KNOWN_SETS[cfg.knownSet]) return 'generate';
   return cfg.solveBy ?? (st.set && !cfg.genSet ? 'own' : cfg.kind === 'alg' ? 'generate' : 'intuitive');
 }
 
@@ -186,7 +188,9 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
     const cfg0 = config[st.id] ?? {};
     // intuitivní krok se skládá jen hledáním: žádné algoritmy ze sady, nic se neučí
     const intuitive = !fixed && (cfg0.solveBy === 'intuitive' || cfg0.solveBy === 'fixed' || solveByOf({ ...stepDefaults(false), ...cfg0 }, st) === 'intuitive');
-    const algs = st.set && !fixed && !intuitive ? setAlgs(st.set) : [];
+    // známá sada (OLL, PLL…): vestavěné algoritmy místo tvé sady
+    const known = !fixed && !intuitive && cfg0.solveBy === 'known' && KNOWN_SETS[cfg0.knownSet] ? knownAlgs(cfg0.knownSet) : null;
+    const algs = known ?? (st.set && !fixed && !intuitive ? setAlgs(st.set) : []);
     const cfg = { ...stepDefaults(algs.length > 0), ...cfg0 };
     if (fixed) cfg.on = true;
     else if (cfg.solveBy === 'fixed') cfg.solveBy = 'intuitive';
@@ -276,8 +280,9 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
             // se ve výchozí orientaci dělá v tom svém – pokud v něm nerozbije hotové kroky
             // (algoritmus z Knihovny nebo Labu bez držení je psaný obvykle: žlutá nahoře)
             const own = a.task?.hold ?? '';
-            let model = v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
-            if (keeps && v === 0 && !holds.has(own) && !keeps(model)) {
+            // známá sada je psaná vůči držení kroku (horní vrstva nahoře)
+            let model = !a.known && v === 0 && !holds.has(own) ? holdOf(own).toModelString(display) : toModel(display);
+            if (!a.known && keeps && v === 0 && !holds.has(own) && !keeps(model)) {
               const held = toModel(display);
               if (keeps(held)) model = held;
             }

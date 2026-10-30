@@ -2071,3 +2071,5 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .tr-auf { margin: 0; font-size: 0.85rem; }
 .task-bar .task-mode button[hidden] { display: none; }
 .cells-panel h3 { margin: 14px 0 6px; }
+/* zadání jako v metodě je delší než obrazovka: panel se posouvá sám (stránka Zadání má pevnou výšku) */
+.page.fixed .fixed-sub .cells-panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
