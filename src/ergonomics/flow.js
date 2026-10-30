@@ -19,6 +19,7 @@ export const FLOW_DEFAULTS = {
   reuse: 0.4,         // stejný prst dvakrát po sobě
   sameHand: 0.4,      // dva prstové tahy po sobě jednou rukou
   alternate: 0,       // bonus za střídání rukou (podle oblíbených algoritmů nic nepřidá, bench/fit.mjs)
+  sliceBottom: 0.6,   // M hned po D/E nebo naopak: prsty od M (zezadu nahoře) musí na spodek kostky
 };
 
 /**
@@ -112,9 +113,14 @@ export function flowStep(s, m, isRotation, c) {
   } else {
     const best = options(m.base, m.amount, wR, wL).sort((a, b) => a[2] - b[2])[0];
     [hand, finger, cost] = best;
-    if (cost >= 0.4) reasons.push(`${finger.includes('push') ? 'náhradní prst' : 'zápěstí není v pozici'}`);
+    if (cost >= 0.4) reasons.push(finger.includes('push') ? 'náhradní prst' : /^[SEBb]$/.test(m.base) ? 'nepohodlný tah prstem' : 'zápěstí není v pozici');
   }
-  if (prev) {
+  if (prev && c.sliceBottom && ((prev.base === 'M' && /^[DdE]$/.test(m.base)) || (m.base === 'M' && /^[DdE]$/.test(prev.base)))) {
+    cost += c.sliceBottom;
+    kind = 'sliceBottom';
+    reasons.push(prev.base === 'M' ? 'po M musí prsty na spodní stranu (přehmat)' : 'po spodní vrstvě musí prsty zpátky na M');
+  }
+  if (prev && kind !== 'sliceBottom') {
     if (finger !== 'wrist' && prev.hand === hand && prev.finger === finger && prev.base !== m.base) {
       cost += c.reuse;
       kind = 'reuse';

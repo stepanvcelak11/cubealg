@@ -43,7 +43,9 @@ export function ergoStep(s, m, cfg) {
   if (w) {
     const [hand, sign] = w;
     const cur = hand === 'right' ? wristR : wristL;
-    let next = cur + sign * m.amount;
+    // o 180° jde zápěstí točit oběma směry – vybere se ten, po kterém zůstane blíž home
+    // (R2 R2 = tam a zpátky, žádný přehmat)
+    let next = m.amount === 2 && Math.abs(cur - 2) < Math.abs(cur + 2) ? cur - 2 : cur + sign * m.amount;
     if (Math.abs(next) > cfg.maxWristTurn) {
       item.regrip = cfg.regripPenalty;
       next = sign * m.amount;

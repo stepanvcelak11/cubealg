@@ -74,7 +74,10 @@ initMethods({
 });
 initTimer({ isActive: () => page === 'timer' });
 initStats();
-initTrainer({ isActive: () => page === 'trainer' });
+initTrainer({
+  isActive: () => page === 'trainer',
+  openLab: (task) => { openTask(task); showPage('lab'); toast('Případ je v Labu – spusť hledání a porovnej s tvým algoritmem (Zpět vrátí původní zadání)'); },
+});
 initLab({ onSub: () => updateLock(), openSet: (id) => { trainSetTo(id); showPage('trainer'); } });
 initSettings();
 initSmartCubeUi();

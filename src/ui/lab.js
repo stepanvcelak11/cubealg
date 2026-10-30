@@ -901,6 +901,7 @@ const ERGO_FIELDS = {
     ['flowScale', 'Návaznost tahů – prstoklad (násobek)', 0.1],
     ['reuse', 'Stejný prst dvakrát po sobě', 0.1],
     ['sameHand', 'Dva prstové tahy jednou rukou', 0.05],
+    ['sliceBottom', 'M hned po D/E nebo naopak (prsty přes spodek)', 0.1],
     ['alternate', 'Bonus za střídání rukou', 0.05],
   ],
   sq1: [

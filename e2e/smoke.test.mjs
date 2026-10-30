@@ -1606,3 +1606,39 @@ test('moje rekordy: vložení z Excelu, zápis času, historie a rekord z timeru
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('trenažér: ohodnocení vlastních algoritmů (známka, srovnání, uložení, z mých sad)', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  await p.locator('#tr-review').tap();
+  await p.locator('.rv-text').fill("Můj Sune: L U L' U L U2 L'\nT-perm: R U R' U' R' F R2 U' R' U' R U R' F'\nF2L: R U R' y' U R' U' R");
+  await p.locator('.rv-dialog button', { hasText: 'Ohodnotit' }).tap();
+  await p.waitForSelector('.rv-card');
+  assert.equal(await p.locator('.rv-card').count(), 3);
+  assert.match(await p.locator('.rv-summary').innerText(), /Průměrná známka \d+ – 3 algoritm/);
+  const sune = p.locator('.rv-card').nth(0);
+  assert.match(await sune.innerText(), /Můj Sune[\s\S]*OLL · Sune[\s\S]*známých algoritmů pro Sune[\s\S]*rychlejší/);
+  assert.match(await p.locator('.rv-card').nth(1).locator('.rv-grade').innerText(), /100/);
+  assert.match(await p.locator('.rv-card').nth(2).innerText(), /F2L · vlastní|F2L/);
+  // porovnání s jiným algoritmem a moje volba → porovnání pro doladění vah
+  await sune.locator('.rv-vs summary').tap();
+  await sune.locator('.rv-vs-input').fill("R U R' U R U2 R'");
+  await sune.locator('.rv-vs button', { hasText: 'Porovnat' }).tap();
+  assert.match(await sune.locator('.rv-vs-res').innerText(), /Tvůj[\s\S]*Druhý[\s\S]*rychlejší/);
+  await sune.locator('.rv-vs-pick button', { hasText: 'Můj je lepší' }).tap();
+  const prefs = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.prefs')));
+  assert.equal(prefs.length, 1);
+  assert.equal(prefs[0].better, "L U L' U L U2 L'");
+  // uložení do trenažéru a pak hodnocení z mých sad
+  await sune.locator('button', { hasText: 'Uložit do trenažéru' }).tap();
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')));
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].name, 'Můj Sune');
+  await p.locator('.rv-src button', { hasText: 'Z mých sad' }).tap();
+  await p.waitForFunction(() => document.querySelectorAll('.rv-card').length === 1);
+  assert.match(await p.locator('.rv-card').innerText(), /Můj Sune/);
+  // otevřít v Labu
+  await p.locator('.rv-card button', { hasText: 'Hledat lepší v Labu' }).tap();
+  await p.waitForSelector('.page[data-page="lab"]:not([hidden])');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

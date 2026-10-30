@@ -13,7 +13,7 @@ import { buildTriggers } from '../ergonomics/triggers.js';
 import { toast } from './share.js';
 
 /** Tvoje váhy z Labu (Tahy a váhy). */
-function userErgo() {
+export function userErgo() {
   const e = storage.get('ergocube.ergo') ?? {};
   return { ...DEFAULT_CONFIG, ...e, moveWeights: { ...DEFAULT_MOVE_WEIGHTS, ...(e.moveWeights ?? {}) }, triggers: buildTriggers() };
 }

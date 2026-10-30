@@ -81,16 +81,17 @@ export function parseAlgText(text) {
 }
 
 /**
- * Algoritmus bez otočení kostky na začátku a na konci: „y' R U R'“ = stejné tahy viděné
- * z jiné strany (převedou se), otočení na konci se zahodí (případ je tentýž).
+ * Algoritmus bez otočení kostky: „y' R U R'“ = stejné tahy viděné z jiné strany (převedou se),
+ * stejně tak otočení uprostřed („R U R' y' U R' U' R“), otočení na konci se zahodí (případ je tentýž).
  */
 export function withoutRotations(alg) {
-  const t = alg.split(' ').filter(Boolean);
-  const lead = [];
-  while (t.length && /^[xyz]/.test(t[0])) lead.push(t.shift());
-  while (t.length && /^[xyz]/.test(t.at(-1))) t.pop();
-  if (!lead.length) return t.join(' ');
-  return holdOf(lead.join(' ')).toModelString(t.join(' '));
+  const out = [];
+  const rot = [];
+  for (const t of alg.split(' ').filter(Boolean)) {
+    if (/^[xyz]/.test(t)) rot.push(t);
+    else out.push(rot.length ? holdOf(rot.join(' ')).toModelString(t) : t);
+  }
+  return out.join(' ');
 }
 
 /** Hodnota pro pořadí (pohled Nejrychlejší): nepohodlnost + čas tahů. */

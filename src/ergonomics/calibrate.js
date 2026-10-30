@@ -18,6 +18,7 @@ const EVENTS = {
   grip: { get: (c) => c.gripChangePenalty, set: (c, w) => { c.gripChangePenalty = w; }, min: 0, max: 4 },
   'flow:reuse': { get: (c) => c.reuse * c.flowScale, set: (c, w) => { c.reuse = w / c.flowScale; }, min: 0, max: 4, flow: true },
   'flow:sameHand': { get: (c) => c.sameHand * c.flowScale, set: (c, w) => { c.sameHand = w / c.flowScale; }, min: 0, max: 4, flow: true },
+  'flow:sliceBottom': { get: (c) => c.sliceBottom * c.flowScale, set: (c, w) => { c.sliceBottom = w / c.flowScale; }, min: 0, max: 4, flow: true },
   // triggery (R U R' U', sledge…): příspěvek = −(součet jejich bonusů) × násobič
   trigger: { get: (c) => c.triggerBonusScale, set: (c, w) => { c.triggerBonusScale = w; }, min: 0, max: 3 },
   // bonus: příspěvek je záporný
@@ -157,6 +158,7 @@ export function calibrate(puzzle, config, items, { lambda = 3, minTimes = MIN_TI
 const EVENT_LABELS = {
   regrip: 'přehmat', grip: 'změna úchopu', trigger: 'bonus za triggery (násobek)', 'flow:reuse': 'stejný prst dvakrát',
   'flow:sameHand': 'dva tahy jednou rukou', 'flow:alternate': 'střídání rukou',
+  'flow:sliceBottom': 'M ↔ spodní vrstva',
 };
 export function featureLabel(key) {
   if (EVENT_LABELS[key]) return EVENT_LABELS[key];

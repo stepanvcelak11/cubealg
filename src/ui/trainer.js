@@ -20,6 +20,7 @@ import { smartCube } from '../smartcube/index.js';
 import { mergeQuarters } from '../smartcube/recon.js';
 import { recordSegments } from './smartdata.js';
 import { openLibrary } from './algdb.js';
+import { openReview } from './review.js';
 
 // Trénovaná sada ('all' = všechny).
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
@@ -464,7 +465,7 @@ function initSmartTrainer() {
   });
 }
 
-export function initTrainer({ isActive }) {
+export function initTrainer({ isActive, openLab }) {
   isActiveFn = isActive;
   cube = new Cube3D($('tr-cube'), { label: 'Případ', fill: true });
   cubePuzzle = '333';
@@ -500,6 +501,7 @@ export function initTrainer({ isActive }) {
   });
   $('tr-open').onclick = () => { renderList(); $('tr-sheet').hidden = false; };
   $('tr-library').onclick = () => openLibrary({ onSaved: (set) => trainSetTo(set) });
+  $('tr-review').onclick = () => openReview({ openLab, onSaved: (set) => trainSetTo(set) });
   $('tr-close').onclick = closeSheet;
   const sortSel = $('tr-sort');
   sortSel.replaceChildren(...Object.entries(SORTS).map(([k, v]) => el('option', { value: k, textContent: v.label })));

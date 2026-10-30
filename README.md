@@ -315,6 +315,28 @@ události `move` s časem z hodin kostky; `simulate()` + `feed()` napodobí kost
 - **Ergonomie z měření:** plynulé úseky bez pauzy (trenažér, kroky algoritmů v timeru) jsou
   změřené „algoritmy“ – Tahy a váhy → **Podle mé chytré kostky** z nich spočítá váhy.
 
+## Hodnocení vlastních algoritmů
+
+Trenažér → ikona budíku (`ui/review.js`, logika `ergonomics/review.js`): algoritmy napsané
+nebo vložené (každý na řádek, „název: tahy“, i se závorkami, Rw, M a rotacemi), nebo celá
+vlastní sada z trenažéru. U každého:
+
+- **případ** – PLL / OLL / F2L a podle sbírky i jméno (T-perm, Sune…), rotace uprostřed
+  algoritmu se převedou (`withoutRotations`),
+- **známka 0–100** – u známého případu (1 / poměr k nejlepšímu známému algoritmu)² podle tvých
+  vah (pohled Nejrychlejší), 100 = stejně dobrý nebo lepší; u neznámého případu plynulost
+  na tah proti všem algoritmům sbírky (dlouhé algoritmy trochu dolů),
+- **odhad času** při zvoleném tempu (tvůj profil skladače nebo úroveň) a tvoje naměřené časy
+  z trenažéru, pokud ho trénuješ,
+- **pořadí mezi známými algoritmy** pro stejný případ s grafem a o kolik jsou rychlejší
+  (jedním klepnutím do trenažéru),
+- **slabá místa** (zvýrazněná v zápisu): přehmat zápěstí, změna úchopu, otočení kostky,
+  špatná návaznost tahů; **silné stránky** (triggery, podíl R/U) a **co zkusit**,
+- **Hledat lepší v Labu** otevře případ v Labu, kde hledání najde pohodlnější řešení,
+- **Porovnat s jiným algoritmem** (třeba s tím z generátoru): oba vedle sebe se slabými
+  místy a verdiktem hodnocení; tvoje volba („Můj je lepší“ / „Ten druhý“ / „Stejně“) se uloží
+  jako porovnání a Lab → Tahy a váhy → **Podle mých porovnání** z nich doladí váhy.
+
 ## Knihovna algoritmů
 
 Trenažér → **Knihovna** (`ui/algdb.js`, logika `ergonomics/algdb.js`): vestavěná sbírka
@@ -578,8 +600,10 @@ práce, pevné semínko náhody), takže dává při každém spuštění stejn�
 ```
 celkem = Σ váha tahů              (R, U levné; F, L, D dražší; B, S, E drahé)
        + rotace × 10              (za čtvrtotáčku x/y/z)
-       + přehmaty zápěstí         (víc než 2 čtvrtotáčky R/L jedním směrem)
+       + přehmaty zápěstí         (víc než 2 čtvrtotáčky R/L jedním směrem; R2 jde točit
+                                   oběma směry, takže R2 … R2 je tam a zpátky bez přehmatu)
        + změny úchopu             (přechody F ↔ D ↔ B ↔ L mimo home grip)
+       + návaznost (prstoklad)    (stejný prst, dva tahy jednou rukou, M hned po D/E a naopak)
        − bonusy za triggery       (R U R' U', R' F R F', R U R', …)
 ```
 
