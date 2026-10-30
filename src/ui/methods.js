@@ -2,7 +2,9 @@
 // algoritmů v Labu i trenažér) do režimu zvolené metody.
 
 import { $, el } from './dom.js';
-import { methods, importMethod } from './store.js';
+import { methods, importMethod, duplicateMethod, myTemplates } from './store.js';
+import { openCopySets } from './copysets.js';
+import { toast } from './share.js';
 import { openGuide, shareMethod, shareMethodMenu } from './guide.js';
 
 export { shareMethod, shareMethodMenu };
@@ -18,6 +20,9 @@ function render() {
     el('option', { value: '+guide', textContent: 'Průvodce metodou…' }),
     el('option', { value: '+new', textContent: '+ Nová metoda…' }),
     el('option', { value: '+import', textContent: 'Importovat metodu…' }),
+    el('option', { value: '+dup', textContent: 'Duplikovat metodu' }),
+    el('option', { value: '+keep', textContent: 'Uložit jako předlohu…' }),
+    el('option', { value: '+copy', textContent: 'Kopírovat sady algoritmů…' }),
     el('option', { value: '+rename', textContent: 'Přejmenovat metodu…' }),
     active !== 'default' ? el('option', { value: '+delete', textContent: 'Smazat metodu…' }) : null,
   ].filter(Boolean));
@@ -39,6 +44,14 @@ function pick() {
   } else if (v === '+new') {
     const name = prompt('Název metody (např. Roux, ZZ nebo tvoje vlastní):', '')?.trim();
     if (name) { methods.setActive(methods.add(name)); guideDeps.build?.(); }
+  } else if (v === '+dup') {
+    duplicateMethod(active);
+    toast(`Vytvořená kopie „${methods.get(methods.active()).name}“ – originál zůstal`);
+  } else if (v === '+keep') {
+    const name = prompt('Název předlohy (najdeš ji v Sestavit → šablony):', `${methods.get(active).name} – předloha`)?.trim();
+    if (name) { myTemplates.save(active, name); toast(`Uloženo mezi předlohy: ${name}`); }
+  } else if (v === '+copy') {
+    openCopySets({ onDone: ({ sets, algs, target }) => toast(sets ? `Zkopírováno ${algs} algoritmů (${sets} sad) do metody ${methods.get(target)?.name}` : 'Nic se nezkopírovalo') });
   } else if (v === '+rename') {
     const name = prompt('Nový název metody:', methods.get(active).name)?.trim();
     if (name) methods.rename(active, name);

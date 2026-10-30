@@ -2073,3 +2073,17 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .cells-panel h3 { margin: 14px 0 6px; }
 /* zadání jako v metodě je delší než obrazovka: panel se posouvá sám (stránka Zadání má pevnou výšku) */
 .page.fixed .fixed-sub .cells-panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* Kopírování sad, duplikace metody, moje předlohy */
+.bld-keep { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.bld-mine { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+.bld-mine-title { font-size: 0.85rem; }
+.bld-mine-card { cursor: default; }
+.bld-mine-card .row-btns { flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cs-target { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 10px; font-weight: 700; }
+.cs-target select { flex: 1; min-width: 160px; }
+.cs-from { display: block; margin-bottom: 4px; }
+.cs-group { padding: 8px 10px; }
+.cs-method { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.cs-group .tp-alg { grid-template-columns: auto minmax(0, 1fr) auto; }
+.cs-group .tp-alg small { color: var(--muted); }

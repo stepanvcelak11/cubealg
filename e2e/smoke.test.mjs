@@ -1865,3 +1865,47 @@ test('sestavení metody: krok se známou sadou OLL/PLL – test ji použije, uč
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('metody: kopírování sad do jiné metody, uložení jako předloha a duplikace', async () => {
+  const task = { puzzle: '333', colorsA: 'x', colorsB: 'x', constraints: {} };
+  const { p, ctx, errors } = await open('timer', {
+    'ergocube.methods': { active: 'mA', list: [{ id: 'mA', name: 'Moje' }, { id: 'mB', name: 'Nová' }] },
+    'ergocube.algsets': [{ id: 'sO', name: 'OLL', method: 'mA' }],
+    'ergocube.algs': [
+      { id: 'a1', name: 'Sune', alg: "R U R' U R U2 R'", task, set: 'sO', enabled: true, times: [] },
+      { id: 'a2', name: 'T', alg: "F R U R' U' F'", task, set: 'sO', enabled: true, times: [] },
+    ],
+    'ergocube.guides': { mA: { intro: 'původní', steps: [{ id: 'k1', title: 'OLL', text: '', set: 'sO' }] } },
+  });
+  p.on('dialog', (d) => d.accept('Originál'));
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-tabs button', { hasText: 'Sestavit' }).tap();
+  // kopírovat sady: do metody „Nová“
+  await p.locator('.bld-keep button', { hasText: 'Kopírovat sady' }).evaluate((e) => e.click());
+  const dlg = p.locator('.cs-dialog');
+  await dlg.locator('.cs-target select').selectOption('mB');
+  await dlg.locator('.tp-alg', { hasText: 'OLL' }).locator('input').check();
+  assert.match(await dlg.locator('.tp-foot').innerText(), /1 sad · 2 algoritmů/);
+  await dlg.locator('button', { hasText: 'Kopírovat' }).tap();
+  const sets = () => p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algsets')));
+  const algsOf = () => p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.algs')));
+  const copy = (await sets()).find((s) => s.method === 'mB');
+  assert.equal(copy?.name, 'OLL');
+  assert.equal((await algsOf()).filter((a) => a.set === copy.id).length, 2);
+  assert.equal((await algsOf()).filter((a) => a.set === 'sO').length, 2);
+  // předloha: uloží současnou podobu, nová metoda z ní má postup i algoritmy
+  await p.locator('.bld-keep button', { hasText: 'Uložit jako předlohu' }).evaluate((e) => e.click());
+  await p.waitForSelector('.bld-mine-card');
+  assert.match(await p.locator('.bld-mine-card').innerText(), /Originál[\s\S]*1 kroků · 2 algoritmů/);
+  await p.locator('.bld-mine-card button', { hasText: 'Vytvořit metodu' }).evaluate((e) => e.click());
+  await p.waitForFunction(() => document.querySelector('#method option:checked')?.textContent === 'Originál');
+  const g = await p.evaluate(() => { const m = JSON.parse(localStorage.getItem('ergocube.methods')); return JSON.parse(localStorage.getItem('ergocube.guides'))[m.active]; });
+  assert.equal(g.intro, 'původní');
+  assert.equal(g.steps.length, 1);
+  // duplikace z nabídky metody
+  await p.locator('#method').selectOption('+dup');
+  await p.waitForFunction(() => document.querySelector('#method option:checked')?.textContent === 'Originál (kopie)');
+  assert.equal((await algsOf()).length, 8);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

@@ -9,7 +9,9 @@
 
 import { el } from './dom.js';
 import { icon } from './icons.js';
-import { methods, guides, algSets, algs } from './store.js';
+import { methods, guides, algSets, algs, duplicateMethod, myTemplates } from './store.js';
+import { openCopySets } from './copysets.js';
+import { toast } from './share.js';
 import { frameEditor, partsBefore, stepParts, remapParts, validFrame, DEFAULT_FRAME, frameMap, COLOR_NAME } from './parts.js';
 import { COLORS, STEP_MOVES, MOVE_BASES, ADJUST, placesCount, buildPlan, stepBases } from '../sim/plan.js';
 import { STYLES } from '../sim/simulate.js';
@@ -145,6 +147,20 @@ export function openBuilderStep(stepId) {
   renderBuilder();
 }
 
+/** Uloží metodu jako předlohu (název se zeptá). */
+function keepTemplate(method) {
+  const name = prompt('Název předlohy (např. „Moje metoda – funguje“):', `${methods.get(method).name} – předloha`)?.trim();
+  if (!name) return;
+  myTemplates.save(method, name);
+  renderBuilder();
+  toast(`Uloženo mezi předlohy: ${name}`);
+}
+
+function copied({ sets, algs: n, target }) {
+  toast(sets ? `Zkopírováno ${n} algoritmů (${sets} sad) do metody ${methods.get(target)?.name}` : 'Nic se nezkopírovalo');
+  renderBuilder();
+}
+
 export function renderBuilder() {
   if (!host) return;
   const method = methods.active();
@@ -263,7 +279,11 @@ export function renderBuilder() {
         el('small', { textContent: `${COLOR_NAME[frame.down]} dole, ${COLOR_NAME[frame.front]} vpředu · název, držení a úvod` })),
       field('Název', name),
       frameEditor(guide.frame, (f) => { remapParts(guide.steps, guide.frame, f); guide.frame = f; redraw(); }),
-      field('Úvod', intro));
+      field('Úvod', intro),
+      el('div', { className: 'row-btns bld-keep' },
+        Object.assign(el('button', { type: 'button', className: 'secondary small' }), { textContent: 'Uložit jako předlohu', title: 'Uloží současnou podobu metody (postup, nastavení kroků, sady a algoritmy) mezi předlohy – originál zůstane, i když metodu dál upravuješ', onclick: () => keepTemplate(method) }),
+        Object.assign(el('button', { type: 'button', className: 'secondary small' }), { textContent: 'Duplikovat metodu', title: 'Vytvoří kopii metody i s algoritmy a přepne na ni', onclick: () => { duplicateMethod(method); current = null; renderBuilder(); toast('Vytvořená kopie metody – upravuješ teď kopii'); } }),
+        Object.assign(el('button', { type: 'button', className: 'secondary small' }), { textContent: 'Kopírovat sady algoritmů…', onclick: () => openCopySets({ onDone: copied }) })));
 
     // šablony
     const create = (t) => {
@@ -282,10 +302,20 @@ export function renderBuilder() {
     tpl.onchange = () => { const t = TEMPLATES.find((x) => x.id === tpl.value); if (t) create(t); };
     const cards = el('div', { className: 'bld-tpls' }, ...TEMPLATES.map((t) => el('button', { type: 'button', className: 'bld-tpl-card', onclick: () => create(t) },
       el('b', { textContent: t.name }), el('small', { textContent: t.intro }), el('span', { className: 'bld-tpl-go', textContent: `Vytvořit (${t.steps.length} kroků) →` }))));
-    const templates = el('details', { className: 'bld-card bld-how', open: !guide.steps.length },
+    const mine = myTemplates.list();
+    const mineCards = mine.length ? el('div', { className: 'bld-mine' },
+      el('b', { className: 'bld-mine-title', textContent: 'Moje předlohy' }),
+      el('div', { className: 'bld-tpls' }, ...mine.map((t) => el('div', { className: 'bld-tpl-card bld-mine-card' },
+        el('b', { textContent: t.name }),
+        el('small', { textContent: `${t.steps} kroků · ${t.algs} algoritmů · uloženo ${new Date(t.created).toLocaleDateString('cs-CZ')}` }),
+        el('div', { className: 'row-btns' },
+          Object.assign(el('button', { type: 'button', className: 'primary small' }), { textContent: 'Vytvořit metodu', onclick: () => { myTemplates.create(t.id); current = null; renderBuilder(); toast(`Nová metoda z předlohy „${t.name}“`); } }),
+          Object.assign(el('button', { type: 'button', className: 'secondary small' }), { textContent: 'Přejmenovat', onclick: () => { const nm = prompt('Název předlohy:', t.name)?.trim(); if (nm) { myTemplates.rename(t.id, nm); renderBuilder(); } } }),
+          Object.assign(el('button', { type: 'button', className: 'secondary small' }), { textContent: 'Smazat', onclick: () => { if (confirm(`Smazat předlohu „${t.name}“? Metody z ní vytvořené zůstanou.`)) { myTemplates.remove(t.id); renderBuilder(); } } })))))) : null;
+    const templates = el('details', { className: 'bld-card bld-how', open: !guide.steps.length || mine.length > 0 },
       el('summary', {}, el('b', { textContent: guide.steps.length ? 'Nová metoda ze šablony' : 'Šablony metod' }),
-        el('small', { textContent: 'CFOP, Roux, ZZ, Petrus, Separační – vytvoří novou metodu, tahle zůstane' })),
-      cards, tpl);
+        el('small', { textContent: `${mine.length ? 'Tvoje předlohy, ' : ''}CFOP, Roux, ZZ, Petrus, Separační – vytvoří novou metodu, tahle zůstane` })),
+      mineCards, cards, tpl);
     return el('div', { className: 'bld-main bld-home' }, next, base, templates);
   };
 

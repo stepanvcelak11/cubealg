@@ -278,12 +278,20 @@ export function exportMethod(method = methods.active()) {
   };
 }
 
-/** Naimportuje sdílenou metodu jako novou metodu (nové id sad a algoritmů); vrací id metody. */
-export function importMethod(data) {
+/** Volný název: base, jinak „base (2)“, „base (3)“… */
+function freeName(base, taken) {
+  let name = base;
+  for (let i = 2; taken.has(name); i++) name = `${base} (${i})`;
+  return name;
+}
+
+/**
+ * Naimportuje sdílenou metodu jako novou metodu (nové id sad a algoritmů); vrací id metody.
+ * activate: false = nová metoda se nepřepne jako aktivní.
+ */
+export function importMethod(data, { activate = true } = {}) {
   if (data?.format !== SHARE_FORMAT || !data.method?.name) throw new Error('Tohle není sdílená metoda ErgoCube Lab');
-  const taken = new Set(methods.list().map((m) => m.name));
-  let name = data.method.name;
-  for (let i = 2; taken.has(name); i++) name = `${data.method.name} (${i})`;
+  const name = freeName(data.method.name, new Set(methods.list().map((m) => m.name)));
   const id = newId('m');
   methodsData.list.push({ id, name });
   const setMap = new Map();
@@ -316,11 +324,86 @@ export function importMethod(data) {
   storage.set('ergocube.algsets', setsData);
   storage.set('ergocube.algs', algsData);
   storage.set('ergocube.guides', guidesData);
-  methodsData.active = id;
+  if (activate) methodsData.active = id;
   methods.save();
   guideEvents.emit();
   return id;
 }
+
+/** Kopie metody (postup, nastavení kroků, sady a algoritmy) pod novým názvem; vrací id kopie. */
+export function duplicateMethod(method = methods.active(), name, opts) {
+  const data = exportMethod(method);
+  return importMethod({ ...data, method: { name: name || `${data.method.name} (kopie)` } }, opts);
+}
+
+/**
+ * Zkopíruje sady (i s algoritmy) do jiné metody. „Moje algoritmy“ jdou do výchozí sady
+ * cílové metody, ostatní sady vzniknou nové (stejný název, při shodě „(2)“). Algoritmus,
+ * který už v cílové sadě je (stejné tahy i zadání), se nepřidá znovu.
+ * @returns {{sets: number, algs: number}}
+ */
+export function copySets(setIds, target) {
+  let nSets = 0, nAlgs = 0;
+  for (const sid of setIds) {
+    const src = algSets.get(sid);
+    if (!src || setMethod(sid) === target) continue;
+    let to = defaultSetId(target);
+    if (!(sid === 'default' || sid.startsWith('default@'))) {
+      to = newId('s');
+      const taken = new Set(algSets.list(target).map((x) => x.name));
+      setsData.push({ id: to, name: freeName(src.name, taken), method: target });
+    }
+    nSets++;
+    for (const a of algs.inSet(sid)) {
+      if (algs.find(a.alg, a.task, to)) continue;
+      const { id: _id, times: _times, ...rest } = a;
+      algsData.push({ ...structuredClone(rest), id: newId('a'), set: to, times: [], created: Date.now() });
+      nAlgs++;
+    }
+  }
+  storage.set('ergocube.algsets', setsData);
+  storage.set('ergocube.algs', algsData);
+  algsEvents.emit();
+  return { sets: nSets, algs: nAlgs };
+}
+
+// --- Moje předlohy -------------------------------------------------------------------
+// Uložená podoba metody (jako soubor exportu): z předlohy jde kdykoli vytvořit novou
+// metodu, takže fungující originál zůstane, i když se metoda dál upravuje.
+const TEMPLATES_KEY = 'ergocube.templates';
+const templatesData = storage.get(TEMPLATES_KEY) ?? [];
+const templateEvents = emitter();
+
+export const myTemplates = {
+  list() { return templatesData; },
+  /** Uloží současnou podobu metody jako předlohu; vrací id předlohy. */
+  save(method = methods.active(), name) {
+    const data = exportMethod(method);
+    const id = newId('t');
+    templatesData.push({ id, name: name || data.method.name, created: Date.now(), steps: data.guide.steps.length, algs: data.algs.length, data });
+    this.store();
+    return id;
+  },
+  /** Nová metoda z předlohy (aktivní); vrací její id. */
+  create(id) {
+    const t = templatesData.find((x) => x.id === id);
+    if (!t) return null;
+    return importMethod({ ...t.data, method: { name: t.name } });
+  },
+  rename(id, name) {
+    const t = templatesData.find((x) => x.id === id);
+    if (t) { t.name = name; this.store(); }
+  },
+  remove(id) {
+    const i = templatesData.findIndex((x) => x.id === id);
+    if (i >= 0) { templatesData.splice(i, 1); this.store(); }
+  },
+  store() {
+    storage.set(TEMPLATES_KEY, templatesData);
+    templateEvents.emit();
+  },
+  subscribe: templateEvents.subscribe,
+};
 
 // Volby v generátoru sad: který z nabídnutých algoritmů sis vybral místo jiného.
 // Kalibrace (Tahy a váhy) podle nich doladí hodnocení.

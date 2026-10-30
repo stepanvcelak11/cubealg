@@ -577,6 +577,18 @@ Square-1 (`src/puzzles/sq1.js`, `src/search/sq1engine.js`) mění tvar, takže m
 vlastní model: 2 × 12 pozic po 30°, prostřední vrstva, notace WCA. Hledání je IDA*
 po řezech s tabulkami (tvar po řezu × pozice dílku) a tabulkou tvarů.
 
+## Kopie metod, předlohy a kopírování sad
+
+- **Kopírovat sady algoritmů** (Sestavit → Nastavení metody, nabídka Metoda, nebo výběr
+  sady v Labu/Trenažéru): vybereš cílovou metodu (i novou) a zaškrtáš sady z ostatních
+  metod. Algoritmy se zkopírují, originály zůstanou. „Moje algoritmy“ jdou do „Moje
+  algoritmy“ cíle, ostatní sady vzniknou nové; co už v cílové sadě je, se nezdvojí.
+- **Duplikovat metodu**: kopie postupu (kroky i jejich nastavení), sad a algoritmů –
+  upravuješ kopii, originál zůstane.
+- **Uložit jako předlohu**: uloží současnou podobu metody (zmrazenou) mezi *Moje
+  předlohy* v Sestavit → šablony, vedle CFOP, Roux, ZZ… Z předlohy jde kdykoli vytvořit
+  novou metodu. Předlohy jsou i v záloze dat.
+
 ## Model stavu
 
 Stav je `Uint8Array(54)`: pro každou nálepku pozice, kde právě leží. U každého dílku
