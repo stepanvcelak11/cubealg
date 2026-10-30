@@ -249,6 +249,7 @@
           <div class="segmented task-mode" id="task-mode" role="group" aria-label="Způsob zadání">
             <button type="button" data-mode="colors" class="active" title="Zadání barvami">Barvy</button>
             <button type="button" data-mode="arrows" title="Zadání šipkami – přesuny dílků">Šipky</button>
+            <button type="button" data-mode="cells" title="Zadání jako při sestavování metody: co je hotové před krokem a po něm (i víc barev na nálepce)"><span class="long-label">Jako v metodě</span><span class="short-label">Metoda</span></button>
           </div>
         </div>
         <article class="panel arrows-panel" id="arrows-panel" hidden>
@@ -258,6 +259,15 @@
           <button type="button" class="secondary small" id="arrow-all" hidden></button>
           <ul id="arrow-list" class="arrow-list"></ul>
           <label class="check-row"><input type="checkbox" id="arrow-keep" checked> Nové šipky: zachovat orientaci dílku</label>
+        </article>
+        <article class="panel cells-panel" id="cells-panel" hidden>
+          <p class="hint">Zadej krok stejně jako v <b>Sestavit</b>: nahoře, co je hotové <b>před krokem</b>, dole, co má být hotové <b>po kroku</b>. Barvu vybereš klepnutím, víc vybraných barev = kterákoli z nich (např. dole bílá nebo žlutá). <b>Hledat</b> vyřeší jeden náhodný případ, který zadání odpovídá (Jiný případ ho vymění), <b>Generátor sady</b> najde algoritmy pro všechny případy.</p>
+          <p class="hint" id="cells-frame"></p>
+          <h3>Hotové před krokem</h3>
+          <div id="cells-before"></div>
+          <h3>Hotové po kroku</h3>
+          <div id="cells-after"></div>
+          <div class="row-btns"><button type="button" class="secondary small" id="cells-resample">Jiný případ</button><button type="button" class="secondary small" id="cells-clear">Vyčistit zadání</button></div>
         </article>
         <div class="cubes">
           <article class="panel cube-panel">

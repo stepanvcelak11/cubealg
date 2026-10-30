@@ -596,7 +596,7 @@ button.danger { background: var(--bad); color: #fff; }
 /* --- Lab: zadání ----------------------------------------------------------------------- */
 .task-bar { display: flex; gap: 8px; flex: none; }
 .task-bar .side-switch { flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.task-bar .task-mode { grid-template-columns: repeat(2, auto); margin-left: auto; }
+.task-bar .task-mode { grid-template-columns: none; grid-auto-flow: column; margin-left: auto; }
 .task-bar .task-mode button { padding: 6px 12px; }
 .side-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 2px; background: var(--faint); }
 .side-switch button.active .side-dot.a { background: var(--c-L); }
@@ -2069,3 +2069,5 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .tp-foot .hint { margin-right: auto; }
 .tr-scramble { display: block; font-size: 1.05rem; letter-spacing: 0.02em; overflow-wrap: anywhere; }
 .tr-auf { margin: 0; font-size: 0.85rem; }
+.task-bar .task-mode button[hidden] { display: none; }
+.cells-panel h3 { margin: 14px 0 6px; }

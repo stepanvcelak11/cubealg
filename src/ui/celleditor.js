@@ -12,7 +12,7 @@
 import { el } from './dom.js';
 import { SLOTS, SLOT_OF, FACELETS, slotByName } from '../core/geometry.js';
 import { holdOf, holdFromFaces } from '../core/hold.js';
-import { piecesWithColors, describeCell, remapCells, PIECE_SLOTS, cellStickers, stickersSolved, cellsBefore } from '../core/cells.js';
+import { piecesWithColors, describeCell, remapCells, PIECE_SLOTS, cellStickers, stickersSolved, cellsBefore, compileCells } from '../core/cells.js';
 
 export { cellsBefore };
 import { frameMap, COLOR_NAME, PRESETS } from './parts.js';
@@ -429,4 +429,45 @@ export function stepLabTask(steps, i, frame) {
   for (const slot of SLOTS) if (slot.facelets.every((k) => B.out[k] !== 'X')) constraints[slot.name] = 'solved';
   const map = frameMap(frame);
   return { task: { puzzle: '333', colorsA: A.out, colorsB: B.out, constraints, hold: holdFromFaces(map.U, map.F) }, lost: A.lost + B.lost };
+}
+
+/**
+ * Zadání pro Lab zadané jako v metodě (Lab → Jako v metodě): before = hotové před krokem,
+ * after = co má být hotové po něm (buňky jako v Sestavit, i víc barev na nálepce, dílky
+ * kdekoli, EO…). Cíl = vše dohromady přeložené na omezení (core/cells.js): vlastní dílky
+ * jako vybarvené celé dílky, ostatní jako skupinová pravidla '#classes'. Start = nálepky
+ * s jednou barvou z before; co jde popsat jen pravidly (víc barev, EO), hlídá `before`
+ * (omezení Startu – generátor sady vynechá stavy, které ho nesplňují).
+ */
+export function cellsLabTask(before, after, frame) {
+  const steps = [{ cells: before }, { cells: after }];
+  const goal = cellsBefore(steps, 2);
+  const compiled = compileCells(goal);
+  const centers = FACELETS.map((f) => (SLOTS[SLOT_OF[f.index]].type === 'center' ? f.face : 'X'));
+  const colorsB = [...centers];
+  const constraints = {};
+  for (const slot of SLOTS) {
+    if (slot.type === 'center') { constraints[slot.name] = 'solved'; continue; }
+    const c = compiled[slot.name];
+    if (c === 'solved' || c === 'permutation' || (c && typeof c === 'object' && c.allow)) {
+      for (const k of slot.facelets) colorsB[k] = FACELETS[k].face;
+      constraints[slot.name] = c;
+    } else constraints[slot.name] = 'ignore';
+  }
+  if (compiled['#classes']?.length) constraints['#classes'] = compiled['#classes'];
+  // Start: nálepky s jednou barvou (víc barev, EO a dílky kdekoli hlídá omezení Startu)
+  const colorsA = [...centers];
+  for (const [name, c] of Object.entries(before)) {
+    const slot = slotByName(name);
+    const st = cellStickers(c, slot);
+    if (!st) continue;
+    for (const k of slot.facelets) { const cs = st[FACELETS[k].face]; if (cs?.length === 1) colorsA[k] = cs[0]; }
+  }
+  const startRules = compileCells(before);
+  const map = frameMap(frame);
+  return {
+    puzzle: '333', colorsA, colorsB, constraints, hold: holdFromFaces(map.U, map.F),
+    cells: { before: structuredClone(before), after: structuredClone(after) },
+    ...(Object.keys(startRules).length ? { before: startRules } : {}),
+  };
 }

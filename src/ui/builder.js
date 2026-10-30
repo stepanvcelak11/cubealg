@@ -24,7 +24,7 @@ import { holdFromFaces } from '../core/hold.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState } from './stepcfg.js';
 import { illustration, examplePlayer } from './guide.js';
-import { cellEditor, cellsBefore, cellsSummary, cellsNetSvg, cellLooks, stepLabTask } from './celleditor.js';
+import { cellEditor, cellsBefore, cellsSummary, cellsNetSvg, cellLooks, cellsLabTask } from './celleditor.js';
 import { cellsFromLegacy } from '../core/cells.js';
 import { TEMPLATES, templateGuide } from '../sim/templates.js';
 
@@ -446,7 +446,7 @@ export function renderBuilder() {
     const tryIt = sec(isFixed ? '2' : '4', 'Vyzkoušet', 'Složí náhodné zamíchání kroky 1 až tento a ukáže řešení i kostku po kroku. „Otevřít v Labu“ přenese kostku před krokem a po něm do Labu – tam jde hledat a generovat algoritmy.',
       el('div', { className: 'row-btns' }, btn('play', 'Vyzkoušet krok na náhodném zamíchání', () => tryStep(guide, i, check), 'secondary small'),
         deps.practice ? btn('timer', 'Nacvičit v timeru', () => deps.practice(st.id), 'secondary small') : null,
-        deps.openLab && !isFixed ? btn('lab', 'Otevřít v Labu', () => { const { task, lost } = stepLabTask(guide.steps, i, frame); deps.openLab({ ...task, bases: stepBases(cfg) }, lost); }, 'secondary small bld-to-lab') : null), check);
+        deps.openLab && !isFixed ? btn('lab', 'Otevřít v Labu', () => { const task = cellsLabTask(cellsBefore(guide.steps, i), cellsBefore([guide.steps[i]], 1), frame); deps.openLab({ ...task, bases: stepBases(cfg) }, 0); }, 'secondary small bld-to-lab') : null), check);
 
     // pokročilé
     const text = el('textarea', { className: 'guide-input', rows: 3, value: st.text ?? '', placeholder: 'Co se v kroku dělá, na co se dívat, tipy… (nepovinné)', ariaLabel: `Popis kroku ${k}` });

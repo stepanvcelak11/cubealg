@@ -323,6 +323,20 @@ ukáže stejně natočenou. Trenažér u každého případu ověří, že algor
 vyřeší; když ne (např. případ uložený ze staršího zadání), ukáže upozornění s tlačítkem
 **Otevřít v Labu**. Zadání, které nejde sestavit, se nekreslí obrázkem předchozího případu.
 
+## Lab: zadání jako v metodě
+
+Lab → Zadání → **Jako v metodě** (3×3, vedle Barvy a Šipky): krok se zadá stejným editorem jako
+v Sestavit (`cellEditor`) – nahoře co je hotové **před krokem**, dole co má být hotové **po kroku**,
+v držení aktivní metody. Jde tak zadat i to, co barvami nejde: **víc barev na nálepce** (dole bílá
+nebo žlutá), dílek kdekoli, správně natočený (EO)… `cellsLabTask` (`ui/celleditor.js`) z buněk
+sestaví úlohu: vlastní dílky jako vybarvené celé dílky, ostatní jako skupinová pravidla
+`#classes` (projdou zadáním `buildTask` i hledáním) a omezení Startu `before`.
+**Hledat** vyřeší jeden náhodný případ, který splňuje „před krokem“ (`makeSampler`, **Jiný
+případ** ho vymění); **Generátor sady** vyjmenuje všechny případy – `enumerateCases` zná
+štítky skupinových pravidel a vynechá stavy, které Start nesplňují. Uložený algoritmus nese
+konkrétní případ (pro trenažér) i zadání buněk. „Otevřít v Labu“ v Sestavit otevře krok v tomto
+režimu (nic se neztratí).
+
 ## Trénink vybraných algoritmů se zamícháním
 
 Trenažér → Sada → **Vybrat algoritmy k tréninku…** (`ui/trainpick.js`): ze všech svých sad

@@ -1150,8 +1150,12 @@ test('sestavení metody: šablona separační metody, pravidla pro skupiny dílk
   await p.locator('.bld-ed-chips .bld-chip', { hasText: 'Separace hran' }).tap();
   await p.locator('.bld-step.open .bld-to-lab').tap();
   await p.waitForSelector('[data-page="lab"]:not([hidden])');
-  const goal = await p.evaluate(async () => (await import('./src/ui/lab.js')).labTask().colorsB.join(''));
-  assert.equal([...goal].filter((c) => c === 'D').length, 5); // 4 nálepky hran nahoře + střed
+  // krok se otevře v zadání jako v metodě (nic se neztratí, i víc barev na nálepce)
+  const t = await p.evaluate(async () => (await import('./src/ui/lab.js')).labTask());
+  assert.ok(t.cells && Object.keys(t.cells.after).length);
+  assert.ok(t.constraints['#classes']?.length);
+  assert.equal(await p.locator('#task-mode button.active').getAttribute('data-mode'), 'cells');
+  await p.waitForSelector('#cells-after .cell-net');
   assert.deepEqual(errors, []);
   await ctx.close();
 });
@@ -1774,6 +1778,50 @@ test('trenažér: výběr algoritmů z víc sad, zamíchání do případu, náh
     withAuf = /^\(U/.test(await p.locator('.reveal-alg').innerText());
   }
   assert.ok(withAuf, 'aspoň jednou s AUF');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('lab: zadání jako v metodě – víc barev na nálepce, hledání jednoho případu a generátor všech', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.locator('#task-mode button[data-mode="cells"]').tap();
+  await p.waitForSelector('#cells-panel:not([hidden]) #cells-before .cell-net');
+  // zadání jako v Sestavit: dole hrany s bílou nebo žlutou dole, po kroku i nahoře
+  await p.evaluate(async () => {
+    const lab = await import('./src/ui/lab.js');
+    const WY = ['U', 'D'];
+    lab.openTask({ puzzle: '333', bases: ['R', 'U', 'F', 'L', 'D', 'B'], cells: {
+      before: Object.fromEntries(['DF', 'DB', 'DR', 'DL'].map((n) => [n, { colors: { D: WY } }])),
+      after: Object.fromEntries(['UF', 'UB', 'UR', 'UL'].map((n) => [n, { colors: { U: WY } }])),
+    } });
+  });
+  await p.waitForSelector('#cells-after .cell-net');
+  assert.match(await p.locator('#task-status').innerText(), /✓/);
+  // hledání jednoho náhodného případu, který splňuje „před krokem“
+  await p.locator('.segmented button[data-sub="results"]').tap();
+  await p.locator('#search').tap();
+  await p.waitForFunction(() => document.querySelectorAll('#results .result, #results li').length > 0, null, { timeout: 60000 });
+  const ok = await p.evaluate(async () => {
+    const lab = await import('./src/ui/lab.js');
+    const t = lab.labTask();
+    const { compileGoal } = await import('./src/core/constraints.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const before = compileGoal(t.before).test;
+    const { solved, applyAlg } = await import('./src/core/cube.js');
+    // uložený případ (barvy Startu) splňuje „před krokem“
+    const b = m.buildTask(t.colorsA, t.colorsB, t.constraints, {});
+    return !!b.loc && before(b.loc);
+  });
+  assert.ok(ok);
+  // generátor sady: všechny případy ze zadání
+  await p.locator('.segmented button[data-sub="task"]').tap();
+  await p.locator('#gen-set').tap();
+  await p.waitForSelector('.gen-dialog', { timeout: 30000 });
+  await p.locator('.gen-dialog button', { hasText: 'Spočítat případy' }).tap();
+  await p.waitForFunction(() => /stavů → \d+ případů/.test(document.querySelector('.gen-dialog')?.innerText ?? ''), null, { timeout: 60000 });
+  const n = Number((await p.locator('.gen-dialog').innerText()).match(/stavů → (\d+) případů/)[1]);
+  assert.ok(n > 50 && n < 2000, `počet případů ${n}`);
   assert.deepEqual(errors, []);
   await ctx.close();
 });

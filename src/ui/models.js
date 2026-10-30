@@ -68,9 +68,11 @@ function permModel(P) {
      */
     stateStickers(loc, constraints, known = null) {
       const out = new Array(P.size);
+      // dílky skupinových pravidel (zadání jako v metodě) se kreslí plně
+      const inClass = new Set((constraints['#classes'] ?? []).flatMap((c) => c.pieces));
       for (let k = 0; k < P.size; k++) {
         if (known && !known[k]) { out[loc[k]] = { color: EMPTY, style: 'none' }; continue; }
-        const c = constraints[slotNameOf(k)];
+        const c = inClass.has(slotNameOf(k)) && (constraints[slotNameOf(k)] ?? 'ignore') === 'ignore' ? 'solved' : constraints[slotNameOf(k)];
         // „barva na místě“ se v přehrávači kreslí plně (tečky by vypadaly jako jiné zadání)
         out[loc[k]] = { color: P.stickerFace[k], css: css[P.stickerFace[k]], style: (c && typeof c === 'object' ? 'solid' : STYLE_OF[c]) ?? 'none' };
       }

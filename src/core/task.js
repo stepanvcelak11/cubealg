@@ -163,9 +163,11 @@ function makeOps(P) {
     const errors = [];
     const B = identifyPieces(colorsB, { partial: true });
     errors.push(...B.errors.map((e) => `Cíl: ${e}`));
-    const out = Object.fromEntries(Object.entries(constraints).map(([k, v]) => [k, B.pieces.has(k) ? v : (v === 'ignore' ? v : 'ignore')]));
+    // '#classes' (skupinová pravidla, např. zadání jako v metodě) projdou beze změny
+    const out = Object.fromEntries(Object.entries(constraints).map(([k, v]) => [k, k.startsWith('#') || B.pieces.has(k) ? v : (v === 'ignore' ? v : 'ignore')]));
     // celé dílky s různými styly nálepek: průnik povolených poloh referenční nálepky
     for (const [name, p] of B.pieces) {
+      if (name.startsWith('#')) continue;
       const own = out[name];
       const styles = p.loc.map((pos) => marks[pos] ?? own);
       if (styles.every((st) => st === styles[0])) { out[name] = styles[0]; continue; }
@@ -456,7 +458,7 @@ function makeOps(P) {
 
 /** Sledované dílky (s jiným stylem než „nezáleží“; i „barva na místě“ { allow }). */
 export function trackedPieces(constraints) {
-  return Object.entries(constraints).filter(([, t]) => t && t !== 'ignore').map(([name]) => name);
+  return Object.entries(constraints).filter(([name, t]) => t && t !== 'ignore' && !name.startsWith('#')).map(([name]) => name);
 }
 
 export const {

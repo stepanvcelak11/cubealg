@@ -42,6 +42,10 @@ import { solve as twoPhase } from '../timer/twophase.js';
 import { methods, guides } from './store.js';
 import { buildPlan } from '../sim/plan.js';
 import { stepConfig } from './stepcfg.js';
+import { cellEditor, cellsLabTask } from './celleditor.js';
+import { makeSampler } from '../sim/casecount.js';
+import { colorsOfState } from '../core/cases.js';
+import { validFrame, DEFAULT_FRAME, frameMap, COLOR_NAME } from './parts.js';
 
 const STYLES = [
   { type: 'solved', label: 'Plná', title: 'Místo i natočení' },
@@ -105,10 +109,10 @@ const unit = () => (model.kind === 'sq1' ? 'řezů' : 'tahů');
 // --- Uložení a načtení zadání ----------------------------------------------------------
 
 function save() {
-  const { constraints, marks, bases, amounts, sq1, hold, mode, arrows, restStyle, restDefault, colorBackup } = ui;
+  const { constraints, marks, bases, amounts, sq1, hold, mode, arrows, restStyle, restDefault, colorBackup, cells } = ui;
   storage.set(storageKey(model.id), {
     constraints, marks, bases, amounts, sq1, hold, colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B),
-    mode, arrows, restStyle, restDefault, colorBackup,
+    mode, arrows, restStyle, restDefault, colorBackup, cells,
   });
 }
 
@@ -126,7 +130,10 @@ function load() {
   }
   ui.sq1 = { top: SQ1_AMOUNTS, bottom: SQ1_AMOUNTS, shape: true, ...(saved.sq1 ?? {}) };
   ui.hold = holdList(model).some((h) => h.id === saved.hold) ? saved.hold : '';
-  ui.mode = saved.mode === 'arrows' && arrowsAllowed() ? 'arrows' : 'colors';
+  ui.mode = saved.mode === 'arrows' && arrowsAllowed() ? 'arrows' : saved.mode === 'cells' && cellsAllowed() ? 'cells' : 'colors';
+  ui.cells = saved.cells?.before && saved.cells?.after ? saved.cells : { before: {}, after: {} };
+  ui.cellsStart = null;
+  ui.startRules = ui.mode === 'cells' ? cellsLabTask(ui.cells.before, ui.cells.after, cellsFrame()).before ?? null : null;
   ui.arrows = Array.isArray(saved.arrows) ? saved.arrows : [];
   ui.restDefault = REST_STYLES.some((r) => r.type === saved.restDefault) ? saved.restDefault : (saved.arrowRest === false ? 'ignore' : 'solved');
   ui.restStyle = saved.restStyle && typeof saved.restStyle === 'object' ? { ...saved.restStyle } : {};
@@ -187,6 +194,7 @@ function snapshot() {
   ui.undo.push({
     constraints: { ...ui.constraints }, marks: { ...ui.marks }, A: model.serialize(ui.A), B: model.serialize(ui.B),
     arrows: ui.arrows.map((a) => ({ ...a })), mode: ui.mode, restStyle: { ...ui.restStyle }, restDefault: ui.restDefault,
+    cells: structuredClone(ui.cells),
   });
   if (ui.undo.length > 60) ui.undo.shift();
 }
@@ -448,6 +456,15 @@ function renderCubes() {
 /** Zadání pro hledání: výchozí stav, cíl a omezení (i „barva na místě“ z částečných dílků). */
 function taskInfo() {
   const t = model.buildTask(ui.A, ui.B, ui.constraints, ui.marks);
+  if (ui.mode === 'cells') {
+    // jako v metodě: sledované jsou i dílky skupinových pravidel, případ = náhodný stav, který
+    // splňuje „před krokem“ (kde jsou dílky, které krok teprve skládá, Start neříká); cíl = složená
+    const inClass = (t.constraints['#classes'] ?? []).flatMap((c) => c.pieces);
+    const tracked = [...new Set([...t.tracked, ...inClass])];
+    const errors = t.errors.filter((e) => !e.startsWith('Výchozí:'));
+    const loc = cellsStart() ?? t.loc;
+    return { tracked, loc: errors.length ? null : loc, target: errors.length ? null : P().solved(), constraints: t.constraints, errors, known: null };
+  }
   return { tracked: t.tracked, loc: t.loc, target: t.target, constraints: t.constraints, errors: t.errors, known: t.known ?? null };
 }
 
@@ -627,13 +644,13 @@ const layersAllowed = () => P().id === '333' || P().id === '222';
 const restOf = (name) => (model.centers.includes(name) ? 'solved' : ui.restStyle[name] ?? ui.restDefault);
 
 function setMode(mode) {
-  if (mode === ui.mode || (mode === 'arrows' && !arrowsAllowed())) return;
+  if (mode === ui.mode || (mode === 'arrows' && !arrowsAllowed()) || (mode === 'cells' && !cellsAllowed())) return;
   snapshot();
-  if (mode === 'arrows') {
+  if (mode !== 'colors') {
     // barevné zadání se schová a po návratu obnoví
-    ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints }, marks: { ...ui.marks } };
-    ui.mode = 'arrows';
-    applyArrows();
+    if (ui.mode === 'colors') ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints }, marks: { ...ui.marks } };
+    ui.mode = mode;
+    if (mode === 'arrows') applyArrows(); else applyCells();
   } else {
     ui.mode = 'colors';
     const b = ui.colorBackup;
@@ -656,13 +673,69 @@ function setSide(side) {
 
 function renderMode() {
   const arrows = ui.mode === 'arrows';
-  $('side-switch').hidden = arrows;
+  const cells = ui.mode === 'cells';
+  $('side-switch').hidden = arrows || cells;
   $('task-mode').hidden = !arrowsAllowed();
-  for (const b of $('task-mode').querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === ui.mode);
+  for (const b of $('task-mode').querySelectorAll('button')) {
+    b.classList.toggle('active', b.dataset.mode === ui.mode);
+    if (b.dataset.mode === 'cells') b.hidden = !cellsAllowed();
+  }
   $('arrows-panel').hidden = !arrows;
-  document.querySelector('.cubes').hidden = arrows;
+  $('cells-panel').hidden = !cells;
+  document.querySelector('.cubes').hidden = arrows || cells;
   if (arrows) renderArrows();
+  if (cells) renderCells();
   onSubChange(ui.sub);
+}
+
+// --- Zadání jako v metodě (editor kroku ze Sestavit) -----------------------------------------
+// Buňky (core/cells.js) před krokem a po něm v držení aktivní metody; Lab z nich sestaví
+// barvy, omezení i skupinová pravidla (celleditor.js cellsLabTask). Pro Hledat se vezme
+// náhodný stav, který splňuje „před krokem“; generátor sady vyjmenuje všechny.
+const cellsAllowed = () => model.id === '333';
+function cellsFrame() {
+  const g = guides.get(methods.active());
+  return validFrame(g.frame) ? g.frame : DEFAULT_FRAME;
+}
+const CELL_STEPS = { before: { id: 'lab-before' }, after: { id: 'lab-after' } };
+
+function applyCells() {
+  const t = cellsLabTask(ui.cells.before, ui.cells.after, cellsFrame());
+  ui.A = model.deserialize(t.colorsA);
+  ui.B = model.deserialize(t.colorsB);
+  ui.constraints = t.constraints;
+  ui.marks = {};
+  ui.startRules = t.before ?? null;
+  ui.cellsStart = null;
+  if (t.hold !== ui.hold) setHold(t.hold);
+  save();
+  renderTaskStatus();
+  clearResults();
+  renderCells();
+}
+
+/** Případ pro Hledat: náhodný stav splňující „před krokem“ (stejný, dokud se zadání nezmění). */
+function cellsStart() {
+  if (!ui.cellsStart) {
+    const sample = makeSampler(ui.startRules ?? {});
+    ui.cellsStart = sample ? sample((n) => Math.floor(Math.random() * n)) : null;
+  }
+  return ui.cellsStart;
+}
+
+function renderCells() {
+  if (ui.mode !== 'cells') return;
+  const frame = cellsFrame();
+  const map = frameMap(frame);
+  $('cells-frame').textContent = `Držení podle metody „${methods.get(methods.active()).name}“: dole ${COLOR_NAME[map.D]}, vpředu ${COLOR_NAME[map.F]} (mění se v Sestavit).`;
+  const edit = (key, before) => {
+    const step = CELL_STEPS[key];
+    // editor mění buňky na místě: pracuje s kopií, aby šlo vrátit zpět
+    step.cells = structuredClone(ui.cells[key]);
+    return cellEditor(step, before, frame, () => { snapshot(); ui.cells[key] = structuredClone(step.cells); applyCells(); });
+  };
+  $('cells-before').replaceChildren(edit('before', {}));
+  $('cells-after').replaceChildren(edit('after', ui.cells.before));
 }
 
 /** Dílky bez šipky, jejichž místo zabere jiný dílek (musí se pohnout jinam). */
@@ -1490,10 +1563,16 @@ function bar(b) {
     }));
 }
 
+// jako v metodě: uložený případ = konkrétní stav (cellsStart), zadání buněk jde s ním
+const cellsCase = () => {
+  const loc = ui.mode === 'cells' ? cellsStart() : null;
+  return loc ? colorsOfState(P(), loc, ui.constraints) : null;
+};
 const taskSnapshot = () => ({
   ...(model.id !== '333' ? { puzzle: model.id } : {}),
   ...(ui.hold ? { hold: ui.hold } : {}),
-  colorsA: model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
+  colorsA: cellsCase() ?? model.serialize(ui.A), colorsB: model.serialize(ui.B), constraints: { ...ui.constraints },
+  ...(ui.mode === 'cells' ? { cells: structuredClone(ui.cells), ...(ui.startRules ? { before: ui.startRules } : {}) } : {}),
   ...(Object.keys(ui.marks).length ? { marks: { ...ui.marks } } : {}),
   ...(model.kind === 'sq1' ? { shape: ui.sq1.shape } : {}),
 });
@@ -1831,13 +1910,16 @@ export function initLab({ onSub, openSet } = {}) {
     ui.restStyle = last.restStyle ?? ui.restStyle;
     ui.restDefault = last.restDefault ?? ui.restDefault;
     ui.mode = last.mode ?? ui.mode;
+    if (last.cells) ui.cells = last.cells;
     renderMode();
-    if (ui.mode === 'arrows') applyArrows(); else taskChanged();
+    if (ui.mode === 'arrows') applyArrows(); else if (ui.mode === 'cells') applyCells(); else taskChanged();
   };
   $('help').onclick = () => $('help-dialog').showModal();
   $('share-task').onclick = shareTask;
   $('gen-set').onclick = generateSet;
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
+  $('cells-resample').onclick = () => { ui.cellsStart = null; clearResults(); renderPlayer(); toast('Nový náhodný případ – Hledat ho vyřeší'); };
+  $('cells-clear').onclick = () => { snapshot(); ui.cells = { before: {}, after: {} }; applyCells(); };
   for (const b of $('side-switch').querySelectorAll('button')) b.onclick = () => setSide(b.dataset.side);
   setSide(ui.side);
   $('arrow-all').onclick = () => { snapshot(); ui.restDefault = ui.arrowTool; ui.restStyle = {}; applyArrows(); };
@@ -2002,7 +2084,21 @@ export function openTask(task) {
   const id = PUZZLES.some((p) => p.id === task.puzzle) ? task.puzzle : '333';
   if (id !== model.id) selectPuzzle(id);
   snapshot();
-  if (ui.mode === 'arrows') { ui.mode = 'colors'; ui.colorBackup = null; }
+  if (task.cells?.before && task.cells?.after && cellsAllowed()) {
+    // zadání jako v metodě (krok ze Sestavit): otevře se v editoru kroku
+    if (ui.mode === 'colors') ui.colorBackup = { A: model.serialize(ui.A), B: model.serialize(ui.B), constraints: { ...ui.constraints }, marks: { ...ui.marks } };
+    ui.mode = 'cells';
+    ui.cells = structuredClone(task.cells);
+    if (model.kind === 'perm' && Array.isArray(task.bases)) {
+      const bases = task.bases.filter((b) => P().bases.includes(b));
+      if (bases.length) { ui.bases = bases; renderMoveSet(); }
+    }
+    renderMode();
+    applyCells();
+    showSub('task');
+    return;
+  }
+  if (ui.mode !== 'colors') { ui.mode = 'colors'; ui.colorBackup = null; }
   ui.A = model.deserialize(task.colorsA) ?? ui.A;
   ui.B = model.deserialize(task.colorsB) ?? ui.B;
   ui.constraints = { ...Object.fromEntries(model.pieceNames.map((n) => [n, 'ignore'])), ...(task.constraints ?? {}) };
@@ -2050,7 +2146,7 @@ function generateSet() {
   openGenerator({
     model,
     cube: P().ergonomics === 'cube',
-    task: { ...taskSnapshot(), puzzle: model.id },
+    task: { ...taskSnapshot(), colorsA: model.serialize(ui.A), puzzle: model.id },
     lambda,
     score,
     join: joinAuf,

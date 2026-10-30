@@ -109,6 +109,17 @@ export function enumerateCases(P, task, { auf = true, adf = false, rotations = [
     else if (c === 'orientation' && !single) { label = `O${piece.type}:${P.ORI_AT[target[piece.facelets[0]]]}`; ori = true; }
     labelOf.set(piece.name, { label, ori });
   }
+  // skupinová pravidla (#classes): dílky skupiny se stejnými sledovanými nálepkami jsou
+  // pro cíl zaměnitelné, na natočení záleží (která nálepka kam míří)
+  (constraints['#classes'] ?? []).forEach((c, ci) => c.pieces.forEach((name, i) => {
+    const cur = labelOf.get(name);
+    if (!cur || (cur.label !== '-' && !cur.label.startsWith('C'))) return;
+    const part = `C${ci}:${c.stickers[i].join('')}`;
+    labelOf.set(name, { label: cur.label === '-' ? part : `${cur.label}+${part}`, ori: true });
+  }));
+  // Start popsaný pravidly (zadání jako v metodě: co je hotové před krokem) – stavy, které
+  // ho nesplňují, se vynechají (na podpisu nezávisí: cíl obsahuje i Start)
+  const startOk = task.before && Object.keys(task.before).length ? compileGoal(task.before, P.solved(), P).test : null;
 
   // Start: povolené (slot, natočení) pro každý dílek
   const canon = new Map();
@@ -245,7 +256,7 @@ export function enumerateCases(P, task, { auf = true, adf = false, rotations = [
     if (++nodes > nodeLimit) { tooMany = true; return; }
     if (k === order.length) {
       const loc = build();
-      if (!loc) return;
+      if (!loc || (startOk && !startOk(loc))) return;
       states++;
       const sig = sigOf(loc);
       if (!reps.has(sig)) {
@@ -346,6 +357,7 @@ export function rotationGroup(P, gens) {
 
 /** Je cíl stejný i po otočení r (každý dílek má stejné omezení jako dílek, kam se otočí)? */
 function goalSymmetric(P, constraints, r) {
+  if (constraints['#classes']?.length) return false; // skupinová pravidla: otočení se neslučují
   for (const piece of P.slots) {
     const c = constraints[piece.name] ?? 'ignore';
     const to = P.slots[P.SLOT_OF[r[piece.facelets[0]]]];
@@ -437,9 +449,10 @@ export function checkParityFix(P, members, fix, { auf = true, adf = false } = {}
 /** Vybarvení (strana zadání) ze stavu: jen dílky, na kterých cíli záleží (ostatní šedé). */
 export function colorsOfState(P, loc, constraints) {
   const out = new Array(P.size).fill(EMPTY);
+  const inClass = new Set((constraints['#classes'] ?? []).flatMap((c) => c.pieces));
   for (const piece of P.slots) {
     const c = constraints[piece.name] ?? 'ignore';
-    if (c === 'ignore') continue;
+    if (c === 'ignore' && !inClass.has(piece.name)) continue;
     for (const k of piece.facelets) out[loc[k]] = P.stickerFace[k];
   }
   return out;

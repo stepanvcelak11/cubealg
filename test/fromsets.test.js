@@ -64,3 +64,24 @@ test('zamíchání do případu: po zamíchání a algoritmu je kostka složená
   assert.equal(caseScramble('R R\''), '');
   assert.equal(caseScramble('Q'), null);
 });
+
+test('zadání jako v metodě: víc barev na nálepce → skupinová pravidla, výčet případů hlídá Start', async () => {
+  const { cellsLabTask } = await import('../src/ui/celleditor.js');
+  const { enumerateCases } = await import('../src/core/cases.js');
+  const { compileGoal } = await import('../src/core/constraints.js');
+  const { taskOps } = await import('../src/core/task.js');
+  const WY = ['U', 'D'];
+  const before = Object.fromEntries(['DF', 'DB', 'DR', 'DL'].map((n) => [n, { colors: { D: WY } }]));
+  const after = { UF: { colors: { U: WY } }, UB: { colors: { U: WY } }, UR: { own: 'solved' } };
+  const task = cellsLabTask(before, after, { down: 'D', front: 'F' });
+  assert.equal(task.constraints.UR, 'solved');
+  assert.ok(task.constraints['#classes'].length);
+  const b = taskOps(P).buildTask(task.colorsA, task.colorsB, task.constraints, {});
+  // kde je UR, Start neříká (případ vybere Lab / generátor) – jiné chyby nejsou
+  assert.deepEqual(b.errors.filter((e) => !e.startsWith('Výchozí:')), []);
+  assert.ok(b.constraints['#classes'], 'skupinová pravidla projdou zadáním');
+  const r = enumerateCases(P, task, { auf: false });
+  assert.ok(!r.error && r.cases.length > 10, `${r.error} ${r.cases.length}`);
+  const startOk = compileGoal(task.before, P.solved(), P).test;
+  assert.ok(r.cases.every((c) => startOk(c.rep)));
+});
