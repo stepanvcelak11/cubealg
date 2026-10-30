@@ -84,6 +84,16 @@ export function pickFromSet(state, test, candidates, adjust = {}) {
  * Parita vrstvy (místa `names`, skutečné názvy): lichá permutace hran XOR rohů – natočení
  * vrstvy (AUF) ji nemění. Když dílky vrstvy nejsou všechny ve své vrstvě, parita není (null).
  */
+/**
+ * Krok hotový až na natočení vrstev kroku (bez pomocných algoritmů): přeskočení s AUF.
+ * @returns {{model: string, display: string}|null}
+ */
+export function onlyAdjust(state, test, adjust = {}) {
+  if (!adjust.pre?.length && !adjust.post?.length) return null;
+  const hit = pickFromSet(state, test, [{ model: '', display: '', score: 0 }], { pre: adjust.pre, post: adjust.post });
+  return hit && hit.model ? { model: hit.model, display: hit.display } : null;
+}
+
 export function layerOdd(state, names) {
   let par = 0;
   for (const type of ['edge', 'corner']) {
@@ -140,6 +150,15 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
   const steps = dynamic ? variants[0].steps.length : variants[0].goals.length;
   const compiled = new Map();
   const testOf = (goal, key = keyOf(goal)) => { if (!compiled.has(key)) compiled.set(key, compileGoal(goal).test); return compiled.get(key); };
+  /** Krok hotový až na natočení vrstvy v některé z možností: { o, r } (přeskočení s AUF), jinak null. */
+  const adjustSkip = (opts, i, state) => {
+    if (!dynamic) return null;
+    for (const o of opts) {
+      const t = onlyAdjust(state, testOf(o.goal, o.key), variants[o.j].steps[i].adjust);
+      if (t) return { o, r: { ...t, length: lengthOf(t.display), score: 0, source: 'skip', adjust: true } };
+    }
+    return null;
+  };
   /** Možnosti kroku i z orientace v při hotových dílcích done: [{ j, goal, key }] (různé cíle). */
   const options = (i, v, done) => {
     if (!dynamic) return (i === 0 ? variants.map((_, j) => j) : [v]).map((j) => ({ j, goal: variants[j].goals[i] }));
@@ -185,7 +204,10 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
       // už složené (v kterékoli povolené orientaci) = přeskočeno
       const already = opts.find((o) => testOf(o.goal, o.key)(state));
       if (already) { pick = already; r = { model: '', display: '', length: 0, score: 0, source: 'skip' }; }
-      else {
+      // hotové až na natočení vrstvy (AUF/ADF) = taky přeskočeno, algoritmus ze sady netřeba
+      const turned = already ? null : adjustSkip(opts, i, state);
+      if (turned) { pick = turned.o; r = turned.r; }
+      else if (!already) {
         for (const o of opts) {
           if (stopped()) break;
           const test = testOf(o.goal, o.key);

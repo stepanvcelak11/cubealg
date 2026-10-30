@@ -42,3 +42,26 @@ test('test metody: kroky OLL a PLL ze známé sady (bez vlastních algoritmů)',
     assert.equal(sv.steps[2].source, 'set', 'PLL ze sady');
   }
 });
+
+test('test metody: krok hotový až na natočení U = přeskočení, ne chybějící algoritmus', async () => {
+  const names = (pred) => SLOTS.filter((x) => x.type !== 'center' && pred(x.name)).map((x) => x.name);
+  const parts = (list, style) => Object.fromEntries(list.map((n) => [n, style]));
+  const top = names((n) => n.includes('U'));
+  const guide = { frame: { down: 'D', front: 'F' }, steps: [
+    { id: 'f2l', title: 'F2L', parts: parts(names((n) => !n.includes('U')), 'solved') },
+    { id: 'oll', title: 'OLL', parts: parts(top, 'orientation') },
+    { id: 'pll', title: 'PLL', parts: parts(top, 'solved') },
+  ] };
+  const config = { f2l: { time: 1 }, oll: { solveBy: 'known', knownSet: 'OLL', mode: 'set' }, pll: { solveBy: 'known', knownSet: 'PLL', mode: 'set' } };
+  const { plan } = buildPlan({ guide, config });
+  const inv = (a) => invertAlg(a.replace(/[()]/g, ' ')).map(moveToString).join(' ');
+  const O = KNOWN_SETS.OLL.algs;
+  // po OLL je poslední vrstva složená, jen natočená o U / U2 / U'
+  const starts = ['U', 'U2', "U'"].map((auf) => applyAlg(solved(), `${auf} ${inv(O[26][1])}`));
+  const { solves } = await solveScrambles(plan, starts, { virtual: true });
+  for (const sv of solves) {
+    assert.ok(sv.ok, 'složeno');
+    assert.equal(sv.steps[2].source, 'skip', 'PLL přeskočené');
+    assert.ok(sv.steps[2].adjust && /^U/.test(sv.steps[2].display), sv.steps[2].display);
+  }
+});
