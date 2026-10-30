@@ -38,6 +38,14 @@ function knownCases() {
   return known;
 }
 
+/** Známý případ algoritmu ze sbírky: { name, kind, ref, algs } nebo null. */
+export function knownCaseOf(alg) {
+  try {
+    const core = withoutRotations(norm(alg));
+    return knownCases().get(caseKey(core, kindOf(core))) ?? null;
+  } catch { return null; }
+}
+
 /** Hodnota na tah (pohled Nejrychlejší) oblíbených algoritmů sbírky – měřítko pro čas a známku. */
 let typical = null;
 function typicalPerMove(config) {

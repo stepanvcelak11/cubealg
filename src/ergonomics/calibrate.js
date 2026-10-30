@@ -11,6 +11,7 @@ import { parseSq1 } from '../puzzles/sq1.js';
 import { scoreAlg, fullConfig } from './score.js';
 import { mirrorMove } from '../core/notation.js';
 import { MOVE_TIME } from './style.js';
+import { pairKey } from './flow.js';
 
 // Druhy míst v kostkovém hodnocení (kromě tahů) a jejich nastavení.
 const EVENTS = {
@@ -24,6 +25,11 @@ const EVENTS = {
   // bonus: příspěvek je záporný
   'flow:alternate': { get: (c) => -c.alternate * c.flowScale, set: (c, w) => { c.alternate = -w / c.flowScale; }, min: -1.5, max: 0, flow: true },
 };
+
+// dvojice tahů po sobě (pair:M>D): naučené váhy návaznosti, výchozí 0
+const PAIR = { min: -1, max: 3 };
+const isPair = (key) => key.startsWith('pair:');
+const boundsOf = (key) => (EVENTS[key] ?? (isPair(key) ? PAIR : { min: 0.2, max: 6 }));
 
 export const MIN_ALGS = 5;
 export const MIN_TIMES = 3;
@@ -56,6 +62,16 @@ export function features(puzzle, alg, config = {}) {
     const scale = fullConfig(config).triggerBonusScale;
     const bonus = scale > 0 ? s.triggers.reduce((a, t) => a + t.bonus, 0) / scale : 0;
     if (bonus) out.set('trigger', -Math.round(bonus * 100) / 100);
+    // dvojice tahů po sobě (jen když se jejich váhy učí – pairs: true)
+    if (config.pairs) {
+      let prev = null;
+      for (const m0 of moves) {
+        if (puzzle.rotations?.includes(m0.base)) { prev = null; continue; }
+        const m = config.leftHanded ? mirrorMove(m0) : m0;
+        if (prev) add(`pair:${pairKey(prev, m.base)}`);
+        prev = m.base;
+      }
+    }
   }
   return out;
 }
@@ -63,6 +79,7 @@ export function features(puzzle, alg, config = {}) {
 /** Současná váha druhu tahu v nastavení. */
 function weightOf(puzzle, config, key) {
   if (EVENTS[key]) return EVENTS[key].get(config);
+  if (isPair(key)) return config.pairWeights?.[key.slice(5)] ?? 0;
   if (key === 'slash') return config.slash;
   if (key.startsWith('turn:')) return config.turn[Number(key.slice(5))];
   const [base, i] = key.split(':');
@@ -75,7 +92,10 @@ function withWeights(puzzle, config, weights) {
   const next = structuredClone(config);
   for (const [key, w] of weights) {
     if (EVENTS[key]) EVENTS[key].set(next, w);
-    else if (key === 'slash') next.slash = w;
+    else if (isPair(key)) {
+      next.pairWeights = { ...next.pairWeights };
+      if (Math.abs(w) < 0.05) delete next.pairWeights[key.slice(5)]; else next.pairWeights[key.slice(5)] = w;
+    } else if (key === 'slash') next.slash = w;
     else if (key.startsWith('turn:')) next.turn[Number(key.slice(5))] = w;
     else {
       const [base, i] = key.split(':');
@@ -163,6 +183,7 @@ const EVENT_LABELS = {
 export function featureLabel(key) {
   if (EVENT_LABELS[key]) return EVENT_LABELS[key];
   if (key === 'slash') return 'řez /';
+  if (isPair(key)) return `návaznost ${key.slice(5).replace('>', ' → ')}`;
   if (key.startsWith('turn:')) return `otočení o ${key.slice(5)}`;
   const [base, i] = key.split(':');
   return base + ['', "'", '2'][Number(i)];
@@ -184,12 +205,14 @@ export const MIN_PREFS = 3;
  * @param {{better:string, worse:string, tie?:boolean}[]} pairs
  * @returns {{ok:false, reason:string} | {ok:true, config:object, changes:{key:string, from:number, to:number}[], used:number, agree:number, decided:number, before:number}}
  */
-export function learnPreferences(puzzle, config, pairs, { iterations = 400, rate = 0.08, prior = 0.6, T = 1, tieWeight = 0.5, perMove = MOVE_TIME, trust = null } = {}) {
+export function learnPreferences(puzzle, config, pairs, { iterations = 400, rate = 0.08, prior = 0.6, T = 1, tieWeight = 0.5, perMove = MOVE_TIME, trust = null, transitions = false, pairPrior = 4 } = {}) {
   if (puzzle.ergonomics === 'cube') config = { ...fullConfig(config), triggers: config.triggers };
+  // transitions: učí se i váhy dvojic tahů po sobě (pairWeights) – z tvých sad
+  const fconf = transitions && puzzle.ergonomics === 'cube' ? { ...config, pairs: true } : config;
   // hodnota jako v pohledu Nejrychlejší: nepohodlnost + základní čas každého tahu (jinak by
   // ladění zlevnilo běžné tahy a dlouhé algoritmy by vycházely rychlejší, než jsou)
   const scoreOf = (alg) => (puzzle.ergonomics === 'cube' ? scoreAlg(puzzle.id === '333' ? alg : puzzle.algToString(alg), config).total + perMove * alg.split(' ').filter(Boolean).length : 0);
-  const data = pairs.map((p) => ({ tie: !!p.tie, b: features(puzzle, p.better, config), w: features(puzzle, p.worse, config), sb: scoreOf(p.better), sw: scoreOf(p.worse) }))
+  const data = pairs.map((p) => ({ tie: !!p.tie, b: features(puzzle, p.better, fconf), w: features(puzzle, p.worse, fconf), sb: scoreOf(p.better), sw: scoreOf(p.worse) }))
     .filter((d) => d.b.size && d.w.size);
   if (data.length < MIN_PREFS) {
     return { ok: false, reason: `Potřebuju aspoň ${MIN_PREFS} porovnání (Porovnat algoritmy, nebo volby v generátoru sad). Teď jich je ${data.length}.` };
@@ -200,11 +223,12 @@ export function learnPreferences(puzzle, config, pairs, { iterations = 400, rate
   const rows = data.map((d) => ({ tie: d.tie, base: d.sb - d.sw, x: keys.map((k) => (d.b.get(k) ?? 0) - (d.w.get(k) ?? 0)) }));
   const delta = keys.map(() => 0);
   // trust = [nejvýš krát dolů, krát nahoru] proti dnešní váze (ladění výchozích vah: jen opatrně)
-  const lo = keys.map((k, j) => Math.max(EVENTS[k] ? EVENTS[k].min : 0.2, trust && w0[j] > 0 ? w0[j] * trust[0] : -Infinity));
-  const hi = keys.map((k, j) => Math.min(EVENTS[k] ? EVENTS[k].max : 6, trust && w0[j] > 0 ? w0[j] * trust[1] : Infinity));
+  const lo = keys.map((k, j) => Math.max(boundsOf(k).min, trust && w0[j] > 0 ? w0[j] * trust[0] : -Infinity));
+  const hi = keys.map((k, j) => Math.min(boundsOf(k).max, trust && w0[j] > 0 ? w0[j] * trust[1] : Infinity));
   const diffOf = (r, dl) => r.base + r.x.reduce((a, v, j) => a + v * dl[j], 0);
   for (let it = 0; it < iterations; it++) {
-    const grad = delta.map((v) => 2 * prior * v);
+    // dvojic tahů je hodně a každá se objeví málokdy: drží se u nuly silněji (pairPrior×)
+    const grad = delta.map((v, j) => 2 * prior * (isPair(keys[j]) ? pairPrior : 1) * v);
     for (const r of rows) {
       const z = diffOf(r, delta) / T;
       // better má mít nižší hodnocení: ztráta log(1 + e^z); stejně: z²

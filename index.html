@@ -360,6 +360,9 @@
           </div>
           <p id="ergo-compare-info" class="hint" aria-live="polite"></p>
           <button type="button" id="ergo-compare-clear" class="link-btn small" hidden>Smazat moje porovnání a začít znovu</button>
+          <h3>Podle mých sad</h3>
+          <p class="hint">Máš sady s algoritmy, které sis vybral a vyhovují ti? Vyber je a aplikace podle nich nastaví váhy tahů i návaznost tahů po sobě, aby hledání příště nacházelo podobné algoritmy.</p>
+          <div class="row-btns"><button type="button" id="ergo-sets" class="secondary">Doladit podle mých sad</button></div>
         </article>
         <article class="panel">
           <h2>Ergonomie – váhy</h2>
@@ -373,6 +376,11 @@
             <h3>Můj prstoklad <small>kterou rukou děláš prstové tahy</small></h3>
             <p class="hint">Hodnocení podle toho pozná, kdy se ruce střídají a kdy jde o dva tahy jednou rukou nebo stejným prstem. „Podle situace“ = aplikace vybere ruku sama podle předchozího tahu.</p>
             <div id="ergo-fingering" class="ergo-fingering"></div>
+          </div>
+          <div id="ergo-pairs-box" hidden>
+            <h3>Moje návaznosti <small>naučené z tvých sad</small></h3>
+            <p class="hint">Příplatek (+) nebo sleva (−) za dva tahy po sobě. Klepnutím návaznost smažeš.</p>
+            <div id="ergo-pairs" class="chips"></div>
           </div>
           <div class="actions">
             <button type="button" id="ergo-calibrate" class="secondary small" data-icon="trainer" data-icon-size="16" title="Upraví váhy tahů, přehmatů a návaznosti podle časů algoritmů v trenažéru"><span>Podle mých časů</span></button>

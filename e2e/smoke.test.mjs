@@ -1686,3 +1686,94 @@ test('lab → trenažér: pohled natočený jako v Labu, upozornění když algo
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('lab: doladit váhy podle vybraných sad (soupeři ze sbírky i z hledání)', async () => {
+  const { p, ctx, errors } = await open('lab');
+  await p.evaluate(async () => {
+    const { algs, algSets } = await import('./src/ui/store.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    const all = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    const task = (alg) => ({ puzzle: '333', colorsA: m.serialize ? m.serialize(m.applyMoves(home, m.invertAlg(alg))) : m.applyMoves(home, m.invertAlg(alg)), colorsB: m.serialize ? m.serialize(home) : home, constraints: all });
+    const mine = algSets.add('Moje PLL');
+    for (const alg of ["M2 U M U2 M' U M2", "M2 U' M U2 M' U' M2", "R2 U R U R' U' R' U' R' U R'", "x R' U R' D2 R U' R' D2 R2 x'"]) algs.add({ alg, task: task(alg), set: mine });
+    algs.add({ alg: "R U R' U R U2 R'", task: task("R U R' U R U2 R'") });
+  });
+  await p.locator('.segmented button[data-sub="moves"]').tap();
+  await p.locator('#ergo-sets').tap();
+  const dlg = p.locator('.ls-dialog');
+  assert.match(await dlg.innerText(), /Moje algoritmy\s*\(1\)[\s\S]*Moje PLL\s*\(4\)/);
+  await dlg.locator('label', { hasText: 'Moje PLL' }).locator('input').check();
+  await dlg.locator('select').selectOption('2');
+  await dlg.locator('button', { hasText: 'Naučit váhy' }).tap();
+  await p.waitForSelector('.ls-result', { timeout: 60000 });
+  assert.match(await dlg.locator('.ls-result').innerText(), /nejlepší u \d+ z 4 případů \(předtím u \d+\)/);
+  await dlg.locator('button', { hasText: 'Zavřít' }).tap();
+  assert.match(await p.locator('#ergo-calibration').innerText(), /Podle tvých sad \(4 případů/);
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.learnsets')));
+  assert.equal(saved.sets.length, 1);
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
+test('trenažér: výběr algoritmů z víc sad, zamíchání do případu, náhodné AUF a odhalení', async () => {
+  const { p, ctx, errors } = await open('trainer');
+  await p.evaluate(async () => {
+    const { algs, algSets } = await import('./src/ui/store.js');
+    const { labModel } = await import('./src/ui/models.js');
+    const m = labModel('333');
+    const home = m.home(m.pieceNames);
+    const all = Object.fromEntries(m.pieceNames.map((n) => [n, 'solved']));
+    const task = (alg) => ({ puzzle: '333', colorsA: m.applyMoves(home, m.invertAlg(alg)), colorsB: home, constraints: all });
+    const pll = algSets.add('PLL');
+    const oll = algSets.add('OLL');
+    algs.add({ alg: "R U R' U' R' F R2 U' R' U' R U R' F'", task: task("R U R' U' R' F R2 U' R' U' R U R' F'"), set: pll, name: 'T-perm' });
+    algs.add({ alg: "M2 U M U2 M' U M2", task: task("M2 U M U2 M' U M2"), set: pll, name: 'Ua' });
+    algs.add({ alg: "R U R' U R U2 R'", task: task("R U R' U R U2 R'"), set: oll, name: 'Sune' });
+    algs.add({ alg: "R U2 R' U' R U' R'", task: task("R U2 R' U' R U' R'"), set: oll, name: 'Antisune' });
+  });
+  await p.reload();
+  await p.selectOption('#tr-set', '+pick');
+  const dlg = p.locator('.tp-dialog');
+  await dlg.waitFor();
+  // celá sada OLL a z PLL jen T-perm
+  await dlg.locator('.tp-group', { hasText: 'OLL' }).locator('summary input').check();
+  await dlg.locator('.tp-group', { hasText: 'PLL' }).locator('summary').click({ position: { x: 120, y: 8 } });
+  await dlg.locator('.tp-alg', { hasText: 'T-perm' }).locator('input').check();
+  assert.match(await dlg.locator('.tp-foot').innerText(), /Vybráno 3/);
+  await dlg.locator('button', { hasText: 'Trénovat (3)' }).tap();
+  assert.equal(await p.locator('#tr-set').inputValue(), 'pick');
+  assert.match(await p.locator('#tr-set option:checked').innerText(), /Můj výběr \(3\)/);
+  // zamíchání do případu se ukáže hned, algoritmus až po odhalení
+  const seen = new Set();
+  for (let i = 0; i < 12; i++) {
+    await p.waitForSelector('.tr-scramble');
+    const sc = await p.locator('.tr-scramble').innerText();
+    assert.match(sc, /^[URFDLB][2']?( [URFDLB][2']?)*$/);
+    await p.locator('#tr-reveal button', { hasText: 'Ukázat algoritmus' }).tap();
+    const alg = await p.locator('.reveal-alg').innerText();
+    seen.add(alg);
+    // zamíchání + algoritmus = složená kostka
+    const ok = await p.evaluate(async ([sc, alg]) => {
+      const { solved, applyAlg } = await import('./src/core/cube.js');
+      const { ROTATIONS } = await import('./src/core/rotations.js');
+      const st = applyAlg(applyAlg(solved(), sc), alg.replace(/[()]/g, ' '));
+      return ROTATIONS.some((r) => (r ? applyAlg(st, r) : st).every((v, j) => v === j));
+    }, [sc, alg]);
+    assert.ok(ok, `${sc} + ${alg}`);
+    await p.locator('#tr-next').tap();
+  }
+  assert.ok(![...seen].some((a) => a.includes("M2 U M U2")), 'Ua není ve výběru');
+  // náhodné AUF: odhalený algoritmus začne natočením, zamíchání pořád sedí
+  await p.locator('.tr-auf input').check();
+  let withAuf = false;
+  for (let i = 0; i < 12 && !withAuf; i++) {
+    await p.locator('#tr-next').tap();
+    await p.locator('#tr-reveal button', { hasText: 'Ukázat algoritmus' }).tap();
+    withAuf = /^\(U/.test(await p.locator('.reveal-alg').innerText());
+  }
+  assert.ok(withAuf, 'aspoň jednou s AUF');
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

@@ -21,12 +21,20 @@ import { mergeQuarters } from '../smartcube/recon.js';
 import { recordSegments } from './smartdata.js';
 import { openLibrary } from './algdb.js';
 import { openReview } from './review.js';
+import { caseScramble } from './casescramble.js';
+import { openTrainPick } from './trainpick.js';
 
 // Trénovaná sada ('all' = všechny).
+// 'pick' = vlastní výběr: vybrané algoritmy z libovolných sad (ergocube.trainer.pick)
 let trainSet = storage.get('ergocube.trainer.set') ?? 'all';
-const inTraining = () => (trainSet === 'all' ? algs.inMethod() : algs.inSet(trainSet));
+let picked = new Set(storage.get('ergocube.trainer.pick') ?? []);
+const inTraining = () => (trainSet === 'pick' ? algs.list().filter((a) => picked.has(a.id))
+  : trainSet === 'all' ? algs.inMethod() : algs.inSet(trainSet));
+/** Je algoritmus v tréninku? Ve vlastním výběru rozhoduje výběr, jinak zaškrtnutí v seznamu. */
+const isOn = (a) => (trainSet === 'pick' ? picked.has(a.id) : a.enabled);
 // sada musí patřit k aktivní metodě (po přepnutí metody se vrátí na všechny sady)
-const checkSet = () => { if (trainSet !== 'all' && !algSets.list().some((x) => x.id === trainSet)) trainSet = 'all'; };
+const checkSet = () => { if (trainSet !== 'all' && trainSet !== 'pick' && !algSets.list().some((x) => x.id === trainSet)) trainSet = 'all'; };
+const setPicked = (ids) => { picked = new Set(ids); storage.set('ergocube.trainer.pick', [...picked]); };
 
 let trials = storage.get('ergocube.trainer.n') ?? 0; // počet pokusů celkem (čas plánu)
 let sortKey = storage.get('ergocube.trainer.sort') ?? 'order';
@@ -52,7 +60,7 @@ function algStats(a) {
 // Opakování podle zvládnutí (viz srs.js): na řadě jsou nové případy a ty, které se
 // povedly špatně nebo jejichž termín nastal.
 function pickNext() {
-  return srsPick(inTraining().filter((a) => a.enabled), trials, randomInt, currentId);
+  return srsPick(inTraining().filter(isOn), trials, randomInt, currentId);
 }
 
 // Režim tréninku: 'time' = čas provedení, 'recog' = rozpoznání případu.
@@ -131,12 +139,12 @@ function showCase() {
   $('tr-pad').hidden = empty;
   $('tr-reveal').hidden = false;
   $('tr-recog').hidden = true;
-  $('tr-next').disabled = !inTraining().some((x) => x.enabled);
-  const enabled = inTraining().filter((x) => x.enabled).length;
+  $('tr-next').disabled = !inTraining().some(isOn);
+  const enabled = inTraining().filter(isOn).length;
   $('tr-count').textContent = `v tréninku ${enabled} z ${inTraining().length}`;
-  setOptions($('tr-set'), trainSet, { all: true, manage: true });
+  setOptions($('tr-set'), trainSet, { all: true, manage: true, pick: picked.size });
   if (!a) { $('tr-reveal').replaceChildren(); $('tr-name').textContent = ''; return; }
-  drawCase(a);
+  drawCase(a, caseAuf);
   $('tr-name').textContent = revealed ? a.name : 'Jaký je to případ?';
   renderReveal(a);
   renderMismatch(a);
@@ -154,29 +162,53 @@ function renderMismatch(a) {
     el('span', { textContent: '⚠ Algoritmus neřeší případ, jak je uložený – obrázek s ním nesedí. Otevři ho v Labu, zkontroluj Start a ulož znovu.' }), fix));
 }
 
-let showSetup = false;
+// Zamíchání do případu (na skutečné kostce): u 3×3 z náhodného stavu (casescramble.js),
+// jinak inverze algoritmu. Náhodné AUF = případ natočený horní vrstvou jako ve složení.
+let showSetup = storage.get('ergocube.trainer.scramble') ?? true;
+let randomAuf = !!storage.get('ergocube.trainer.auf');
+let caseAuf = 0; // natočení U aktuálního případu (0–3)
+const AUF_FIX = ['', "U'", 'U2', 'U']; // čím natočení vrátit před algoritmem
+const scrambles = new Map(); // id|alg|auf → zamíchání
+
+function scrambleOf(a, auf) {
+  const key = `${a.id}|${a.alg}|${auf}`;
+  if (!scrambles.has(key)) {
+    let sc = null;
+    if ((a.task.puzzle ?? '333') === '333') sc = caseScramble(a.alg, auf);
+    if (sc === null) sc = [setupOf(a), auf ? ['', 'U', 'U2', "U'"][auf] : ''].filter(Boolean).join(' ');
+    scrambles.set(key, sc || '(žádné – algoritmus kostku nemění)');
+  }
+  return scrambles.get(key);
+}
 
 function renderReveal(a) {
   const st = algStats(a);
   const box = $('tr-reveal');
-  // Nastavení případu na skutečné kostce = inverze algoritmu.
   const setup = showSetup
-    ? el('div', { className: 'reveal-setup' }, el('small', { textContent: 'Nastavení na kostce:' }), el('code', { textContent: setupOf(a) }))
+    ? el('div', { className: 'reveal-setup' }, el('small', { textContent: 'Zamíchej složenou kostku (drž ji jako při algoritmu):' }),
+      el('code', { className: 'tr-scramble', textContent: scrambleOf(a, caseAuf) }))
     : null;
   if (!revealed) {
     const b = el('button', { type: 'button', className: 'secondary small' });
     b.innerHTML = icon('eye', { size: 16 });
     b.append(el('span', { textContent: 'Ukázat algoritmus' }));
     b.onclick = () => { revealed = true; showCase(); };
-    const sb = el('button', { type: 'button', className: `secondary small${showSetup ? ' on' : ''}` });
+    const sb = el('button', { type: 'button', className: `secondary small${showSetup ? ' on' : ''}`, ariaPressed: String(showSetup) });
     sb.innerHTML = icon('shuffle', { size: 16 });
-    sb.append(el('span', { textContent: 'Nastavení' }));
-    sb.onclick = () => { showSetup = !showSetup; renderReveal(a); renderMismatch(a); };
-    box.replaceChildren(...[el('div', { className: 'row-btns' }, b, sb), setup].filter(Boolean));
+    sb.append(el('span', { textContent: 'Zamíchání' }));
+    sb.onclick = () => { showSetup = !showSetup; storage.set('ergocube.trainer.scramble', showSetup); renderReveal(a); renderMismatch(a); };
+    const auf = cubeLike(a) ? el('label', { className: 'check-row tr-auf', title: 'Případ natočený horní vrstvou náhodně – před algoritmem ho natočíš sám (jako ve složení)' },
+      el('input', { type: 'checkbox', checked: randomAuf, onchange: (e) => {
+        randomAuf = e.target.checked;
+        storage.set('ergocube.trainer.auf', randomAuf);
+        caseAuf = randomAuf ? randomInt(4) : 0;
+        showCase();
+      } }), ' Náhodné AUF') : '';
+    box.replaceChildren(...[el('div', { className: 'row-btns' }, b, sb, auf), setup].filter(Boolean));
     return;
   }
   box.replaceChildren(
-    el('div', { className: 'reveal-alg', textContent: a.alg }),
+    el('div', { className: 'reveal-alg', textContent: caseAuf ? `(${AUF_FIX[caseAuf]}) ${a.alg}` : a.alg }),
     ...(verdict?.id === a.id ? [el('div', { className: `reveal-verdict ${verdict.good ? 'ok' : 'slow'}`, textContent: verdict.good
       ? `Dobře – znovu za ${verdict.interval} případů.` : 'Pomalejší než obvykle – vrátí se hned za pár případů.' })] : []),
     el('div', { className: 'reveal-stats' },
@@ -195,7 +227,7 @@ let recog = null; // { id, options, auf, shownAt, answer }
 const cubeLike = (a) => labModel(a.task.puzzle ?? '333').P.bases.includes('U') && (a.task.puzzle ?? '333') !== 'pyram';
 
 function nextRecog() {
-  const list = inTraining().filter((a) => a.enabled);
+  const list = inTraining().filter(isOn);
   const a = pickRecog(list, recog?.id);
   if (!a) { recog = null; showRecog(); return; }
   recog = { id: a.id, options: optionsFor(a, list, 4), auf: cubeLike(a) ? Math.floor(Math.random() * 4) : 0, shownAt: 0, answer: null };
@@ -225,9 +257,9 @@ function showRecog() {
   $('tr-reveal').hidden = true;
   const box = $('tr-recog');
   box.hidden = empty;
-  const list = inTraining().filter((x) => x.enabled);
+  const list = inTraining().filter(isOn);
   $('tr-count').textContent = `v tréninku ${list.length} z ${inTraining().length}`;
-  setOptions($('tr-set'), trainSet, { all: true, manage: true });
+  setOptions($('tr-set'), trainSet, { all: true, manage: true, pick: picked.size });
   if (empty) return;
   if (list.length < 2) {
     box.replaceChildren(el('p', { className: 'hint', textContent: 'Na rozpoznání jsou potřeba aspoň dva algoritmy v tréninku (s různými názvy).' }));
@@ -274,6 +306,8 @@ function setupOf(a) {
 
 function next() {
   currentId = pickNext();
+  const a = currentId && algs.get(currentId);
+  caseAuf = randomAuf && a && cubeLike(a) ? randomInt(4) : 0;
   revealed = false;
   verdict = null;
   stopwatch.show(0);
@@ -338,22 +372,24 @@ function renderBulk(list) {
 function renderList() {
   const list = [...inTraining()].sort(SORTS[sortKey].cmp);
   renderBulk(list);
-  $('tr-sheet-title').textContent = trainSet === 'all' ? `Všechny algoritmy · ${methods.get(methods.active()).name}` : algSets.get(trainSet).name;
-  $('tr-count').textContent = `v tréninku ${list.filter((x) => x.enabled).length} z ${list.length}`;
+  $('tr-sheet-title').textContent = trainSet === 'pick' ? 'Můj výběr k tréninku' : trainSet === 'all' ? `Všechny algoritmy · ${methods.get(methods.active()).name}` : algSets.get(trainSet).name;
+  $('tr-count').textContent = `v tréninku ${list.filter(isOn).length} z ${list.length}`;
   $('tr-list').replaceChildren(...list.map((a) => {
     const st = algStats(a);
     // při úpravách zaškrtávátko vybírá algoritmus, jinak zařazuje do tréninku
     const cb = selecting
       ? el('input', { type: 'checkbox', checked: selected.has(a.id), title: 'Vybrat', ariaLabel: `Vybrat ${a.name}` })
-      : el('input', { type: 'checkbox', checked: a.enabled, title: 'Zařadit do tréninku' });
+      : el('input', { type: 'checkbox', checked: isOn(a), title: 'Zařadit do tréninku' });
     cb.onchange = selecting
       ? () => { if (cb.checked) selected.add(a.id); else selected.delete(a.id); renderBulk(list); }
-      : () => algs.update(a.id, { enabled: cb.checked });
+      : trainSet === 'pick'
+        ? () => { const ids = new Set(picked); if (cb.checked) ids.add(a.id); else ids.delete(a.id); setPicked(ids); showCase(); }
+        : () => algs.update(a.id, { enabled: cb.checked });
     const name = el('input', { className: 'alg-name', value: a.name, ariaLabel: 'Název' });
     name.onchange = () => algs.update(a.id, { name: name.value.trim() || a.name });
     const train = iconButton(icon('trainer', { size: 18 }), {
       label: 'Trénovat teď',
-      onClick: () => { currentId = a.id; revealed = false; closeSheet(); showCase(); },
+      onClick: () => { currentId = a.id; caseAuf = 0; revealed = false; closeSheet(); showCase(); },
     });
     const edit = iconButton(icon('edit', { size: 18 }), {
       label: 'Upravit algoritmus',
@@ -513,6 +549,21 @@ function initSmartTrainer() {
   });
 }
 
+/** Vybrat algoritmy k tréninku ze sad (dialog); po potvrzení se trénuje výběr. */
+function openPick() {
+  openTrainPick({
+    picked,
+    onDone: (ids) => {
+      setPicked(ids);
+      trainSet = 'pick';
+      storage.set('ergocube.trainer.set', trainSet);
+      currentId = null;
+      if (mode === 'recog') nextRecog(); else next();
+      if (!$('tr-sheet').hidden) renderList();
+    },
+  });
+}
+
 export function initTrainer({ isActive, openLab }) {
   isActiveFn = isActive;
   openLabFn = openLab ?? null;
@@ -558,6 +609,7 @@ export function initTrainer({ isActive, openLab }) {
   sortSel.onchange = () => { sortKey = sortSel.value; storage.set('ergocube.trainer.sort', sortKey); renderList(); };
   $('tr-select').onclick = () => { selecting = !selecting; selected.clear(); renderList(); };
   $('tr-all').onclick = () => {
+    if (trainSet === 'pick') { openPick(trainSet); return; }
     const all = inTraining().every((a) => a.enabled);
     for (const a of inTraining()) a.enabled = !all;
     algs.save();
@@ -565,10 +617,17 @@ export function initTrainer({ isActive, openLab }) {
   $('tr-share').onclick = () => {
     const list = inTraining();
     if (!list.length) return;
-    const name = trainSet === 'all' ? methods.get(methods.active()).name : algSets.get(trainSet).name;
+    const name = trainSet === 'pick' ? 'Můj výběr' : trainSet === 'all' ? methods.get(methods.active()).name : algSets.get(trainSet).name;
     sendLink(algsPayload(list, name), `Sada ${name}`);
   };
   $('tr-set').onchange = () => {
+    if ($('tr-set').value === '+pick') {
+      const before = trainSet;
+      setOptions($('tr-set'), trainSet, { all: true, manage: true, pick: picked.size });
+      $('tr-set').blur();
+      openPick(before);
+      return;
+    }
     trainSet = pickSet($('tr-set'), trainSet);
     checkSet();
     storage.set('ergocube.trainer.set', trainSet);

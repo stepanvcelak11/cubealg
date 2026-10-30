@@ -25,6 +25,7 @@ import { $, el, storage, iconButton } from './dom.js';
 import { icon } from './icons.js';
 import { algs, algSets, defaultSetId, preferencesOf, clearPreferences } from './store.js';
 import { openCompare, compareCount } from './compare.js';
+import { openLearnSets } from './learnsets.js';
 import { CORPUS } from '../ergonomics/corpus.js';
 import { segmentItems, segmentCount } from './smartdata.js';
 import { setOptions, pickSet } from './sets.js';
@@ -946,6 +947,7 @@ function renderErgo() {
   const head = $('ergo-moves-head');
   $('ergo-fingering-box').hidden = kind !== 'cube';
   if (kind === 'cube') renderFingering();
+  renderPairs(kind);
   if (kind === 'cube') {
     head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti / dvojitě' }));
     const bases = P().bases.filter((b) => !P().rotations.includes(b));
@@ -976,6 +978,59 @@ function renderErgo() {
       }, `Otočení o ${n}`))));
   }
 }
+
+/** Naučené návaznosti dvojic tahů (pairWeights): čip = smazat. */
+function renderPairs(kind) {
+  const w = kind === 'cube' ? ui.ergo.pairWeights ?? {} : {};
+  const keys = Object.keys(w).sort((a, b) => Math.abs(w[b]) - Math.abs(w[a]));
+  $('ergo-pairs-box').hidden = !keys.length;
+  $('ergo-pairs').replaceChildren(...keys.map((k) => el('button', {
+    type: 'button', className: `chip ergo-pair ${w[k] > 0 ? 'up' : 'down'}`, title: 'Smazat',
+    textContent: `${k.replace('>', ' → ')} ${w[k] > 0 ? '+' : '−'}${String(Math.abs(w[k])).replace('.', ',')}`,
+    onclick: () => {
+      const next = { ...ui.ergo.pairWeights };
+      delete next[k];
+      ui.ergo = { ...ui.ergo, pairWeights: next };
+      ergoEdited();
+      renderErgo();
+    },
+  })));
+}
+
+/**
+ * Soupeři algoritmu ze sady: krátké hledání pro jeho zadání (tahy Labu + tahy algoritmu,
+ * držení algoritmu). Vrací řešení v zápisu držení bez AUF.
+ */
+function searchRivals(a, seconds) {
+  const m = labModel('333');
+  const P3 = m.P;
+  let built;
+  try { built = m.buildTask(m.deserialize(a.task.colorsA), m.deserialize(a.task.colorsB), a.task.constraints, a.task.marks); } catch { built = null; }
+  if (!built?.loc) return Promise.resolve([]);
+  const h = a.task.hold ? holdFor(m, a.task.hold) : null;
+  const own = [];
+  try { for (const x of P3.parseAlg(a.alg.replace(/[()]/g, ' '))) if (!P3.rotations.includes(x.base)) own.push(x); } catch { return Promise.resolve([]); }
+  const bases = new Set([...(model.id === '333' ? ui.bases : []), ...own.map((x) => x.base)]);
+  const amounts = new Set([...(model.id === '333' ? ui.amounts : []), ...own.map((x) => x.amount)]);
+  const moves = [...bases].flatMap((base) => P3.amountsOf(base).filter((x) => amounts.has(x)).map((amount) => ({ base, amount })));
+  const toModel = (list) => (h ? list.map((x) => h.toModel([x])[0]) : list);
+  const auf = toModel([1, -1, 2].map((amount) => ({ base: 'U', amount })));
+  const toHeld = (alg) => (alg && h ? h.toHeldString(alg) : alg);
+  const job = {
+    puzzle: '333', start: built.loc, target: built.target, constraints: built.constraints, moves: toModel(moves), ergonomics: prefConfig(),
+    held: moves, auf: { pre: auf, post: auf }, seeds: [],
+    options: { lambda, maxLength: 20, extraDepth: 2, maxResults: 300, timeLimit: seconds * 1000, library: [] },
+  };
+  return new Promise((resolve) => {
+    const found = new Set();
+    rivalClient.start(job, {
+      onSolutions: (items) => { for (const it of items) { try { found.add(toHeld(it.alg)); } catch { /* jiný zápis */ } } },
+      onDone: () => resolve([...found]),
+      onError: () => resolve([...found]),
+    });
+  });
+}
+const rivalClient = new SearchClient();
 
 /** Můj prstoklad: u každého prstového tahu ruka (nebo podle situace). */
 function renderFingering() {
@@ -1013,11 +1068,12 @@ function prefConfig() {
   const { prefBase, ...cur } = ui.ergo;
   return prefBase ? { ...prefBase, leftHanded: cur.leftHanded } : cur;
 }
-function applyPrefs(res, base) {
+function applyPrefs(res, base, what) {
   ui.ergo = { ...res.config, prefBase: base };
+  delete ui.ergo.pairs;
   renderErgo();
   ergoChanged();
-  $('ergo-calibration').textContent = `Podle ${res.used} porovnání a voleb (hodnocení souhlasí s ${res.agree} z ${res.decided}, předtím s ${res.before}): `
+  $('ergo-calibration').textContent = `${what ?? `Podle ${res.used} porovnání a voleb (hodnocení souhlasí s ${res.agree} z ${res.decided}, předtím s ${res.before})`}: `
     + (res.changes.length ? res.changes.map((c) => `${featureLabel(c.key)} ${c.from} → ${c.to}`).join(', ') : 'váhy sedí, nic se nezměnilo.');
 }
 
@@ -1849,6 +1905,14 @@ export function initLab({ onSub, openSet } = {}) {
     const res = learnPreferences(P(), base, preferencesOf(model.id));
     if (!res.ok) { $('ergo-calibration').textContent = res.reason; return; }
     applyPrefs(res, base);
+  };
+  $('ergo-sets').onclick = () => {
+    const base = prefConfig();
+    openLearnSets({
+      puzzle: P(), config: () => base, extra: () => preferencesOf(model.id),
+      searchRivals: model.kind === 'perm' ? searchRivals : null,
+      onApply: (res) => applyPrefs(res, base, `Podle tvých sad (${res.cases} případů, tvůj algoritmus nejlepší u ${res.winsAfter}, předtím ${res.winsBefore})`),
+    }).addEventListener('close', () => { rivalClient.cancel(); renderCompare(); });
   };
   $('ergo-compare-count').value = String(compareCount());
   $('ergo-compare-count').onchange = () => compareCount(Number($('ergo-compare-count').value));

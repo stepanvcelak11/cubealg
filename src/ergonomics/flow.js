@@ -20,7 +20,13 @@ export const FLOW_DEFAULTS = {
   sameHand: 0.4,      // dva prstové tahy po sobě jednou rukou
   alternate: 0,       // bonus za střídání rukou (podle oblíbených algoritmů nic nepřidá, bench/fit.mjs)
   sliceBottom: 0.6,   // M hned po D/E nebo naopak: prsty od M (zezadu nahoře) musí na spodek kostky
+  // naučené z tvých sad (Lab → Podle mých sad): příplatek / sleva za dvojici tahů po sobě,
+  // klíč „M>D“ (vrstvy, bez směru); připočítá se k návaznosti mimo násobič flowScale
+  pairWeights: null,
 };
+
+/** Klíč dvojice tahů po sobě pro pairWeights. */
+export const pairKey = (prev, base) => `${prev}>${base}`;
 
 /**
  * Možnosti provedení prstového tahu: [ruka, prst, cena podle polohy zápěstí (wR, wL)].
@@ -167,9 +173,11 @@ export function flowStep(s, m, isRotation, c) {
       kind = 'alternate';
     }
   }
+  const pw = prev ? c.pairWeights?.[pairKey(prev.base, m.base)] ?? 0 : 0;
+  if (pw >= 0.2) reasons.push(`návaznost ${prev.base} → ${m.base} ti nesedí (podle tvých sad)`);
   return [
     // kind = která penalizace/bonus návaznosti se použila (pro kalibraci)
-    { cost: cost * c.flowScale, hand, finger, reason: reasons.length ? reasons.join(', ') : null, kind },
+    { cost: cost * c.flowScale + pw, hand, finger, reason: reasons.length ? reasons.join(', ') : null, kind },
     { wR, wL, prev: { hand, finger, base: m.base } },
   ];
 }

@@ -109,7 +109,9 @@ export function costModel(held, config, discount = []) {
     price[i] = c;
   };
   const isRot = (m) => MOVE_DEFS[m.base]?.kind === 'rotation';
-  const floor = (m) => (isRot(m) ? cfg.rotationPenalty * Math.abs(m.amount) : moveWeight(m, cfg) - cfg.alternate * cfg.flowScale);
+  // nejvyšší sleva za dvojici tahů (naučené váhy návaznosti) – dolní mez musí zůstat dolní
+  const pairBonus = Math.max(0, ...Object.values(cfg.pairWeights ?? {}).map((w) => -w));
+  const floor = (m) => (isRot(m) ? cfg.rotationPenalty * Math.abs(m.amount) : moveWeight(m, cfg) - cfg.alternate * cfg.flowScale - pairBonus);
   // dolní mez ceny každé položky (bez ohledu na stav ruky)
   const floors = moves.map((m, i) => (Array.isArray(m) ? m.reduce((a, x) => a + floor(x), 0) - (discount[i] ?? 0) : floor(m)));
   const minMove = Math.max(0, Math.min(...floors));

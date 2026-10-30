@@ -2049,3 +2049,23 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .ergo-finger select { min-height: 38px; font-size: 0.8rem; }
 .ergo-finger small { grid-column: 2; color: var(--muted); font-size: 0.68rem; margin-top: -3px; }
 .tr-mismatch { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--bad-soft); color: var(--bad); font-size: 0.8rem; font-weight: 600; }
+
+/* Doladit podle mých sad */
+.ls-sets { display: grid; gap: 4px; margin: 8px 0; max-height: 40vh; overflow: auto; }
+.ls-body h3 { margin: 12px 0 4px; font-size: 0.95rem; }
+.ls-body .field { margin: 10px 0; }
+.ergo-pair.up { border-color: color-mix(in srgb, var(--bad, #c0392b) 50%, transparent); }
+.ergo-pair.down { border-color: color-mix(in srgb, var(--good, #2e7d32) 50%, transparent); }
+
+/* Trenažér: výběr k tréninku, zamíchání do případu */
+.tp-filter { width: 100%; margin: 6px 0 10px; }
+.tp-groups { display: grid; gap: 6px; max-height: 55vh; overflow: auto; }
+.tp-group { border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; }
+.tp-group summary { cursor: pointer; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tp-group summary small { color: var(--muted, #777); }
+.tp-alg { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; align-items: center; padding: 6px 0 6px 4px; border-top: 1px solid var(--border); }
+.tp-alg code { grid-column: 2; font-size: 0.82rem; overflow-wrap: anywhere; color: var(--muted, #666); }
+.tp-foot { justify-content: flex-end; align-items: center; margin-top: 10px; }
+.tp-foot .hint { margin-right: auto; }
+.tr-scramble { display: block; font-size: 1.05rem; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+.tr-auf { margin: 0; font-size: 0.85rem; }

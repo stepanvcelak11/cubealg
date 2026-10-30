@@ -323,6 +323,39 @@ ukáže stejně natočenou. Trenažér u každého případu ověří, že algor
 vyřeší; když ne (např. případ uložený ze staršího zadání), ukáže upozornění s tlačítkem
 **Otevřít v Labu**. Zadání, které nejde sestavit, se nekreslí obrázkem předchozího případu.
 
+## Trénink vybraných algoritmů se zamícháním
+
+Trenažér → Sada → **Vybrat algoritmy k tréninku…** (`ui/trainpick.js`): ze všech svých sad
+(i z víc metod) zaškrtneš celé sady nebo je rozbalíš a vybereš jednotlivé algoritmy (hledání
+podle názvu nebo tahů). Výběr se uloží jako **Můj výběr (N)** a trenažér dává případy jen
+z něj (opakování podle zvládnutí jako u sad). Zaškrtávátko v seznamu algoritmů pak přidává
+a ubírá z výběru.
+
+U každého případu je **zamíchání** (`ui/casescramble.js`): tahy, které ze složené kostky
+udělají právě tento případ – u 3×3 řešení two-phase z výsledného stavu (jen vnější tahy,
+algoritmus neprozradí), u ostatních hlavolamů inverze algoritmu. Zamíchání je v zápisu
+držení algoritmu (kostku držíš jako při algoritmu), algoritmy se slice tahy, rotacemi
+a širokými tahy fungují (kostka je po zamíchání a algoritmu složená, jen jinak natočená).
+**Náhodné AUF** natočí případ horní vrstvou náhodně (obrázek i zamíchání), odhalený
+algoritmus pak začíná natočením v závorce. Když nevíš, **Ukázat algoritmus** ukáže tvůj
+uložený algoritmus. Tlačítko Zamíchání zamíchání skryje / ukáže (pamatuje se).
+
+## Doladit podle mých sad
+
+Lab → Tahy a váhy → **Doladit podle mých sad** (`ui/learnsets.js`, logika `ergonomics/fromsets.js`):
+vybereš sady, ve kterých máš algoritmy, které sis sám vybral a vyhovují ti (ne všechny – jen
+zaškrtnuté; volba se pamatuje). Každý algoritmus se porovná se „soupeři“ pro stejný případ:
+oblíbenými algoritmy sbírky (známý případ PLL/OLL/F2L…) a volitelně s tím, co pro jeho
+uložené zadání najde krátké hledání v Labu (2 nebo 5 s na algoritmus, tahy Labu + tahy
+algoritmu, jeho držení). Z dvojic „můj je lepší než soupeř“ (nejvýš 6 nejsilnějších soupeřů
+na algoritmus) se modelem Bradley–Terry (`learnPreferences`, `transitions: true`) naučí váhy
+tahů, přehmatů, návaznosti a nově i **dvojic tahů po sobě** (`pairWeights`, klíč „M>D“ podle
+vrstev): příplatek nebo sleva za to, že tah X následuje po Y. Dvojice drží u nuly silněji
+(`pairPrior`), protože je jich hodně. Výsledek ukáže, u kolika případů vychází tvůj algoritmus
+nejlepší před laděním a po něm. Naučené návaznosti jsou v Tahy a váhy → **Moje návaznosti**
+(klepnutím se smažou), hodnocení je ukáže jako důvod u tahu a hledání podle pohodlí je
+používá (sleva za dvojici snižuje dolní mez ceny tahu, aby hledání zůstalo přesné).
+
 ## Hodnocení vlastních algoritmů
 
 Trenažér → ikona budíku (`ui/review.js`, logika `ergonomics/review.js`): algoritmy napsané
