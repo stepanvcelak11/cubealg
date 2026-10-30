@@ -26,7 +26,7 @@ export const FLOW_DEFAULTS = {
  * Možnosti provedení prstového tahu: [ruka, prst, cena podle polohy zápěstí (wR, wL)].
  * Vybere se nejlevnější možnost. Ceny jsou odhad (0 = přirozené, 1 = velmi nešikovné).
  */
-function options(base, amount, wR, wL) {
+function options(base, amount, wR, wL, fingering) {
   const rHome = wR === 0, lHome = wL === 0;
   const rUp = wR === 1, rDown = wR === -1;
   const far = (w) => Math.abs(w) >= 2;
@@ -60,8 +60,9 @@ function options(base, amount, wR, wL) {
       break;
     }
     case 'D': case 'd': {
-      if (amount === 1) o.push(['L', 'ring', lHome ? 0.15 : 0.7]);
-      else if (amount === -1) o.push(['R', 'ring', rHome ? 0.15 : 0.7]);
+      // D levým prsteníčkem tahem k sobě, D' pravým; každý jde i druhou rukou tlakem
+      if (amount === 1) { o.push(['L', 'ring', lHome ? 0.15 : 0.7]); o.push(['R', 'ring-push', rHome ? 0.5 : 0.9]); }
+      else if (amount === -1) { o.push(['R', 'ring', rHome ? 0.15 : 0.7]); o.push(['L', 'ring-push', lHome ? 0.5 : 0.9]); }
       else { o.push(['L', 'ring', lHome ? 0.45 : 0.9]); o.push(['R', 'ring', rHome ? 0.45 : 0.9]); }
       break;
     }
@@ -72,22 +73,46 @@ function options(base, amount, wR, wL) {
       break;
     }
     case 'M': {
+      // M' levým prsteníčkem zezadu nahoru, M tahem dolů; pravou rukou (prsteníček zespodu)
+      // jde taky, jen méně pohodlně
       o.push(['L', 'ring', lHome ? (amount === 2 ? 0.3 : amount === -1 ? 0.05 : 0.2) : 0.8]);
+      o.push(['R', 'ring', rHome ? (amount === 2 ? 0.5 : 0.45) : 0.9]);
       break;
     }
     case 'S': {
       o.push([amount === -1 ? 'L' : 'R', 'index', 0.6]);
+      o.push([amount === -1 ? 'R' : 'L', 'index', 0.8]);
       break;
     }
     case 'E': {
       o.push([amount === -1 ? 'R' : 'L', 'ring', 0.7]);
+      o.push([amount === -1 ? 'L' : 'R', 'ring', 0.9]);
       break;
     }
     default:
       o.push(['R', 'other', 0.5]);
   }
+  // můj prstoklad (Tahy a váhy): tah dělám touhle rukou – jiné možnosti nejsou a ta moje
+  // je pro mě přirozená (z home skoro zadarmo)
+  const mine = fingering?.[`${base}${amount === 1 ? '' : amount === -1 ? "'" : '2'}`];
+  if (mine === 'L' || mine === 'R') {
+    const home = mine === 'R' ? wR === 0 : wL === 0;
+    const own = o.filter((x) => x[0] === mine).map((x) => [x[0], x[1].replace('-push', ''), Math.min(x[2], home ? 0.1 : 0.6)]);
+    if (own.length) return own;
+    return [[mine, 'other', home ? 0.1 : 0.6]];
+  }
   return o;
 }
+
+/** Prstové tahy, u kterých jde v Tahy a váhy zvolit ruku (můj prstoklad). */
+export const FINGER_MOVES = ['U', "U'", 'U2', 'F', "F'", 'F2', 'D', "D'", 'D2', 'M', "M'", 'M2', 'S', "S'", 'S2', 'B', "B'", 'E', "E'"];
+/** Kdo tah podle modelu dělá (bez vlastního prstokladu, z home): text pro nastavení. */
+export function defaultFinger(token) {
+  const m = token.match(/^([A-Za-z])('|2)?$/);
+  const o = options(m[1], m[2] === "'" ? -1 : m[2] === '2' ? 2 : 1, 0, 0).sort((a, b) => a[2] - b[2]);
+  return o.map((x) => `${x[0] === 'R' ? 'pravý' : 'levý'} ${FINGER_NAMES[x[1]] ?? x[1]}`);
+}
+export const FINGER_NAMES = { index: 'ukazováček', 'index-push': 'ukazováček tlakem', ring: 'prsteníček', 'ring-push': 'prsteníček tlakem', thumb: 'palec', wrist: 'zápěstí', other: 'jinak' };
 
 /** Výchozí stav prstokladu (home grip, žádný předchozí tah). */
 export const FLOW_START = Object.freeze({ wR: 0, wL: 0, prev: null });
@@ -111,7 +136,15 @@ export function flowStep(s, m, isRotation, c) {
     const next = m.amount === 2 ? (w === 0 ? 0 : -w) : Math.max(-2, Math.min(2, w + WRIST_SIGN[m.base] * m.amount));
     if (hand === 'R') wR = next; else wL = next;
   } else {
-    const best = options(m.base, m.amount, wR, wL).sort((a, b) => a[2] - b[2])[0];
+    // prst se vybírá i podle předchozího tahu: když jde tah druhou rukou skoro stejně dobře,
+    // skladač ruce prostřídá (místo dvou tahů po sobě jednou rukou nebo stejným prstem)
+    const after = (o) => {
+      if (!prev || prev.finger === 'wrist') return 0;
+      if (prev.hand === o[0] && prev.finger === o[1] && prev.base !== m.base) return c.reuse;
+      if (prev.hand === o[0]) return c.sameHand;
+      return -c.alternate;
+    };
+    const best = options(m.base, m.amount, wR, wL, c.fingering).map((o) => [o, o[2] + after(o)]).sort((a, b) => a[1] - b[1])[0][0];
     [hand, finger, cost] = best;
     if (cost >= 0.4) reasons.push(finger.includes('push') ? 'náhradní prst' : /^[SEBb]$/.test(m.base) ? 'nepohodlný tah prstem' : 'zápěstí není v pozici');
   }

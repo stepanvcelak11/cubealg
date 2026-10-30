@@ -52,3 +52,19 @@ test('ergonomie: R2 tam a zpátky bez přehmatu, M hned po D se trestá', async 
   // vlastní algoritmus skladače (prohození hran U a D) vychází líp než ten z generátoru
   assert.ok(reviewAlg("M R2 S2 M R2 S2").value < reviewAlg("M2 D' M' U2 M U M2").value);
 });
+
+test('prstoklad: ruce se střídají, když to jde, a můj prstoklad má přednost', async () => {
+  const { scoreAlg } = await import('../src/ergonomics/score.js');
+  // F' po U' jde i pravým palcem – žádné „dva tahy jednou rukou“
+  const s = scoreAlg("F R U R' U' F'");
+  assert.equal(s.perMove[5].hand, 'R');
+  assert.equal(s.perMove[5].flowKind === 'sameHand', false);
+  // vlastní prstoklad: D' dělám levou rukou
+  const mine = scoreAlg("M2 D' M' U2 M U M2", { fingering: { "D'": 'L' } });
+  assert.equal(mine.perMove[1].hand, 'L');
+  const auto = scoreAlg("M2 D' M' U2 M U M2");
+  assert.equal(auto.perMove[1].hand, 'R');
+  const { defaultFinger, FINGER_MOVES } = await import('../src/ergonomics/flow.js');
+  assert.ok(FINGER_MOVES.includes("U'"));
+  assert.match(defaultFinger("U'")[0], /levý ukazováček/);
+});

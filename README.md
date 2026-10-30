@@ -607,6 +607,12 @@ celkem = Σ váha tahů              (R, U levné; F, L, D dražší; B, S, E dr
        − bonusy za triggery       (R U R' U', R' F R F', R U R', …)
 ```
 
+**Prstoklad** (`flow.js`): každý prstový tah má možnosti provedení (ruka, prst, cena podle polohy
+zápěstí) a vybere se ta, která je nejlevnější i s návazností na předchozí tah – když jde tah
+druhou rukou skoro stejně dobře, ruce se prostřídají. Lab → Tahy a váhy → **Můj prstoklad**:
+u každého prstového tahu (U, U', F, D', M, S…) jde nastavit, kterou rukou ho děláš, a hodnocení
+i hledání pak počítá s tvým rozdělením. V hodnocení algoritmů je pod každým tahem ruka (P / L).
+
 Všechny konstanty jsou v `src/ergonomics/weights.js` a dají se předat přes `config`.
 
 ## Nasazení

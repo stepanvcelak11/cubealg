@@ -17,6 +17,7 @@ import { scoreFor, defaultErgo, moveDifficulty, SQ1_DEFAULTS } from '../ergonomi
 import { aufCost } from '../ergonomics/score.js';
 import { DEFAULT_CONFIG, DEFAULT_MOVE_WEIGHTS } from '../ergonomics/weights.js';
 import { buildTriggers } from '../ergonomics/triggers.js';
+import { FINGER_MOVES, defaultFinger } from '../ergonomics/flow.js';
 import { calibrate, featureLabel, learnPreferences } from '../ergonomics/calibrate.js';
 import { VIEWS, styleMetrics, rankResults, ranksOf, paretoFront, speedValue, DEFAULT_LAMBDA } from '../ergonomics/style.js';
 import { SearchClient } from '../search/client.js';
@@ -943,6 +944,8 @@ function renderErgo() {
   $('ergo-main').replaceChildren(...ERGO_FIELDS[kind].map(([key, label, step]) =>
     el('label', { className: 'field' }, label, numberInput(ui.ergo[key], step, (v) => { ui.ergo[key] = v; ergoEdited(); }))));
   const head = $('ergo-moves-head');
+  $('ergo-fingering-box').hidden = kind !== 'cube';
+  if (kind === 'cube') renderFingering();
   if (kind === 'cube') {
     head.replaceChildren('Váhy tahů ', el('small', { textContent: 'po směru / proti / dvojitě' }));
     const bases = P().bases.filter((b) => !P().rotations.includes(b));
@@ -972,6 +975,28 @@ function renderErgo() {
         ergoEdited();
       }, `Otočení o ${n}`))));
   }
+}
+
+/** Můj prstoklad: u každého prstového tahu ruka (nebo podle situace). */
+function renderFingering() {
+  const f = ui.ergo.fingering ?? {};
+  $('ergo-fingering').replaceChildren(...FINGER_MOVES.filter((t) => P().bases.includes(t[0])).map((t) => {
+    const def = defaultFinger(t);
+    const sel = el('select', { ariaLabel: `${t} – ruka` },
+      el('option', { value: '', textContent: 'Podle situace' }),
+      el('option', { value: 'R', textContent: 'Pravá ruka' }),
+      el('option', { value: 'L', textContent: 'Levá ruka' }));
+    sel.value = f[t] ?? '';
+    sel.onchange = () => {
+      const next = { ...(ui.ergo.fingering ?? {}) };
+      if (sel.value) next[t] = sel.value; else delete next[t];
+      ui.ergo = { ...ui.ergo, fingering: next };
+      if (ui.ergo.prefBase) ui.ergo.prefBase = { ...ui.ergo.prefBase, fingering: next };
+      ergoChanged();
+    };
+    return el('label', { className: 'ergo-finger' }, el('b', { textContent: t }), sel,
+      el('small', { textContent: `aplikace: ${def.join(', nebo ')}` }));
+  }));
 }
 
 /** Ruční změna vah: ta je nový základ pro doladění podle voleb. */

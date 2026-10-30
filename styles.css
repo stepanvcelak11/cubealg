@@ -2008,9 +2008,13 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .rv-grade.g4 { background: var(--good-soft); color: var(--good); }
 .rv-grade.g3 { background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
 .rv-grade.g2, .rv-grade.g1 { background: var(--bad-soft, #fde3df); color: var(--bad, #c0392b); }
-.rv-alg { margin: 0; font-family: var(--mono); font-size: 0.95rem; line-height: 1.7; overflow-wrap: anywhere; }
-.rv-alg span.trig { border-bottom: 2px solid var(--good); }
-.rv-alg span.weak { background: var(--bad-soft, #fde3df); color: var(--bad, #c0392b); border-radius: 4px; padding: 0 2px; font-weight: 700; }
+.rv-alg { margin: 0; font-family: var(--mono); font-size: 0.95rem; line-height: 1.3; display: flex; flex-wrap: wrap; gap: 4px 2px; }
+.rv-move { display: inline-grid; justify-items: center; padding: 1px 3px; border-radius: 6px; border-bottom: 2px solid transparent; }
+.rv-move.trig { border-bottom-color: var(--good); }
+.rv-move.weak { background: var(--bad-soft, #fde3df); color: var(--bad, #c0392b); font-weight: 700; }
+.rv-hand { font: 700 0.6rem/1 var(--sans, inherit); color: var(--muted); min-height: 0.6rem; }
+.rv-hand.L { color: var(--link, #2563eb); }
+.rv-legend { margin: -4px 0 0; color: var(--muted); font-size: 0.7rem; }
 .rv-facts { margin: 0; color: var(--muted); font-size: 0.78rem; }
 .rv-sec h4 { margin: 0 0 4px; font-size: 0.78rem; text-transform: none; color: var(--text); }
 .rv-cmp { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -2038,3 +2042,9 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .rv-vs-list li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr); gap: 0 8px; font-size: 0.82rem; }
 .rv-vs-list code { font-family: var(--mono); overflow-wrap: anywhere; }
 .rv-vs-list small { grid-column: 2; color: var(--muted); font-size: 0.72rem; }
+
+.ergo-fingering { display: grid; gap: 6px 14px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ergo-finger { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 6px; align-items: center; }
+.ergo-finger b { font-family: var(--mono); }
+.ergo-finger select { min-height: 38px; font-size: 0.8rem; }
+.ergo-finger small { grid-column: 2; color: var(--muted); font-size: 0.68rem; margin-top: -3px; }

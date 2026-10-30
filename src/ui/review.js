@@ -8,6 +8,7 @@ import { algs, algSets, defaultSetId, recordPreference, preferencesOf } from './
 import { labModel } from './models.js';
 import { parseAlgText, constraintsFor, withoutRotations } from '../ergonomics/algdb.js';
 import { reviewAlg, formatSeconds, normalizeAlg } from '../ergonomics/review.js';
+import { FINGER_NAMES } from '../ergonomics/flow.js';
 import { userErgo } from './algdb.js';
 import { profile } from './profile.js';
 import { profileLevel } from '../sim/profile.js';
@@ -33,6 +34,14 @@ function taskOf(alg, kind) {
   const m = labModel('333');
   const home = m.home(m.pieceNames);
   return { puzzle: '333', constraints: constraintsFor(kind), colorsA: m.applyMoves(home, m.invertAlg(withoutRotations(alg))), colorsB: home };
+}
+
+/** Tah v zápisu s rukou, která ho podle hodnocení dělá (P/L), a důvodem slabého místa. */
+function moveChip(m, pm, weak, trig) {
+  const hand = pm?.hand ? (pm.hand === 'R' ? 'P' : 'L') : '';
+  const who = pm?.hand ? `${pm.hand === 'R' ? 'pravá' : 'levá'} ruka${pm.finger && pm.finger !== 'wrist' ? ` – ${FINGER_NAMES[pm.finger] ?? pm.finger}` : ' – zápěstí'}` : 'otočení kostky';
+  return el('span', { className: `rv-move${weak ? ' weak' : ''}${trig ? ' trig' : ''}`, title: [who, ...(weak?.reasons ?? [])].join(' · ') },
+    el('span', { textContent: m }), el('small', { className: `rv-hand ${hand}`, textContent: hand }));
 }
 
 /** Naměřené časy z trenažéru pro stejný zápis. */
@@ -114,7 +123,7 @@ export function openReview({ openLab, onSaved } = {}) {
     const weakAt = new Map(r.weak.map((w) => [w.i, w]));
     const trig = new Set(r.score.triggers.flatMap((t) => Array.from({ length: t.length }, (_, k) => t.start + k)));
     const alg = el('p', { className: 'rv-alg' }, ...r.alg.split(' ').flatMap((m, i) => [
-      el('span', { className: `${weakAt.has(i) ? 'weak' : ''}${trig.has(i) ? ' trig' : ''}`.trim(), textContent: m, title: weakAt.get(i)?.reasons.join(', ') ?? '' }), ' ']));
+      moveChip(m, r.score.perMove[i], weakAt.get(i), trig.has(i)), ' ']));
     const facts = [
       `${r.moves} tahů`,
       `odhad ${formatSeconds(r.time)} při ${fmt(tps)} tahů/s`,
@@ -159,7 +168,8 @@ export function openReview({ openLab, onSaved } = {}) {
       el('div', { className: 'rv-head' },
         el('div', { className: `rv-grade g${g >= 90 ? 5 : g >= 75 ? 4 : g >= 55 ? 3 : g >= 35 ? 2 : 1}` }, el('b', { textContent: String(g) }), el('small', { textContent: r.label })),
         el('div', {}, el('h3', { textContent: title }), el('small', { textContent: sub }))),
-      alg, el('p', { className: 'rv-facts', textContent: facts.join(' · ') }), ...sections, vs,
+      alg, el('p', { className: 'rv-legend', textContent: 'Pod tahem ruka podle hodnocení (P = pravá, L = levá; zápěstí u R/L). Děláš to jinak? Nastav to v Lab → Tahy a váhy → Můj prstoklad.' }),
+      el('p', { className: 'rv-facts', textContent: facts.join(' · ') }), ...sections, vs,
       actions.length ? el('div', { className: 'row-btns' }, ...actions) : null);
   }
 

@@ -14,9 +14,10 @@ test('návaznost: plynulé triggery jsou lepší než stejné tahy v nešikovné
 });
 
 test('návaznost: důvod u tahu a promítnutí do celkového skóre', () => {
-  const s = scoreAlg("U F U' F'");
+  // U i F pravým ukazováčkem (můj prstoklad) → stejný prst dvakrát po sobě
+  const s = scoreAlg("U F U F", { fingering: { U: 'R', F: 'R' } });
   assert.ok(s.perMove.some((m) => /stejný prst/.test(m.flowReason ?? '')));
-  const off = scoreAlg("U F U' F'", { flowScale: 0 });
+  const off = scoreAlg("U F U F", { fingering: { U: 'R', F: 'R' }, flowScale: 0 });
   assert.equal(off.breakdown.flow, 0);
   assert.ok(s.total > off.total);
 });
@@ -25,4 +26,9 @@ test('návaznost: rotace přeruší prstoklad', () => {
   const s = scoreAlg("R' y U");
   assert.equal(s.perMove[1].flow, 0);
   assert.equal(s.perMove[2].flowReason, null);
+});
+
+test('návaznost: když jde tah druhou rukou, ruce se prostřídají', () => {
+  const s = scoreAlg("U F U' F'");
+  assert.ok(!s.perMove.some((m) => /stejný prst/.test(m.flowReason ?? '')));
 });
