@@ -1918,6 +1918,7 @@ export function initLab({ onSub, openSet } = {}) {
   $('share-task').onclick = shareTask;
   $('gen-set').onclick = generateSet;
   for (const b of $('task-mode').querySelectorAll('button')) b.onclick = () => setMode(b.dataset.mode);
+  $('cells-generate').onclick = generateSet;
   $('cells-resample').onclick = () => { ui.cellsStart = null; clearResults(); renderPlayer(); toast('Nový náhodný případ – Hledat ho vyřeší'); };
   $('cells-clear').onclick = () => { snapshot(); ui.cells = { before: {}, after: {} }; applyCells(); };
   for (const b of $('side-switch').querySelectorAll('button')) b.onclick = () => setSide(b.dataset.side);

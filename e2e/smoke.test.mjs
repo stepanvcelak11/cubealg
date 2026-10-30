@@ -1816,7 +1816,7 @@ test('lab: zadání jako v metodě – víc barev na nálepce, hledání jednoho
   assert.ok(ok);
   // generátor sady: všechny případy ze zadání
   await p.locator('.segmented button[data-sub="task"]').tap();
-  await p.locator('#gen-set').tap();
+  await p.locator('#cells-generate').tap();
   await p.waitForSelector('.gen-dialog', { timeout: 30000 });
   await p.locator('.gen-dialog button', { hasText: 'Spočítat případy' }).tap();
   await p.waitForFunction(() => /stavů → \d+ případů/.test(document.querySelector('.gen-dialog')?.innerText ?? ''), null, { timeout: 60000 });
