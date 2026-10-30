@@ -533,7 +533,11 @@ export function openGenerator(ctx) {
     for (const { x, ch } of items) {
       const k = (count.get(x) ?? 0) + 1;
       count.set(x, k);
-      algs.add({ alg: ch.display, name: `${base} ${x.i + 1}${k > 1 ? ` (${k})` : ''}`, set: id, task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) }, look: ctx.look?.() });
+      algs.add({
+        alg: ch.display, name: `${base} ${x.i + 1}${k > 1 ? ` (${k})` : ''}`, set: id, task: { ...ctx.task, colorsA: colorsOfState(P, x.c.rep, result.constraints) }, look: ctx.look?.(),
+        // šance případu z výčtu (statistika sady): podoby případu / všechny podoby kroku
+        ...(result.signatures ? { share: x.c.members.length / result.signatures } : {}),
+      });
     }
     const withParity = !parityRow.hidden && parityBox.checked;
     if (withParity) addParityAlg(id);

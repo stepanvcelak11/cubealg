@@ -3,6 +3,7 @@
 import { el } from './dom.js';
 import { algSets, algs, defaultSetId } from './store.js';
 import { openCopySets } from './copysets.js';
+import { openSetStats } from './setstats.js';
 
 /**
  * Naplní select sadami.
@@ -19,6 +20,7 @@ export function setOptions(select, value, { all = false, manage = false, pick = 
     ...algSets.list().map((s) => el('option', { value: s.id, textContent: `${s.name} (${count(s.id)})` })),
     own ? el('option', { value: '+pick', textContent: 'Vybrat algoritmy k tréninku…' }) : null,
     el('option', { value: '+new', textContent: '+ Nová sada…' }),
+    manage && value !== 'pick' ? el('option', { value: '+stats', textContent: value === 'all' ? 'Statistika sad…' : 'Statistika sady…' }) : null,
     manage ? el('option', { value: '+copy', textContent: 'Kopírovat sady z/do jiné metody…' }) : null,
     manage && value !== 'all' && value !== 'pick' ? el('option', { value: '+rename', textContent: 'Přejmenovat sadu…' }) : null,
     manage && value !== 'all' && value !== 'pick' && value !== defaultSetId() ? el('option', { value: '+delete', textContent: 'Smazat sadu…' }) : null,
@@ -33,6 +35,10 @@ export function pickSet(select, current) {
   if (v === '+new') {
     const name = prompt('Název nové sady (např. situace):', '')?.trim();
     return name ? algSets.add(name) : current;
+  }
+  if (v === '+stats') {
+    openSetStats(current === 'all' ? 'all' : current);
+    return current;
   }
   if (v === '+copy') {
     openCopySets();

@@ -210,10 +210,11 @@ export const algs = {
   inMethod(method = methods.active()) { return algsData.filter((a) => setMethod(a.set) === method); },
   /** @param {{alg:string, task:object, name?:string, set?:string}} entry */
   /** look: natočení pohledu na kostku při uložení (jak ji skladač v Labu viděl), jen pro zobrazení. */
-  add({ alg, task, name, set = defaultSetId(), look }) {
+  /** share: šance případu (z generátoru sady), jen pro statistiku sady. */
+  add({ alg, task, name, set = defaultSetId(), look, share }) {
     const id = `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const count = this.inSet(set).length;
-    algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now(), ...(look ? { look } : {}) });
+    algsData.push({ id, name: name ?? `Algoritmus ${count + 1}`, alg, task, set, enabled: true, times: [], created: Date.now(), ...(look ? { look } : {}), ...(typeof share === 'number' ? { share } : {}) });
     this.save();
     return id;
   },
@@ -272,7 +273,7 @@ export function exportMethod(method = methods.active()) {
     guide: guides.get(method),
     sets: sets.map((x) => ({ id: x.id, name: x.name })),
     algs: algsData.filter((a) => ids.has(a.set ?? 'default'))
-      .map(({ name, alg, task, set }) => ({ name, alg, task, set: set ?? 'default' })),
+      .map(({ name, alg, task, set, share }) => ({ name, alg, task, set: set ?? 'default', ...(typeof share === 'number' ? { share } : {}) })),
     // nastavení kroků ze simulátoru (volnosti, tahy, sada…) podle id kroku
     simulator: storage.get('ergocube.sim.options')?.steps?.[method] ?? undefined,
   };
@@ -306,6 +307,7 @@ export function importMethod(data, { activate = true } = {}) {
     algsData.push({
       id: newId('a'), name: a.name ?? 'Algoritmus', alg: a.alg, task: a.task,
       set: setMap.get(a.set) ?? defaultSetId(id), enabled: true, times: [], created: Date.now(),
+      ...(typeof a.share === 'number' ? { share: a.share } : {}),
     });
   }
   const guide = data.guide ?? {};

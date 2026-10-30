@@ -577,6 +577,18 @@ Square-1 (`src/puzzles/sq1.js`, `src/search/sq1engine.js`) mění tvar, takže m
 vlastní model: 2 × 12 pozic po 30°, prostřední vrstva, notace WCA. Hledání je IDA*
 po řezech s tabulkami (tvar po řezu × pozice dílku) a tabulkou tvarů.
 
+## Statistika sady
+
+Výběr sady (Trenažér, Lab) → **Statistika sady…**:
+- průměrná délka (STM, HTM), nejkratší–nejdelší, a kolik tahů v průměru točíš při
+  složení (délky vážené šancí případů),
+- **šance případu** (1/N a %): kolik podob případ má po natočení U před a po algoritmu,
+  vůči ostatním případům sady (+ přeskočení). Pro úplnou sadu přesná (OLL 1/54, 1/108,
+  1/216; PLL Aa 1/18, E 1/36, H 1/72 – ověřeno testem), pro sady z generátoru se ukládá
+  přesná šance z výčtu stavů,
+- **které tahy sada točí** (R, U, M, S, r…) v procentech, vážené šancí, podíl dvojitých
+  tahů a rotace – na první pohled je vidět, jestli sada stojí na tazích, které nechceš.
+
 ## Kopie metod, předlohy a kopírování sad
 
 - **Kopírovat sady algoritmů** (Sestavit → Nastavení metody, nabídka Metoda, nebo výběr

@@ -1909,3 +1909,35 @@ test('metody: kopírování sad do jiné metody, uložení jako předloha a dupl
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('statistika sady: délky, šance případů a tahy', async () => {
+  const { caseOf, solved } = await import('../src/core/cube.js');
+  const { FACELETS, SLOTS } = await import('../src/core/geometry.js');
+  const home = FACELETS.map((f) => f.face);
+  const taskOf = (alg) => {
+    const loc = caseOf(alg);
+    const colors = new Array(54);
+    for (let k = 0; k < 54; k++) colors[loc[k]] = FACELETS[k].face;
+    return { puzzle: '333', colorsA: colors, colorsB: home, constraints: Object.fromEntries(SLOTS.map((s) => [s.name, 'solved'])) };
+  };
+  void solved;
+  const pll = { T: "R U R' U' R' F R2 U' R' U' R U R' F'", H: 'M2 U M2 U2 M2 U M2', Ua: "M2 U M U2 M' U M2" };
+  const { p, ctx, errors } = await open('trainer', {
+    'ergocube.algsets': [{ id: 'sP', name: 'PLL', method: 'default' }],
+    'ergocube.algs': Object.entries(pll).map(([name, alg], i) => ({ id: `a${i}`, name, alg, task: taskOf(alg), set: 'sP', enabled: true, times: [] })),
+  });
+  await p.selectOption('#tr-set', 'sP');
+  await p.selectOption('#tr-set', '+stats');
+  const dlg = p.locator('.ss-dialog');
+  await dlg.waitFor();
+  const text = await dlg.innerText();
+  // váhy T 16, Ua 16, H 4, přeskočení 4 → T 16/40
+  assert.match(text, /3\s*algoritmů · 3 případů/);
+  assert.match(text, /T[\s\S]*14 tahů[\s\S]*1\/2,5 · 40 %/);
+  assert.match(text, /H[\s\S]*7 tahů[\s\S]*1\/10 · 10 %/);
+  assert.match(text, /1\/10\s*přeskočení/);
+  assert.match(text, /M\s*\n?[\s\S]*%/);
+  await p.screenshot({ path: process.env.SHOT ?? '/dev/null' }).catch(() => {});
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
