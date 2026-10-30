@@ -1956,6 +1956,8 @@ test('test metody: případy bez algoritmu v sadě s obrázkem a otevřením v L
   assert.equal(await p.locator('select[aria-label="Barevná neutralita"] option').count(), 3);
   await p.locator('.sim-page button', { hasText: 'Spustit test' }).tap();
   await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
+  assert.match(await p.locator('.sim-reliab').innerText(), /Spolehlivost: [\s\S]*± \d+,\d+ s \(95 %\) z 10 zamíchání/);
+  if (process.env.SHOT) await p.locator('.sim-hero').screenshot({ path: `${process.env.SHOT}/hero.png` });
   const miss = p.locator('.sim-missing');
   assert.match(await miss.innerText(), /Hrana vpředu: \d+ (případ|případy|případů) bez algoritmu/);
   assert.ok(await miss.locator('.sim-miss-card svg').count() >= 1);

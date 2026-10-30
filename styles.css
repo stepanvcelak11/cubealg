@@ -2120,3 +2120,9 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .sim-miss-net svg { display: block; max-width: 100%; height: auto; }
 .sim-miss-alg { display: flex; align-items: center; gap: 4px; width: 100%; }
 .sim-miss-alg code { flex: 1; font-size: 0.78rem; overflow-wrap: anywhere; }
+
+/* Test metody: spolehlivost výsledku */
+.sim-reliab { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: 14px; background: var(--panel-2); border-left: 4px solid var(--muted); font-size: 0.86rem; }
+.sim-reliab.ok { border-left-color: var(--ok, #22b455); }
+.sim-reliab.mid { border-left-color: var(--warn, #f0a020); }
+.sim-reliab.ko { border-left-color: var(--danger, #e5383b); }

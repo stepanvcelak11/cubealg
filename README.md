@@ -586,6 +586,14 @@ po řezech s tabulkami (tvar po řezu × pozice dílku) a tabulkou tvarů.
 - **Semínko zamíchání**: číslo, ze kterého vznikají náhodná zamíchání – stejné semínko =
   stejná zamíchání (férové porovnání).
 - Krok hotový až na natočení vrstvy (AUF/ADF) je **přeskočení** (stojí jen čas natočení).
+- **Realistická prohlídka**: lepší start (neutralita) skladač najde jen někdy – špička
+  v 92 % složení, rychlý v 75 %, pokročilý v 50 % (vlastní tempo / profil podle rychlosti);
+  jinak se počítá složení se svou barvou.
+- **Přechody mezi kroky**: pauza na hledání dalších dílků – špička 0,02 s, rychlý 0,12 s,
+  pokročilý 0,3 s na krok (i u vestavěných metod). Tempa úrovní jsou doladěná, aby CFOP
+  vyšel jako dřív (6,1 / 11,1 / 23 s); metody s méně kroky (Roux) tím trochu získají.
+- **Spolehlivost výsledku**: průměrný čas ± (95 %), kolik zamíchání je potřeba na ±0,1 s
+  a jestli je rozdíl proti minulému testu (stejná úroveň) skutečný, nebo může být náhoda.
 - **Případy bez algoritmu**: obrázek případu před krokem, kolikrát v testu přišel, co v něm
   našlo hledání a tlačítko „Otevřít v Labu“ (případ jako zadání – najdeš algoritmus
   a uložíš ho do sady).

@@ -5,7 +5,7 @@
 // zadané) a look-ahead pak rozdělí čas mezi provedení a pauzy. Co umí za sady algoritmů, se
 // odečte od algoritmů, které by se musel naučit. Čím víc údajů, tím přesnější odhad.
 
-import { LEVELS, stepEstimate } from './simulate.js';
+import { LEVELS, stepEstimate, levelHuman } from './simulate.js';
 import { REFERENCES } from './references.js';
 
 /** Sady algoritmů, které skladač může umět (kolik případů, jak se pozná krok metody). */
@@ -36,7 +36,8 @@ export function refTime(ref, L) {
   const id = '__probe__';
   LEVELS[id] = { human: true, ...L };
   try {
-    return ref.steps.reduce((a, st) => a + stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level: id }).time, 0);
+    const pause = levelHuman(id).pause;
+    return ref.steps.reduce((a, st, i) => a + stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level: id, pause: i ? pause * (1 - (st.skipped ?? 0)) : 0 }).time, 0);
   } finally { delete LEVELS[id]; }
 }
 

@@ -3,7 +3,7 @@
 // rozptyl jednotlivých složení, kde metoda ztrácí čas a kolik by co ušetřilo, a jak přesný
 // je odhad (kolik zamíchání by bylo potřeba na přesnější).
 
-import { summarize, stepEstimate, LEVELS } from './simulate.js';
+import { summarize, stepEstimate, LEVELS, levelHuman } from './simulate.js';
 import { REFERENCES } from './references.js';
 
 /** Kolik algoritmů se u vestavěných metod učí (celé OLL + PLL, CMLL, OCLL + PLL). */
@@ -16,7 +16,8 @@ const quantile = (sorted, q) => (sorted.length ? sorted[Math.min(sorted.length -
 
 /** Odhad vestavěné metody stejným modelem skladače: čas, tahy skladače, rozpoznání. */
 export function refEstimate(ref, level = 'pro', tps = 4) {
-  const steps = ref.steps.map((st) => stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { tps, recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level }));
+  const pause = levelHuman(level, tps).pause;
+  const steps = ref.steps.map((st, i) => stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { tps, recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level, pause: i ? pause * (1 - (st.skipped ?? 0)) : 0 }));
   return {
     time: steps.reduce((a, x) => a + x.time, 0),
     human: steps.reduce((a, x) => a + x.moves, 0),

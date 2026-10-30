@@ -208,6 +208,7 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
       const turned = already ? null : adjustSkip(opts, i, state);
       if (turned) { pick = turned.o; r = turned.r; }
       else if (!already) {
+        let own = null; // řešení v dosavadní orientaci (bez neutrality) – pro realistickou prohlídku
         for (const o of opts) {
           if (stopped()) break;
           const test = testOf(o.goal, o.key);
@@ -217,8 +218,11 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
           if (!test(applyAlg(state, x.model))) continue;
           const turn = o.j !== v ? (variants[v].rotation?.[o.j] ?? '') : '';
           const y = { ...x, length: lengthOf(x.display) + (countRotation ? lengthOf(turn) : 0), rotation: turn || undefined };
+          if (o === opts[0]) own = y;
           if (!r || r.source === 'missing' || better(y, r, i)) { r = y; pick = o; }
         }
+        // první krok: co by dalo složení bez nalezení lepší orientace při prohlídce
+        if (i === 0 && r && own && pick !== opts[0]) r = { ...r, alt: { length: own.length, score: own.score } };
       }
       if (stopped()) break;
       if (!r) { ok = false; out.push({ model: '', display: '', length: 0, score: 0, source: 'none' }); break; }
@@ -272,10 +276,11 @@ const kindOf = (kind) => (HUMAN.moves[kind] ? kind : 'intuitive');
  */
 // Tahy podle úrovně (moves): špička dělá intuitivní kroky efektivněji než test krok po kroku
 // (x-cross, víc slotů naráz), běžný skladač naopak s víc tahy (zaběhnuté postupy, rotace).
+// tempa jsou doladěná tak, aby CFOP i s pauzami mezi kroky vyšel jako dřív (6,1 / 11,1 / 23 s)
 export const LEVELS = {
-  pro: { label: 'Světová špička (potenciál metody)', tps: { alg: 13, intuitive: 11, blocks: 6.5 }, recog: 0.5, human: true },
-  fast: { label: 'Rychlý skladač (kolem 10 s)', tps: { alg: 8, intuitive: 6.5, blocks: 4.2 }, recog: 0.8, human: true, moves: { alg: 1.03, intuitive: 1.05, blocks: 1.35 } },
-  club: { label: 'Pokročilý skladač (kolem 20 s)', tps: { alg: 4.5, intuitive: 3.3, blocks: 2.4 }, recog: 1.3, human: true, moves: { alg: 1.08, intuitive: 1.25, blocks: 1.5 } },
+  pro: { label: 'Světová špička (potenciál metody)', tps: { alg: 13.3, intuitive: 11.3, blocks: 6.7 }, recog: 0.5, human: true, inspect: 0.92, pause: 0.02 },
+  fast: { label: 'Rychlý skladač (kolem 10 s)', tps: { alg: 8.7, intuitive: 7.1, blocks: 4.6 }, recog: 0.8, human: true, moves: { alg: 1.03, intuitive: 1.05, blocks: 1.35 }, inspect: 0.75, pause: 0.12 },
+  club: { label: 'Pokročilý skladač (kolem 20 s)', tps: { alg: 5, intuitive: 3.6, blocks: 2.6 }, recog: 1.3, human: true, moves: { alg: 1.08, intuitive: 1.25, blocks: 1.5 }, inspect: 0.5, pause: 0.3 },
   custom: { label: 'Vlastní tempo (tahy za sekundu)', recog: 1, human: true },
   computer: { label: 'Počítač (tahy simulace, jedno tempo)', recog: 1, human: false },
 };
@@ -301,6 +306,22 @@ export const STYLES = {
 /** Tempo člověka v kroku (tahů za sekundu) při celkové rychlosti tps. */
 export const humanTps = (tps, kind, realism = 1) => tps * mix(HUMAN.tps[kindOf(kind)], realism);
 
+/**
+ * Lidská stránka úrovně: inspect = jak často při prohlídce najde nejlepší start (barvu,
+ * orientaci) z možností, které metoda dovoluje; pause = pauza na přechodu mezi kroky (s) –
+ * špička navazuje plynule (lookahead), pomalejší skladač se zastaví a hledá další dílky.
+ */
+export function levelHuman(level, tps = 4) {
+  const L = LEVELS[level];
+  if (!L) return { inspect: 1, pause: 0 };
+  if (L.human === false) return { inspect: 1, pause: 0 };
+  if (Number.isFinite(L.inspect) && Number.isFinite(L.pause)) return { inspect: L.inspect, pause: L.pause };
+  // vlastní tempo / můj profil: podle rychlosti algoritmů (3 tahy/s ≈ začátečník, 13 ≈ špička)
+  const alg = L.tps?.alg ?? humanTps(tps, 'alg');
+  const t = Math.max(0, Math.min(1, (alg - 3) / 10));
+  return { inspect: 0.35 + 0.57 * t, pause: 0.4 - 0.38 * t };
+}
+
 /** Tempo kroku druhu `kind` na úrovni `level` (u vlastního tempa podle tps). */
 export function levelTps(kind, { level = 'custom', tps = 4 } = {}) {
   const L = LEVELS[level] ?? LEVELS.custom;
@@ -312,7 +333,21 @@ export function levelTps(kind, { level = 'custom', tps = 4 } = {}) {
  * Rozpad odhadu kroku: tahy člověka, rozpoznání a provedení (s). Bez úrovně postaru:
  * čas z trenažéru, jinak tahy člověka / jeho tempo.
  */
-export function stepEstimate(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level, style } = {}) {
+export function stepEstimate(item, opts = {}) {
+  const { inspect = 1, pause = 0 } = opts;
+  let e = stepEstimate1(item, opts);
+  // prohlídka: lepší start najde jen někdy (inspect), jinak skládá v dosavadní orientaci
+  if (item?.alt && inspect < 1) {
+    const b = stepEstimate1({ ...item, length: item.alt.length, score: item.alt.score }, opts);
+    const m = (k) => inspect * e[k] + (1 - inspect) * b[k];
+    e = { ...e, moves: m('moves'), recog: m('recog'), exec: m('exec'), time: m('time') };
+  }
+  // přechod do kroku (pauza, hledání dalších dílků); plně přeskočený krok bez pauzy
+  const p = pause && item && !(item.source === 'skip' && !(item.adjust && item.length)) ? pause : 0;
+  return { ...e, pause: p, time: e.time + p };
+}
+
+function stepEstimate1(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level, style } = {}) {
   if (!item || (item.source === 'skip' && !(item.adjust && item.length))) return { moves: 0, recog: 0, exec: 0, time: 0, tps: 0 };
   // přeskočeno, jen natočit vrstvu (AUF): pár tahů bez rozpoznání algoritmu
   if (item.source === 'skip') {
@@ -346,7 +381,8 @@ export function stepTime(item, opts = {}) {
 export function summarize(solves, stepCount, timing = {}) {
   const done = solves.filter((s) => s.ok);
   const tps = timing.tps ?? 4;
-  const est = (x, i) => stepEstimate(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1, level: timing.level, style: timing.styles?.[i] });
+  const hum = timing.level ? levelHuman(timing.level, tps) : { inspect: 1, pause: 0 };
+  const est = (x, i) => stepEstimate(x, { tps, recog: timing.recog?.[i] ?? 0, kind: timing.kinds?.[i], realism: timing.realism ?? 1, level: timing.level, style: timing.styles?.[i], inspect: hum.inspect, pause: i > 0 ? hum.pause : 0 });
   const ests = done.map((s) => s.steps.map(est));
   const times = ests.map((e) => e.map((x) => x.time));
   const steps = Array.from({ length: stepCount }, (_, i) => {
@@ -357,7 +393,7 @@ export function summarize(solves, stepCount, timing = {}) {
     return {
       moves: mean(lens), human: mean(ests.map((e) => e[i]?.moves ?? 0)), median: quantile(lens, 0.5), p90: quantile(lens, 0.9), max: Math.max(0, ...lens),
       // rozpad času: rozpoznání a provedení (průměr přes složení, přeskočené = 0)
-      recogTime: mean(ests.map((e) => e[i]?.recog ?? 0)), execTime: mean(ests.map((e) => e[i]?.exec ?? 0)),
+      recogTime: mean(ests.map((e) => e[i]?.recog ?? 0)), execTime: mean(ests.map((e) => e[i]?.exec ?? 0)), pauseTime: mean(ests.map((e) => e[i]?.pause ?? 0)),
       tps: timing.level ? levelTps(timing.kinds?.[i], { level: timing.level, tps }) : humanTps(tps, timing.kinds?.[i], timing.realism ?? 1),
       score: mean(items.map((x) => x.score)),
       time: mean(times.map((t) => t[i] ?? 0)),
@@ -387,7 +423,8 @@ export function summarize(solves, stepCount, timing = {}) {
     count: done.length, failed: solves.length - done.length,
     moves: total, human: steps.reduce((a, st) => a + st.human, 0), movesSd, ci: done.length > 1 ? (1.96 * movesSd) / Math.sqrt(done.length) : 0,
     median: quantile(totals, 0.5),
-    score: mean(scores), time: totalTime, timeSd: sd(secs),
+    score: mean(scores), time: totalTime, timeSd: sd(secs), timeCi: done.length > 1 ? (1.96 * sd(secs)) / Math.sqrt(done.length) : 0,
+    inspect: hum.inspect, pause: hum.pause,
     // čas každého složeného (podle id zamíchání, když ho složení nese) – pro párové porovnání
     solveTimes: Object.fromEntries(done.map((s, k) => [s.id ?? k, secs[k]])),
     solveMoves: Object.fromEntries(done.map((s, k) => [s.id ?? k, ests[k].reduce((a, x) => a + x.moves, 0)])),

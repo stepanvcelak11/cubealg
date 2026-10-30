@@ -219,3 +219,27 @@ test('krok „jen někdy“: parita M2 U2 M2 jen při liché vrstvě, pak dalš�
   assert.equal(solves[1].steps[0].source, 'skip');
   assert.ok(solves.every((s) => s.ok));
 });
+
+test('úroveň skladače: prohlídka (neutralita) a přechody mezi kroky', async () => {
+  const { levelHuman, stepEstimate, summarize } = await import('../src/sim/simulate.js');
+  const pro = levelHuman('pro'), club = levelHuman('club');
+  assert.ok(pro.inspect > club.inspect && pro.pause < club.pause);
+  assert.deepEqual(levelHuman('computer'), { inspect: 1, pause: 0 });
+  // první krok: lepší start (8 tahů) jen s pravděpodobností inspect, jinak vlastní (12)
+  const item = { length: 8, score: 0, source: 'search', alt: { length: 12, score: 0 } };
+  const a = stepEstimate(item, { level: 'club', kind: 'intuitive', inspect: 0.5 });
+  const best = stepEstimate({ ...item, alt: undefined }, { level: 'club', kind: 'intuitive' });
+  const own = stepEstimate({ ...item, length: 12, alt: undefined }, { level: 'club', kind: 'intuitive' });
+  assert.ok(Math.abs(a.time - (best.time + own.time) / 2) < 1e-9);
+  // přechod: čas navíc, plně přeskočený krok bez pauzy
+  assert.equal(stepEstimate(item, { level: 'pro', pause: 0.3 }).pause, 0.3);
+  assert.equal(stepEstimate({ source: 'skip', length: 0 }, { level: 'pro', pause: 0.3 }).time, 0);
+  // souhrn: pauza jen od druhého kroku, čas s nejistotou
+  const solves = [0, 1, 2].map((k) => ({ ok: true, steps: [{ length: 6 + k, score: 0, source: 'search' }, { length: 10, score: 0, source: 'search' }] }));
+  const s1 = summarize(solves, 2, { level: 'club', kinds: ['intuitive', 'alg'] });
+  const s0 = summarize(solves, 2, { level: 'computer', kinds: ['intuitive', 'alg'] });
+  assert.equal(s1.steps[0].pauseTime, 0);
+  assert.ok(Math.abs(s1.steps[1].pauseTime - club.pause) < 1e-9);
+  assert.equal(s0.steps[1].pauseTime, 0);
+  assert.ok(s1.timeCi > 0);
+});

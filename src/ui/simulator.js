@@ -16,7 +16,7 @@ import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts, mergeParts } from './parts.js';
 import { buildPlan, STEP_MOVES, FREEDOM, ROTATION, NEUTRAL, stepBases } from '../sim/plan.js';
 import { caseCounter } from './casecounter.js';
-import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, STYLES } from '../sim/simulate.js';
+import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, levelHuman, STYLES } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
 import { toFacelets } from '../core/cube.js';
 import { solve as twoPhase } from '../timer/twophase.js';
@@ -230,7 +230,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       el('div', { className: 'grid-fields' },
         field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
         field('Odhad času pro', level, 'Světová špička = co z metody jde vytáhnout (tempo a rozpoznání nejlepších skladačů); „Já“ = podle tvého profilu skladače'),
-        field('Barevná neutralita', neutral, 'Dvě barvy: první krok smí být s tvou barvou dole i s tou naproti (bílá i žlutá) – test u každého zamíchání vybere lepší, jako bys to viděl při prohlídce. Algoritmy platí pro obě.'),
+        field('Barevná neutralita', neutral, 'Dvě barvy: první krok smí být s tvou barvou dole i s tou naproti (bílá i žlutá). Lepší start při prohlídce najdeš podle úrovně jen někdy (špička skoro vždy, pokročilý zhruba v polovině) – odhad času s tím počítá. Algoritmy platí pro obě.'),
         tpsField),
       profileNote,
       el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko zamíchání)' }),
@@ -285,7 +285,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     k, ok: solve.ok, variant: solve.variant,
     start: k < KEEP_DISPLAY ? solve.start : undefined,
     steps: solve.steps.map((x) => ({
-      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation, adjust: x.adjust || undefined,
+      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation, adjust: x.adjust || undefined, alt: x.alt,
       variant: x.variant,
       name: k < KEEP_DISPLAY ? x.name : undefined, missingSet: x.missingSet || undefined,
       // zápis: u ukázek a u případů, na které sada neměla algoritmus (návrh do sady)
@@ -498,6 +498,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
           ? `pro „${L.label}“ intuitivní kroky × ${fmt(L.moves.intuitive)} (zaběhnuté postupy, ne vždy nejkratší), bloky × ${fmt(L.moves.blocks)}, algoritmy × ${fmt(L.moves.alg)}.`
           : 'intuitivní kroky × 0,9 (špička vidí dopředu, dělá x-cross a víc slotů naráz – simulace skládá krok po kroku), bloky × 1,2 (počítač je najde optimálně, člověk ne), algoritmy beze změny. Nastavené tak, aby CFOP vyšel kolem 57 a Roux kolem 48 tahů – jako v rekonstrukcích světové špičky.'} U každého kroku jde nastavit vlastní Styl skládání (Sestavit → Jak se krok řeší).`),
         item('Simulace', 'Kolik tahů našel počítač, když každý krok složí zvlášť skoro nejlépe (počítá se i natočení vrstev). ± = o kolik se průměr může lišit náhodou; víc zamíchání = přesnější. Medián = polovina složení má méně; „9 z 10 ≤“ = jak dlouhé jsou horší případy.'),
+        item('Přechody a prohlídka', (() => { const h = levelHuman(lvl(), Number(tps.value) || 4); return `Mezi kroky se skladač na chvíli zastaví a hledá další dílky: pro tuhle úroveň ${fmt(h.pause, 2)} s na krok (špička navazuje plynule, pokročilý se zastaví víc). Když metoda dovoluje víc startů (barevná neutralita), nejlepší najde při prohlídce jen někdy: tady v ${pct(h.inspect)} složení, jinak skládá se svou barvou. Totéž se počítá i u vestavěných metod.`; })()),
         item('Tempo a rozpoznání', 'Tahy za sekundu podle druhu kroku (nastavíš u kroku v Sestavit → Pokročilé: naučený algoritmus / intuitivní / bloky) a pauza na rozpoznání před krokem (tamtéž).'),
         item('Ergonomie', 'Jak nepohodlné jsou tahy podle hodnocení z Labu (přehmaty, tahy B a D, otáčení kostky…) – součet za krok, čím méně, tím pohodlnější. Do času se nepočítá, slouží k porovnání; vestavěné metody: CFOP 76, Roux 53, ZZ 66.'),
         item('Nejvíc času', 'Krok, který nejvíc zdržuje – tam se nejvíc vyplatí zlepšovat (víc algoritmů, jiné tahy, spojit s jiným krokem).')));
@@ -639,10 +640,11 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       head('2', 'Výsledek', `${sum.count} zamíchání${sum.failed ? ` (${sum.failed} se nepodařilo složit – nejspíš krátký čas hledání)` : ''} · odhad pro: ${levelText()}`),
       el('div', { className: 'sim-hero' },
         el('div', {}, el('span', { className: 'tile-label', textContent: 'Odhad času složení' }), el('b', { textContent: `${fmt(sum.time, 2)} s` }),
-          el('small', { textContent: `${levelText()} · rozpoznání ${fmt(sum.steps.reduce((a, x) => a + x.recogTime, 0), 2)} s + provedení ${fmt(sum.steps.reduce((a, x) => a + x.execTime, 0), 2)} s` })),
+          el('small', { textContent: `${levelText()} · rozpoznání ${fmt(sum.steps.reduce((a, x) => a + x.recogTime, 0), 2)} s + provedení ${fmt(sum.steps.reduce((a, x) => a + x.execTime, 0), 2)} s${sum.steps.some((x) => x.pauseTime) ? ` + přechody ${fmt(sum.steps.reduce((a, x) => a + x.pauseTime, 0), 2)} s` : ''}` })),
         el('div', {}, el('span', { className: 'tile-label', textContent: 'Tahů na složení' }), el('b', { textContent: fmt(sum.human) }),
           el('small', { textContent: `odhad skutečného skladače · simulace ${fmt(sum.moves)} (± ${fmt(sum.ci)}, od ${sum.min} do ${sum.max})` })),
         prev ? el('small', { className: 'sim-hero-prev', textContent: `Minulý test (${when(prev.at)}, ${prev.label ?? ''}): ${fmt(prev.moves)} tahů simulace` }) : null),
+      reliability(sum, prev),
       qualityCard(solves, meta, timing),
       Object.keys(sum.variants).length > 1 || meta.variants.length > 1
         ? el('p', { className: 'hint', textContent: `Orientace: ${Object.entries(sum.variants).map(([v, n]) => `${meta.variants[v]} ${pct(n / sum.count)}`).join(' · ')}` }) : null,
@@ -705,6 +707,29 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     return out.filter((x, i) => out.findIndex((y) => y.s === x.s) === i);
   }
 
+  /**
+   * Spolehlivost výsledku: o kolik se průměrný čas může lišit náhodou (95 %), kolik zamíchání
+   * je potřeba na přesnost ±0,1 s a jestli je rozdíl proti minulému testu skutečný.
+   */
+  function reliability(sum, prev) {
+    if (sum.count < 2) return null;
+    const ci = sum.timeCi, sdv = sum.timeSd;
+    const need = (e) => Math.ceil(((1.96 * sdv) / e) ** 2);
+    const verdict = ci <= 0.1 ? ['ok', 'Přesné'] : ci <= 0.25 ? ['mid', 'Docela přesné'] : ['ko', 'Orientační'];
+    let cmp = null;
+    if (prev && prev.level === lvl() && Number.isFinite(prev.time) && Number.isFinite(prev.timeSd) && prev.n > 1) {
+      const d = sum.time - prev.time;
+      const err = 1.96 * Math.sqrt(sdv ** 2 / sum.count + prev.timeSd ** 2 / prev.n);
+      cmp = Math.abs(d) > err
+        ? `Proti minulému testu ${d < 0 ? 'rychlejší' : 'pomalejší'} o ${fmt(Math.abs(d), 2)} s – to už náhoda není (nejistota ± ${fmt(err, 2)} s).`
+        : `Proti minulému testu ${d < 0 ? '−' : '+'}${fmt(Math.abs(d), 2)} s – to může být náhoda (nejistota ± ${fmt(err, 2)} s). Přidej zamíchání${need(Math.max(Math.abs(d), 0.02) / 1.5) > sum.count ? `, asi na ${need(Math.max(Math.abs(d), 0.02) / 1.5)}` : ''}.`;
+    }
+    return el('div', { className: `sim-reliab ${verdict[0]}` },
+      el('b', { textContent: `Spolehlivost: ${verdict[1]}` }),
+      el('span', { textContent: `Průměr ${fmt(sum.time, 2)} s ± ${fmt(ci, 2)} s (95 %) z ${sum.count} zamíchání. ${ci > 0.1 ? `Na přesnost ±0,1 s je potřeba asi ${need(0.1)} zamíchání.` : 'Na porovnání menších rozdílů přidej zamíchání.'}` }),
+      cmp ? el('span', { textContent: cmp }) : null);
+  }
+
   /** Případy, na které sada neměla algoritmus: obrázek případu, kolikrát přišel, co našlo hledání, otevřít v Labu. */
   function missingCases(solves, meta) {
     const blocks = meta.stepTitles.map((t, i) => {
@@ -745,7 +770,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   function addHistory(sum, meta) {
     const list = (storage.get(HISTORY) ?? []).filter((h) => h.sig !== meta.sig);
     list.unshift({
-      method, name: methods.get(method).name, sig: meta.sig, at: Date.now(), n: sum.count, moves: sum.moves, ci: sum.ci, time: sum.time, score: sum.score,
+      method, name: methods.get(method).name, sig: meta.sig, at: Date.now(), n: sum.count, moves: sum.moves, ci: sum.ci, time: sum.time, timeSd: sum.timeSd, level: lvl(), score: sum.score,
       median: sum.median, label: settingsLabel(),
       steps: meta.stepTitles.map((t, i) => ({ id: meta.stepIds[i], title: t, moves: sum.steps[i].moves, median: sum.steps[i].median, time: sum.steps[i].time, recog: Number(config[meta.stepIds[i]]?.recog) || 0, kind: config[meta.stepIds[i]]?.kind ?? 'intuitive' })),
     });
@@ -765,7 +790,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   /** Odhad času stejným vzorcem pro obě strany: rozpoznání + tahy / TPS. */
   // stejný model skladače jako u výsledků (sim/simulate.js) pro obě strany porovnání
   const estOf = (src) => {
-    const steps = src.steps.map((st) => ({ title: st.title, ...stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { tps: Number(tps.value) || 4, recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level: lvl() }) }));
+    const pause = levelHuman(lvl(), Number(tps.value) || 4).pause;
+    const steps = src.steps.map((st, i) => ({ title: st.title, ...stepEstimate(st.moves > 0 ? { length: st.moves, source: 'search' } : null, { tps: Number(tps.value) || 4, recog: st.recog ?? 0, kind: st.kind ?? 'intuitive', level: lvl(), pause: i ? pause * (1 - (st.skipped ?? 0)) : 0 }) }));
     return { steps, time: steps.reduce((a, x) => a + x.time, 0), human: steps.reduce((a, x) => a + x.moves, 0), recog: steps.reduce((a, x) => a + x.recog, 0) };
   };
   const estTime = (src) => estOf(src).time;

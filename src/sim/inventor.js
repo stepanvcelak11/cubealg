@@ -10,7 +10,7 @@
 // šablony (sim/templates.js) – metoda se uloží jako každá jiná.
 
 import { CROSS, E, UE, UC, PAIRS, own, oriented, custom, TEMPLATES } from './templates.js';
-import { stepEstimate, LEVELS } from './simulate.js';
+import { stepEstimate, LEVELS, levelHuman } from './simulate.js';
 import { originalMethods, stepMoves, partsOfCells, mergeParts, estimateCases } from './originals.js';
 
 const EDGES = [...CROSS, ...E, ...UE];
@@ -207,12 +207,13 @@ export function allMethods() {
 /** Odhad času složení (s) podle odhadu tahů kroků (stepMoves) a úrovně skladače (bez simulace). */
 export function priorTime(method, level = 'pro') {
   let before = {};
-  return method.steps.reduce((a, x) => {
+  const pause = levelHuman(level).pause;
+  return method.steps.reduce((a, x, i) => {
     const parts = partsOfCells(x.cells);
     const kind = x.sim?.kind ?? 'intuitive';
     const length = stepMoves(before, parts, kind === 'alg');
     before = mergeParts(before, parts);
-    return a + stepEstimate({ length, source: 'search' }, { kind, recog: x.sim?.recog ?? 0, level }).time;
+    return a + stepEstimate({ length, source: 'search' }, { kind, recog: x.sim?.recog ?? 0, level, pause: i ? pause : 0 }).time;
   }, 0);
 }
 
@@ -223,13 +224,14 @@ export function priorTime(method, level = 'pro') {
  * @param {(st) => object} piecesOf dílky kroku (hotové / natočené)
  */
 export function guidePrior(steps, cfgOf, piecesOf, level = 'pro') {
-  let before = {}, pending = {}, time = 0, algs = 0;
+  let before = {}, pending = {}, time = 0, algs = 0, n = 0;
+  const pause = levelHuman(level).pause;
   for (const st of steps) {
     const cfg = cfgOf(st);
     pending = mergeParts(pending, piecesOf(st));
     if (cfg.on === false) continue;
     const alg = cfg.kind === 'alg';
-    time += stepEstimate({ length: stepMoves(before, pending, alg), source: 'search' }, { kind: cfg.kind ?? 'intuitive', recog: cfg.recog ?? 0, level }).time;
+    time += stepEstimate({ length: stepMoves(before, pending, alg), source: 'search' }, { kind: cfg.kind ?? 'intuitive', recog: cfg.recog ?? 0, level, pause: n++ ? pause : 0 }).time;
     if (alg && cfg.solveBy !== 'fixed') algs += estimateCases(before, pending);
     before = mergeParts(before, pending);
     pending = {};
