@@ -2111,3 +2111,12 @@ body[data-typing] .page[data-page="timer"] > .timer-pad { justify-content: cente
 .ss-name { font-weight: 700; }
 .ss-len, .ss-share { font-size: 0.82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ss-share { color: var(--muted); }
+
+/* Test metody: případy bez algoritmu */
+.sim-miss-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 8px 0; }
+.sim-miss-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border-radius: 14px; background: var(--panel-2); }
+.sim-miss-head { display: flex; justify-content: space-between; align-items: baseline; width: 100%; gap: 6px; }
+.sim-miss-head small { color: var(--muted); }
+.sim-miss-net svg { display: block; max-width: 100%; height: auto; }
+.sim-miss-alg { display: flex; align-items: center; gap: 4px; width: 100%; }
+.sim-miss-alg code { flex: 1; font-size: 0.78rem; overflow-wrap: anywhere; }

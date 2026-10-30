@@ -222,7 +222,7 @@ export async function simulate({ count, starts, variants, goals, solveStep, bett
       }
       if (stopped()) break;
       if (!r) { ok = false; out.push({ model: '', display: '', length: 0, score: 0, source: 'none' }); break; }
-      if (r.source === 'missing') { ok = false; out.push(r); break; }
+      if (r.source === 'missing') { ok = false; out.push({ ...r, goal: pick.goal, variant: pick.j }); break; }
       const after = r.model ? applyAlg(state, r.model) : state;
       if (!testOf(pick.goal)(after)) { ok = false; out.push({ ...r, source: 'none' }); break; }
       state = after;
@@ -313,7 +313,12 @@ export function levelTps(kind, { level = 'custom', tps = 4 } = {}) {
  * čas z trenažéru, jinak tahy člověka / jeho tempo.
  */
 export function stepEstimate(item, { tps = 4, recog = 0, kind = 'alg', realism = 1, level, style } = {}) {
-  if (!item || item.source === 'skip') return { moves: 0, recog: 0, exec: 0, time: 0, tps: 0 };
+  if (!item || (item.source === 'skip' && !(item.adjust && item.length))) return { moves: 0, recog: 0, exec: 0, time: 0, tps: 0 };
+  // přeskočeno, jen natočit vrstvu (AUF): pár tahů bez rozpoznání algoritmu
+  if (item.source === 'skip') {
+    const speed = level ? levelTps('alg', { level, tps }) : tps;
+    return { moves: item.length, recog: 0, exec: item.length / speed, time: item.length / speed, tps: speed };
+  }
   if (!level) {
     if (Number.isFinite(item.time)) return { moves: item.length, recog, exec: item.time / 1000 + (item.extra ?? 0) / tps, time: recog + item.time / 1000 + (item.extra ?? 0) / tps, tps };
     const moves = humanMoves(item.length, kind, realism, style), speed = humanTps(tps, kind, realism);

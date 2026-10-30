@@ -1941,3 +1941,29 @@ test('statistika sady: délky, šance případů a tahy', async () => {
   assert.deepEqual(errors, []);
   await ctx.close();
 });
+
+test('test metody: případy bez algoritmu v sadě s obrázkem a otevřením v Labu, barevná neutralita', async () => {
+  const guides = { default: { intro: '', steps: [{ id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' }, set: 'sX' }] } };
+  const opts = { length: 'c10', steps: { default: { k1: { time: 1, solveBy: 'own', mode: 'auto', kind: 'alg' } } } };
+  const { p, ctx, errors } = await open('timer', {
+    'ergocube.guides': guides, 'ergocube.sim.options': opts,
+    'ergocube.algsets': [{ id: 'sX', name: 'Hrana', method: 'default' }],
+    'ergocube.algs': [{ id: 'a1', name: 'F2', alg: 'F2', task: { puzzle: '333' }, set: 'sX', enabled: true, times: [] }],
+  });
+  await p.locator('.tabbar [data-tab="method"]').tap();
+  await p.locator('.mp-tabs button', { hasText: 'Otestovat' }).tap();
+  await p.locator('.sim-more summary').tap();
+  assert.equal(await p.locator('select[aria-label="Barevná neutralita"] option').count(), 3);
+  await p.locator('.sim-page button', { hasText: 'Spustit test' }).tap();
+  await p.waitForFunction(() => /Hotovo: 10 zamíchání/.test(document.querySelector('.sim-status')?.textContent), null, { timeout: 120000 });
+  const miss = p.locator('.sim-missing');
+  assert.match(await miss.innerText(), /Hrana vpředu: \d+ (případ|případy|případů) bez algoritmu/);
+  assert.ok(await miss.locator('.sim-miss-card svg').count() >= 1);
+  assert.match(await miss.locator('.sim-miss-card').first().innerText(), /\d+×[\s\S]*hledání našlo/);
+  if (process.env.SHOT) await miss.screenshot({ path: `${process.env.SHOT}/miss.png` });
+  await miss.locator('.sim-miss-card button', { hasText: 'Otevřít v Labu' }).first().tap();
+  await p.waitForSelector('[data-page="lab"]:not([hidden])');
+  if (process.env.SHOT) await p.screenshot({ path: `${process.env.SHOT}/lab.png` });
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});

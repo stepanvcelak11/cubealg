@@ -17,6 +17,12 @@ const P = getPuzzle('333');
 const ALL = Object.fromEntries(P.slots.map((s) => [s.name, 'solved']));
 const colors = (loc) => colorsOfState(P, loc, ALL).join('');
 
+/** Případ kroku pro Lab: barvy před krokem (jen dílky cíle), cíl (vybarvené pevné dílky) a omezení. */
+function missOf(state, goal, variant) {
+  const fixed = Object.fromEntries(Object.entries(goal).filter(([n, c]) => !n.startsWith('#') && c && c !== 'ignore'));
+  return { a: colorsOfState(P, state, goal).join(''), b: colorsOfState(P, P.solved(), fixed).join(''), goal, hold: plan.variants[variant]?.hold ?? '' };
+}
+
 const kernel = initKernel();
 let plan = null;
 let solver = null;
@@ -46,6 +52,8 @@ self.onmessage = async ({ data }) => {
     // vytvořit sada algoritmů kroku (simulator.js)
     let state = solve.start;
     const steps = solve.steps.map(({ model, goal, ...x }, i) => {
+      // případ, na který sada kroku nemá algoritmus: obrázek a zadání pro Lab (simulator.js)
+      if (goal && (x.source === 'missing' || (x.source === 'search' && plan.variants[0].steps[i]?.candidates?.length))) x.miss = missOf(state, goal, x.variant ?? 0);
       if (!model) return x;
       const after = P.applyAlg(state, model);
       // u kroků algoritmů případ celý (stav, cíl, orientace) – simulátor řešení slučuje po případech

@@ -577,6 +577,19 @@ Square-1 (`src/puzzles/sq1.js`, `src/search/sq1engine.js`) mění tvar, takže m
 vlastní model: 2 × 12 pozic po 30°, prostřední vrstva, notace WCA. Hledání je IDA*
 po řezech s tabulkami (tvar po řezu × pozice dílku) a tabulkou tvarů.
 
+## Test metody: neutralita a chybějící algoritmy
+
+- **Barevná neutralita** (Otestovat → Další nastavení): „dvě barvy dole“ = první krok
+  smí skončit s tvou barvou dole i s tou naproti (bílá i žlutá), test u každého zamíchání
+  vybere lepší (jako při prohlídce); „kterákoli barva“ = plná neutralita. Volnost
+  jednotlivých kroků se dál nastavuje v Sestavit.
+- **Semínko zamíchání**: číslo, ze kterého vznikají náhodná zamíchání – stejné semínko =
+  stejná zamíchání (férové porovnání).
+- Krok hotový až na natočení vrstvy (AUF/ADF) je **přeskočení** (stojí jen čas natočení).
+- **Případy bez algoritmu**: obrázek případu před krokem, kolikrát v testu přišel, co v něm
+  našlo hledání a tlačítko „Otevřít v Labu“ (případ jako zadání – najdeš algoritmus
+  a uložíš ho do sady).
+
 ## Statistika sady
 
 Výběr sady (Trenažér, Lab) → **Statistika sady…**:

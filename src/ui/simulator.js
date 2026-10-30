@@ -14,7 +14,7 @@ import { el, storage } from './dom.js';
 import { icon } from './icons.js';
 import { methods, guides, algs, algSets } from './store.js';
 import { describeParts, stepParts, mergeParts } from './parts.js';
-import { buildPlan, STEP_MOVES, FREEDOM, ROTATION } from '../sim/plan.js';
+import { buildPlan, STEP_MOVES, FREEDOM, ROTATION, NEUTRAL, stepBases } from '../sim/plan.js';
 import { caseCounter } from './casecounter.js';
 import { summarize, seededRandom, stepEstimate, LEVELS, levelTps, STYLES } from '../sim/simulate.js';
 import { practiceState } from '../timer/practice.js';
@@ -29,6 +29,7 @@ import { knownForStep } from '../sim/profile.js';
 import { stepConfig, setStepConfig, solveByOf, generatedState, stepSignature } from './stepcfg.js';
 import { SLOTS } from '../core/geometry.js';
 import { cellsSummary } from './celleditor.js';
+import { netSvg } from './netsvg.js';
 import { VIEWS } from '../ergonomics/style.js';
 import { makeLearner } from '../sim/learn.js';
 
@@ -127,6 +128,8 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   let learner = null;
   const used = new Map(); // krok → Map(zápis → { n, source, score, length, name }) – které algoritmy test použil
   const USED_MAX = 300;
+  const misses = new Map(); // krok → Map(barvy případu → { n, a, b, goal, hold, found }) – na co sada neměla algoritmus
+  const MISS_MAX = 60;
   let harvestTargets = [];
   let running = false;
   let pool = [];
@@ -186,6 +189,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   const rotation = select(ROTATION, ROTATION[saved.rotation] ? saved.rotation : 'free', 'Otočení kostky', () => changed());
   const length = select(LENGTHS, LENGTHS[saved.length] ? saved.length : 'c25', 'Délka simulace', () => remember());
   const seed = num(saved.seed ?? 1, 'Semínko zamíchání', 0, 999999, 1, () => changed());
+  const neutral = select(NEUTRAL, NEUTRAL[saved.colorNeutral] ? saved.colorNeutral : 'fixed', 'Barevná neutralita', () => changed());
   const rerender = () => { remember(); tpsField.hidden = !!LEVELS[level.value].tps; updateProfileNote(); if (last) renderResults(last.solves, last.meta); renderCompare(); };
   // úroveň „Já“: shrnutí profilu a odkaz na jeho úpravu
   const profileNote = el('p', { className: 'hint sim-profile' });
@@ -226,12 +230,13 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
       el('div', { className: 'grid-fields' },
         field('Délka', length, 'Počet zamíchání, nebo čas – dlouhý běh se průběžně ukládá a jde navázat'),
         field('Odhad času pro', level, 'Světová špička = co z metody jde vytáhnout (tempo a rozpoznání nejlepších skladačů); „Já“ = podle tvého profilu skladače'),
+        field('Barevná neutralita', neutral, 'Dvě barvy: první krok smí být s tvou barvou dole i s tou naproti (bílá i žlutá) – test u každého zamíchání vybere lepší, jako bys to viděl při prohlídce. Algoritmy platí pro obě.'),
         tpsField),
       profileNote,
-      el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko)' }),
+      el('details', { className: 'sim-more' }, el('summary', { textContent: 'Další nastavení (otočení kostky, semínko zamíchání)' }),
         el('div', { className: 'grid-fields' },
           field('Otočení kostky', rotation, 'Když krok volnost složí jinde, kostku otočíš (y, x2…) – počítat to do tahů?'),
-          field('Semínko', seed, 'Stejné semínko = stejná zamíchání (férové porovnání nastavení i metod)'))),
+          field('Semínko zamíchání', seed, 'Číslo, ze kterého se vyrobí náhodná zamíchání. Stejné semínko = přesně stejná zamíchání, takže dvě nastavení nebo metody porovnáš férově; jiné semínko = jiná sada zamíchání.'))),
       el('div', { className: 'row-btns sim-run-btns' }, go, more, stop), track, status),
     el('details', { className: 'sim-card sim-steps-box' },
       el('summary', {}, el('b', { textContent: `Co se testuje (${stepsWithParts.length} ${stepsWithParts.length === 1 ? 'krok' : stepsWithParts.length < 5 ? 'kroky' : 'kroků'})` }),
@@ -246,11 +251,11 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   let last = null; // { solves, meta, next }
   function remember() {
     const all = storage.get(OPTS) ?? {};
-    storage.set(OPTS, { ...all, neutral: undefined, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), level: level.value });
+    storage.set(OPTS, { ...all, neutral: undefined, colorNeutral: neutral.value, rotation: rotation.value, length: length.value, seed: Number(seed.value), tps: Number(tps.value), level: level.value });
   }
   function changed() {
     remember();
-    ({ plan, steps: planSteps } = buildPlan({ guide, config, setAlgs, rotation: rotation.value, ergonomics: lab.ergo, lambda: lab.lambda }));
+    ({ plan, steps: planSteps } = buildPlan({ guide, config, setAlgs, neutral: neutral.value, rotation: rotation.value, ergonomics: lab.ergo, lambda: lab.lambda }));
     // na čem výsledky závisí (bez časů z trenažéru – ty mění jen odhad času)
     sigNow = hash(JSON.stringify([method, Number(seed.value), plan.rotation, plan.stepOpts.map(({ recog, ...o }) => o),
       plan.variants.map((v) => ({ next: v.next, steps: v.steps.map((s) => ({ parts: s.parts, moves: s.moves, adjust: s.adjust, c: s.candidates.map((c) => c.model) })) })), lab.ergo]));
@@ -280,7 +285,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     k, ok: solve.ok, variant: solve.variant,
     start: k < KEEP_DISPLAY ? solve.start : undefined,
     steps: solve.steps.map((x) => ({
-      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation,
+      length: x.length, score: x.score, source: x.source, time: x.time, extra: x.extra, helper: x.helper ?? undefined, rotation: x.rotation, adjust: x.adjust || undefined,
       variant: x.variant,
       name: k < KEEP_DISPLAY ? x.name : undefined, missingSet: x.missingSet || undefined,
       // zápis: u ukázek a u případů, na které sada neměla algoritmus (návrh do sady)
@@ -337,7 +342,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     const t0 = performance.now();
     const done0 = solves.length;
     let lastRender = 0, lastSave = 0;
-    const save = (finished = false) => storage.set(RUN, { meta, solves, next: Math.min(next, solves.length), finished, used: [...used].map(([i, m]) => [i, [...m]]) });
+    const save = (finished = false) => storage.set(RUN, { meta, solves, next: Math.min(next, solves.length), finished, used: [...used].map(([i, m]) => [i, [...m]]), misses: [...misses].map(([i, m]) => [i, [...m]]) });
     const progress = () => {
       const n = solves.length - done0;
       const elapsed = performance.now() - t0;
@@ -369,6 +374,14 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
             // případ, na který sada neměla algoritmus (řešilo ho hledání)
             data.solve.steps.forEach((x, i) => {
               if (x.source === 'search' && meta.hasSet[i]) x.missingSet = true;
+              // případ bez algoritmu v sadě: obrázek a zadání (ukáže se ve výsledku, jde otevřít v Labu)
+              if (x.miss) {
+                const m = misses.get(i) ?? new Map();
+                const h = m.get(x.miss.a);
+                if (h) { h.n++; if (!h.found && x.display) h.found = x.display; } else if (m.size < MISS_MAX) m.set(x.miss.a, { n: 1, ...x.miss, found: x.source === 'search' ? x.display : null });
+                misses.set(i, m);
+                delete x.miss;
+              }
               // použité algoritmy (i ze sady) – kolikrát a proč
               if (x.display && x.source !== 'skip' && x.source !== 'none') {
                 const m = used.get(i) ?? new Map();
@@ -435,7 +448,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     if (long && finished && sum?.count) notify('Simulace metody', `${methods.get(method).name}: ${fmt(sum.moves)} tahů na složení (${sum.count} zamíchání)`);
   }
 
-  go.onclick = () => { last = null; harvest.clear(); used.clear(); learner = null; run(null); };
+  go.onclick = () => { last = null; harvest.clear(); used.clear(); misses.clear(); learner = null; run(null); };
 
   /** Nalezená řešení kroku i uloží jako algoritmy jeho sady (sadu případně založí). */
   function saveHarvest(i, meta, quiet = false) {
@@ -692,30 +705,42 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
     return out.filter((x, i) => out.findIndex((y) => y.s === x.s) === i);
   }
 
-  /** Případy, na které sada neměla algoritmus: co v nich našlo hledání (návrh do sady). */
+  /** Případy, na které sada neměla algoritmus: obrázek případu, kolikrát přišel, co našlo hledání, otevřít v Labu. */
   function missingCases(solves, meta) {
     const blocks = meta.stepTitles.map((t, i) => {
       if (!meta.hasSet[i]) return null;
-      const counts = new Map();
-      for (const s of solves) { const x = s.steps[i]; if (x?.missingSet && x.display) counts.set(x.display, (counts.get(x.display) ?? 0) + 1); }
-      if (!counts.size) return null;
-      const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 12);
-      return el('div', { className: 'sim-missing-step' }, el('b', { textContent: `${t}: ${counts.size}× řešení mimo sadu` }),
-        el('ul', {}, ...top.map(([alg, n]) => {
-          const copy = Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Kopírovat', ariaLabel: `Kopírovat ${alg}` }), { innerHTML: icon('copy', { size: 16 }) });
-          copy.onclick = () => navigator.clipboard?.writeText(alg).then(() => toast('Zkopírováno'), () => toast('Kopírování se nepovedlo'));
-          return el('li', {}, el('code', { textContent: alg }), el('small', { textContent: `${n}×` }), copy);
-        })));
+      const m = misses.get(i);
+      if (!m?.size) return null;
+      const list = [...m.values()].sort((x, y) => y.n - x.n);
+      const total = list.reduce((k, x) => k + x.n, 0);
+      const bases = (() => { const st = guide.steps.find((x) => x.id === meta.stepIds[i]); return st && config[st.id] ? stepBases(config[st.id]) : null; })();
+      return el('div', { className: 'sim-missing-step' },
+        el('b', { textContent: `${t}: ${list.length} ${list.length === 1 ? 'případ' : list.length < 5 ? 'případy' : 'případů'} bez algoritmu (${total}× v testu)` }),
+        el('div', { className: 'sim-miss-grid' }, ...list.slice(0, 24).map((x) => {
+          const copy = x.found ? Object.assign(el('button', { type: 'button', className: 'icon-btn', title: 'Kopírovat řešení', ariaLabel: `Kopírovat ${x.found}` }), { innerHTML: icon('copy', { size: 16 }) }) : null;
+          if (copy) copy.onclick = () => navigator.clipboard?.writeText(x.found).then(() => toast('Zkopírováno'), () => toast('Kopírování se nepovedlo'));
+          return el('div', { className: 'sim-miss-card' },
+            el('div', { className: 'sim-miss-head' }, el('b', { textContent: `${x.n}×` }), el('small', { textContent: x.found ? 'hledání našlo:' : 'test tu skončil' })),
+            Object.assign(el('div', { className: 'sim-miss-net' }), { innerHTML: netSvg([...x.a].map((c) => ({ color: c })), x.hold, 150) }),
+            x.found ? el('div', { className: 'sim-miss-alg' }, el('code', { textContent: x.found }), copy) : null,
+            deps.openLab ? Object.assign(el('button', { type: 'button', className: 'secondary small' }), {
+              textContent: 'Otevřít v Labu',
+              title: 'Případ jako zadání v Labu: najdi algoritmus a ulož ho do sady kroku',
+              onclick: () => deps.openLab({ puzzle: '333', colorsA: [...x.a], colorsB: [...x.b], constraints: x.goal, hold: x.hold, ...(bases ? { bases } : {}) }),
+            }) : null);
+        })),
+        list.length > 24 ? el('small', { className: 'hint', textContent: `…a ještě ${list.length - 24} dalších` }) : null);
     }).filter(Boolean);
-    return blocks.length ? el('details', { className: 'sim-example sim-missing' },
+    return blocks.length ? el('details', { className: 'sim-example sim-missing', open: true },
       el('summary', { textContent: 'Případy, na které v sadě nemáš algoritmus' }),
-      el('p', { className: 'hint', textContent: 'Co v nich našlo hledání – kandidáti, které můžeš doplnit do sady (v Labu nebo generátorem sady).' }), ...blocks) : null;
+      el('p', { className: 'hint', textContent: 'Jak případ vypadá před krokem (šedé = na nich teď nezáleží), kolikrát v testu přišel a co v něm našlo hledání. „Otevřít v Labu“ ho dá jako zadání – najdeš algoritmus a uložíš ho do sady. Všechny případy kroku najednou spočítá generátor sady.' }), ...blocks) : null;
   }
 
   // --- historie a porovnání ---------------------------------------------------------------------
   const settingsLabel = () => {
     const free = planSteps.filter((x) => x.cfg.free && x.cfg.free !== 'fixed').length;
-    return `${free ? `volnost u ${free} ${free === 1 ? 'kroku' : 'kroků'}` : 'pevně'} · semínko ${seed.value} · ${planSteps.length} kroků`;
+    const nt = { dual: 'dvě barvy dole · ', all: 'plná neutralita · ' }[neutral.value] ?? '';
+    return `${nt}${free ? `volnost u ${free} ${free === 1 ? 'kroku' : 'kroků'}` : 'pevně'} · semínko ${seed.value} · ${planSteps.length} kroků`;
   };
   function addHistory(sum, meta) {
     const list = (storage.get(HISTORY) ?? []).filter((h) => h.sig !== meta.sig);
@@ -849,6 +874,7 @@ function mountSimulator(host, lab, { onEdit, cmpHost = host } = {}) {
   if (r?.meta?.method === method && r.solves?.length) {
     const same = r.meta.sig === sigNow;
     for (const [i, list] of r.used ?? []) used.set(i, new Map(list));
+    for (const [i, list] of r.misses ?? []) misses.set(i, new Map(list));
     last = { solves: r.solves, meta: r.meta, next: contiguous(r.solves) };
     renderResults(r.solves, r.meta);
     const resume = el('button', { type: 'button', className: 'primary small', textContent: r.finished ? 'Přidat zamíchání' : 'Pokračovat', hidden: !same });

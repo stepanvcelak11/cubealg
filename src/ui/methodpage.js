@@ -47,7 +47,7 @@ export function initMethodPage(deps) {
         action('share', 'Sdílet', 'Poslat metodu i s algoritmy a výsledkem testu – odkazem nebo souborem', () => shareMethodMenu()))),
     tabs, build, test, cmp, disc, inv);
   initBuilder(build, { onTest: (opts) => { if (opts?.harvest) harvestStep(opts.harvest); showMethodPage('test'); }, practice: deps.practice, train: deps.train, labTask: deps.labTask, openLab: deps.openLab });
-  initSimulator({ lab: deps.lab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
+  initSimulator({ lab: deps.lab, openLab: deps.openLab, onEdit: () => showMethodPage('build'), onCompare: () => showMethodPage('compare'), onTest: () => showMethodPage('test'), isVisible: () => visible() && sub !== 'build' });
   // jiná metoda nebo úpravy odjinud: sestavení překreslit (při psaní se nepřekresluje)
   const refresh = () => { title.textContent = methods.get(methods.active()).name; if (visible() && sub === 'build' && !build.contains(document.activeElement)) renderBuilder(); };
   methods.subscribe(refresh);

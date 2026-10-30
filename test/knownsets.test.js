@@ -65,3 +65,25 @@ test('test metody: krok hotový až na natočení U = přeskočení, ne chyběj�
     assert.ok(sv.steps[2].adjust && /^U/.test(sv.steps[2].display), sv.steps[2].display);
   }
 });
+
+test('test metody: barevná neutralita (bílá i žlutá dole) – první krok smí skončit na obou barvách', async () => {
+  const names = (pred) => SLOTS.filter((x) => x.type !== 'center' && pred(x.name)).map((x) => x.name);
+  const parts = (list, style) => Object.fromEntries(list.map((n) => [n, style]));
+  const guide = { frame: { down: 'D', front: 'F' }, steps: [
+    { id: 'cross', title: 'Kříž', parts: parts(['DF', 'DR', 'DB', 'DL'], 'solved') },
+  ] };
+  const fixed = buildPlan({ guide, config: { cross: { time: 1 } } }).plan;
+  const dual = buildPlan({ guide, config: { cross: { time: 1 } }, neutral: 'dual' }).plan;
+  assert.equal(fixed.variants.length, 1);
+  assert.equal(dual.variants.length, 2);
+  const { seededRandom } = await import('../src/sim/simulate.js');
+  const { practiceState } = await import('../src/timer/practice.js');
+  const rand = seededRandom(7);
+  const starts = Array.from({ length: 8 }, () => practiceState({}, rand));
+  const run = async (plan) => (await solveScrambles(plan, starts, { virtual: true })).solves;
+  const a = await run(fixed), b = await run(dual);
+  assert.ok(a.every((x) => x.ok) && b.every((x) => x.ok));
+  const sum = (l) => l.reduce((n, x) => n + x.steps[0].length, 0);
+  assert.ok(b.some((x) => x.variant !== 0), 'aspoň někdy žlutý kříž');
+  assert.ok(sum(b) < sum(a), `${sum(b)} < ${sum(a)}`);
+});

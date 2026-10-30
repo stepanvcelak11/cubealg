@@ -33,7 +33,7 @@ export const STEP_MOVES = {
 export const stepBases = (cfg) => (cfg.moves === 'custom' && cfg.custom?.length ? cfg.custom : (STEP_MOVES[cfg.moves] ?? STEP_MOVES.faces).bases);
 export const MOVE_BASES = ['R', 'L', 'U', 'D', 'F', 'B', 'M', 'E', 'S', 'r', 'l', 'u', 'd', 'f', 'b'];
 export const ADJUST = { auto: 'Automaticky (podle kroku)', none: 'Žádné', U: 'Horní vrstva (AUF)', UD: 'Horní i spodní (AUF + ADF)' };
-export const NEUTRAL = { fixed: 'Pevná (podle metody)', dual: 'Dvě barvy (protilehlé)', all: 'Libovolná barva' };
+export const NEUTRAL = { fixed: 'Podle kroků (jak je v Sestavit)', dual: 'Dvě barvy dole (např. bílá i žlutá)', all: 'Kterákoli barva dole (plná neutralita)' };
 /** Volnost kroku: ve kterých orientacích (vůči té dosavadní) se smí krok složit. */
 export const FREEDOM = {
   fixed: { label: 'Pevně (jak je v průvodci)', hint: 'Dílky kroku jen tam, kde je máš v průvodci' },
@@ -47,7 +47,6 @@ export const FREEDOM = {
 export const COLORS = { U: 'bílá', D: 'žlutá', F: 'zelená', B: 'modrá', R: 'červená', L: 'oranžová' };
 /** Otočení kostky mezi kroky (změna orientace kvůli volnosti). */
 export const ROTATION = { free: 'Nepočítat do tahů', move: 'Počítat jako tah' };
-const NEUTRAL_FREE = { fixed: 'fixed', dual: 'dual', all: 'all' };
 
 /** Výchozí nastavení kroku. */
 export const stepDefaults = (hasSet) => ({
@@ -204,8 +203,14 @@ export function buildPlan({ guide, config = {}, setAlgs = () => [], neutral = 'f
   // poslední krok s dílky se simuluje vždy (jinak by se nic neskládalo)
   if (all.length && !all.some((x) => x.cfg.on)) all.at(-1).cfg.on = true;
   const steps = all.filter((x, i) => x.cfg.on || i === all.length - 1);
-  // stará volba „barevná neutralita“ = volnost prvního kroku
-  if (steps.length && neutral !== 'fixed' && !config[steps[0].st.id]?.free) steps[0].cfg.free = NEUTRAL_FREE[neutral] ?? 'fixed';
+  // barevná neutralita metody (test: bílá i žlutá dole…) = volnost prvního kroku, když ji
+  // krok sám nemá širší (bok se zachová: „kterýkoli bok“ + dvě barvy = dualSide)
+  if (steps.length && neutral !== 'fixed') {
+    const c = steps[0].cfg, cur = c.free ?? 'fixed';
+    if (neutral === 'all') { if (cur !== 'colors') c.free = 'all'; }
+    else if (cur === 'fixed') c.free = 'dual';
+    else if (cur === 'side') c.free = 'dualSide';
+  }
   const goals0 = steps.map((x) => ({ ...mergeParts(partsBefore(guide.steps, x.st.id), x.parts) }));
   // dílky a pravidla kroku: jeho vlastní + z vypnutých kroků před ním (složí se s ním).
   // Vlastní, ne rozdíl proti předchozím krokům – kroky se stejnými dílky (pár do
