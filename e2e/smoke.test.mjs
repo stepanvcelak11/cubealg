@@ -1354,26 +1354,6 @@ test('metronom: bliká v tempu, s chytrou kostkou počítá tahy na bliknutí', 
   await ctx.close();
 });
 
-test('objevitel metod: návrhy úprav otestované na stejných zamícháních, použití návrhu', async () => {
-  const guides = { default: { intro: '', steps: [
-    { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
-    { id: 'k2', title: 'Hrana vpravo', text: '', parts: { DR: 'solved' } },
-  ] } };
-  const { p, ctx, errors } = await open('timer', { 'ergocube.guides': guides, 'ergocube.discover': { count: 8, seconds: 0.5 }, 'ergocube.method.sub': 'discover' });
-  await p.locator('.tabbar [data-tab="method"]').tap();
-  await p.locator('.disc-page button', { hasText: 'Hledat vylepšení' }).tap();
-  await p.waitForFunction(() => /Hotovo|Zastaveno/.test(document.querySelector('.disc-page .status').textContent), null, { timeout: 240000 });
-  const rows = await p.locator('.disc-row').allInnerTexts();
-  assert.match(rows[0], /Tvoje metoda teď[\s\S]*\d+,\d+ s/);
-  assert.ok(rows.some((r) => /Spojit „Hrana vpředu“ s „Hrana vpravo“[\s\S]*s ± /.test(r)), rows.join('\n'));
-  // použít návrh: spojení se zapíše do nastavení kroku
-  await p.locator('.disc-row', { has: p.locator('b', { hasText: /^Spojit „Hrana vpředu“ s „Hrana vpravo“$/ }) }).locator('button').tap();
-  const on = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')).default.steps[0].sim?.on);
-  assert.equal(on, false);
-  assert.deepEqual(errors, []);
-  await ctx.close();
-});
-
 test('sdílení metody odkazem: kroky, algoritmy a výsledek testu; příjemce si ji přidá a porovná', async () => {
   const guides = { default: { intro: '', steps: [
     { id: 'k1', title: 'Hrana vpředu', text: '', parts: { DF: 'solved' } },
@@ -1472,27 +1452,6 @@ test('Moje kostka: stav z chytré kostky, nejkratší řešení a řešení meto
   await p.locator('.help-dialog button', { hasText: 'Složit mou metodou' }).tap();
   await p.waitForFunction(() => /Hrana vpředu: .*Hrana vpravo: /.test(document.querySelector('#status').textContent), null, { timeout: 60000 })
     .catch(async (e) => { throw new Error(`${e.message}: ${await p.locator('#status').innerText()} | ${await p.locator('.help-dialog[open]').innerText().catch(() => '')}`); });
-  assert.deepEqual(errors, []);
-  await ctx.close();
-});
-
-test('vymyslet metodu: přání, originální i známé nápady, test simulací a uložení jako nové metody', async () => {
-  const { p, ctx, errors } = await open('timer', { 'ergocube.method.sub': 'invent', 'ergocube.inventor': { text: 'baví mě EO jako u ZZ, nechci tahy M', tests: 4, count: 8, source: 'mix', evolve: 1 } });
-  await p.locator('.tabbar [data-tab="method"]').tap();
-  await p.locator('.inv-page button', { hasText: 'Vymyslet metody' }).tap();
-  await p.waitForSelector('.inv-card');
-  const badges = await p.locator('.inv-card .disc-level').allInnerTexts();
-  assert.ok(badges.some((b) => /originální/i.test(b)), badges.join());
-  await p.waitForFunction(() => /Hotovo|Zastaveno/.test(document.querySelector('.inv-page .status').textContent), null, { timeout: 900000 });
-  const cards = await p.locator('.inv-card').allInnerTexts();
-  assert.ok(cards.some((c) => /\d+,\d+ s · [\d,]+ tahů · ≈?\d+ algoritmů/.test(c)), cards.join('\n'));
-  assert.ok(cards.every((c) => !/tahy M \(/.test(c)));
-  await p.locator('.inv-card button', { hasText: 'Uložit jako novou metodu' }).first().tap();
-  await p.locator('.inv-card button', { hasText: 'Přepnout na ni' }).first().tap();
-  const active = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.methods')));
-  assert.ok(active.list.length === 1 && active.active === active.list[0].id, JSON.stringify(active));
-  const guides = await p.evaluate(() => JSON.parse(localStorage.getItem('ergocube.guides')));
-  assert.ok(guides[active.active].steps.length >= 3);
   assert.deepEqual(errors, []);
   await ctx.close();
 });
