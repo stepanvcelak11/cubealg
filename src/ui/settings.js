@@ -94,16 +94,21 @@ export function initSettings() {
   };
 
   // Instalace na plochu (Chrome/Android nabízí událost beforeinstallprompt).
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  $('set-install-hint').textContent = standalone ? 'Aplikace běží nainstalovaná.'
+    : 'Tlačítko se nabídne, až prohlížeč instalaci povolí. Do té doby: v Chromu na Androidu menu ⋮ → „Přidat na plochu“ → „Nainstalovat“ (stránka musí být otevřená přes https, ne v anonymním okně a ne ve vestavěném prohlížeči jiné aplikace). V Samsung Internet menu ☰ → „Přidat stránku do“ → „Plocha“.';
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     installPrompt = e;
-    $('set-install').hidden = false;
+    $('set-install-btn').hidden = false;
+    $('set-install-hint').textContent = '';
   });
+  window.addEventListener('appinstalled', () => { installPrompt = null; $('set-install-btn').hidden = true; $('set-install-hint').textContent = 'Aplikace je nainstalovaná.'; });
   $('set-install-btn').onclick = async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
     await installPrompt.userChoice;
     installPrompt = null;
-    $('set-install').hidden = true;
+    $('set-install-btn').hidden = true;
   };
 }
